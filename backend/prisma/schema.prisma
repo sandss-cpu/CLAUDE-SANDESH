@@ -190,6 +190,7 @@ model User {
   posts             Post[]
   comments          Comment[]
   reactions         Reaction[]
+  postVotes         PostVote[]
   bookmarks         Bookmark[]
   itineraries       Itinerary[]
   reviews           Review[]
@@ -525,6 +526,7 @@ model Post {
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
   destination Destination? @relation(fields: [destinationId], references: [id])
   photos      PostPhoto[]
+  votes       PostVote[]
   elevatedTo  Article?     @relation("ElevatedPost")
 
   @@unique([authorId, clientDraftId])
@@ -544,6 +546,22 @@ model PostPhoto {
   post      Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@map("post_photos")
+}
+
+/// One vote per traveller per post; value is +1 or -1. Kept apart from
+/// Reaction so the magazine's LIKE/LOVE semantics stay unchanged.
+model PostVote {
+  userId    String
+  postId    String
+  value     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([postId, value])
+  @@map("post_votes")
 }
 
 model Comment {

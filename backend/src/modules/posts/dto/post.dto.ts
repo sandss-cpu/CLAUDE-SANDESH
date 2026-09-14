@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray, IsEnum, IsLatitude, IsLongitude, IsOptional, IsString, Length, ValidateNested,
+  ArrayMaxSize, IsArray, IsEnum, IsIn, IsLatitude, IsLongitude, IsOptional, IsString, Length, ValidateNested,
 } from 'class-validator';
 import { ContentStatus, ModerationStatus, PostTemplate } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
@@ -25,7 +25,8 @@ export class CreatePostDto {
   @IsOptional() @IsLatitude() latitude?: number;
   @IsOptional() @IsLongitude() longitude?: number;
   @IsOptional() @IsString() locationName?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PhotoDto)
+  @IsOptional() @IsArray() @ArrayMaxSize(10, { message: 'Up to 10 photos per story' })
+  @ValidateNested({ each: true }) @Type(() => PhotoDto)
   photos?: PhotoDto[];
   /** Client-generated id so an offline draft syncs exactly once. */
   @IsOptional() @IsString() clientDraftId?: string;
@@ -34,6 +35,12 @@ export class CreatePostDto {
 export class UpdatePostDto extends CreatePostDto {
   @IsOptional() @IsString() title: string;
   @IsOptional() @IsString() body: string;
+}
+
+/** 1 = upvote, -1 = downvote, 0 = remove my vote. */
+export class VoteDto {
+  @Type(() => Number) @IsIn([1, -1, 0], { message: 'Vote must be 1, -1 or 0' })
+  value: number;
 }
 
 export class PostQueryDto extends PaginationDto {

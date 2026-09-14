@@ -1,13 +1,15 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ContentStatus, ModerationStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { fuzzCoords } from '../../common/utils/geo.util';
+import { needsReview } from '../../common/utils/content-filter';
 import { CreatePostDto, PostQueryDto, UpdatePostDto } from './dto/post.dto';
 
 const POST_CARD = {
   id: true, title: true, coverImageUrl: true, locationName: true, template: true,
-  publishedAt: true, createdAt: true, isElevated: true,
+  publishedAt: true, createdAt: true, isElevated: true, body: true,
   author: { select: { id: true, name: true, avatarUrl: true, homeDistrict: true } },
   destination: { select: { slug: true, name: true, district: true } },
   _count: { select: { photos: true } },
@@ -15,10 +17,82 @@ const POST_CARD = {
 
 @Injectable()
 export class PostsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private config: ConfigService) {}
 
-  /** Public feed: published, approved, and past the author's safety delay. */
-  async list(q: PostQueryDto) {
+  /**
+   * A traveller post may only show images that were uploaded through
+   * /media/upload. Otherwise any URL — a tracking pixel, or a GET against
+   * another API route — would be loaded by every reader's browser.
+   */
+  private assertOwnMedia(dto: CreatePostDto | UpdatePostDto) {
+    const base = (this.config.get<string>('MEDIA_BASE_URL') ?? '').replace(/\/$/, '');
+    const pattern = new RegExp(
+      `^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[0-9a-f-]{36}\\.(jpg|jpeg|png|webp|avif)$`,
+    );
+    const urls = [dto.coverImageUrl, ...(dto.photos ?? []).map((p) => p.url)].filter(Boolean);
+    if (urls.some((u) => !pattern.test(u))) {
+      throw new BadRequestException('Photos must be uploaded through Bato.');
+    }
+  }
+
+  /** Up/down counts for a set of posts, plus the viewer's own vote. Two queries total. */
+  private async withVotes<T extends { id: string }>(posts: T[], viewerId?: string) {
+    if (!posts.length) return [] as Array<T & { upvotes: number; downvotes: number; myVote: number }>;
+    const ids = posts.map((p) => p.id);
+    const [grouped, mine] = await Promise.all([
+      this.prisma.postVote.groupBy({
+        by: ['postId', 'value'], where: { postId: { in: ids } }, _count: { _all: true },
+      }),
+      viewerId
+        ? this.prisma.postVote.findMany({
+            where: { userId: viewerId, postId: { in: ids } }, select: { postId: true, value: true },
+          })
+        : Promise.resolve([] as Array<{ postId: string; value: number }>),
+    ]);
+    const count = (postId: string, value: number) =>
+      grouped.find((g) => g.postId === postId && g.value === value)?._count._all ?? 0;
+
+    return posts.map((p) => ({
+      ...p,
+      upvotes: count(p.id, 1),
+      downvotes: count(p.id, -1),
+      myVote: mine.find((m) => m.postId === p.id)?.value ?? 0,
+    }));
+  }
+
+  /** Feed cards carry a short excerpt, never the full body, plus vote counts. */
+  private async toCards<T extends { id: string; body?: string }>(posts: T[], viewerId?: string) {
+    const voted = await this.withVotes(posts, viewerId);
+    return voted.map(({ body, ...p }) => ({
+      ...p,
+      excerpt: body && body.length > 220 ? `${body.slice(0, 217).trimEnd()}…` : body ?? '',
+    }));
+  }
+
+  async vote(postId: string, userId: string, value: number) {
+    const post = await this.prisma.post.findUnique({
+      where: { id: postId }, select: { status: true, moderation: true },
+    });
+    if (!post || post.status !== ContentStatus.PUBLISHED || post.moderation !== ModerationStatus.APPROVED) {
+      throw new NotFoundException('Post not found');
+    }
+
+    if (value === 0) {
+      await this.prisma.postVote.deleteMany({ where: { userId, postId } });
+    } else {
+      await this.prisma.postVote.upsert({
+        where: { userId_postId: { userId, postId } },
+        create: { userId, postId, value },
+        update: { value },
+      });
+    }
+
+    const [counts] = await this.withVotes([{ id: postId }], userId);
+    return { up: counts.upvotes, down: counts.downvotes, myVote: counts.myVote };
+  }
+
+  /** Public feed: published, approved, and past the author's safety delay. Newest first. */
+  async list(q: PostQueryDto, viewerId?: string) {
     const where: Prisma.PostWhereInput = {
       status: ContentStatus.PUBLISHED,
       moderation: ModerationStatus.APPROVED,
@@ -38,7 +112,7 @@ export class PostsService {
       this.prisma.post.count({ where }),
     ]);
 
-    return paged(items, total, q);
+    return paged(await this.toCards(items, viewerId), total, q);
   }
 
   async findOne(id: string, viewerId?: string) {
@@ -78,7 +152,8 @@ export class PostsService {
       }),
     ]);
 
-    return { ...post, latitude, longitude, counts: { reactions, comments } };
+    const [voted] = await this.withVotes([post], viewerId);
+    return { ...voted, latitude, longitude, counts: { reactions, comments } };
   }
 
   /**
@@ -87,6 +162,12 @@ export class PostsService {
    * produce duplicates.
    */
   async create(dto: CreatePostDto, userId: string, publish = false) {
+    this.assertOwnMedia(dto);
+    /**
+     * Publish-first: a post goes live straight away and reports pull it back.
+     * Text that trips the word filter is the exception and waits for a moderator.
+     */
+    const live = publish && !needsReview(dto.title, dto.body, dto.locationName);
     /**
      * Idempotent offline sync. This uses its own column with a unique
      * constraint on (authorId, clientDraftId) rather than borrowing
@@ -118,8 +199,9 @@ export class PostsService {
         latitude: dto.latitude,
         longitude: dto.longitude,
         locationName: dto.locationName,
-        status: publish ? ContentStatus.IN_REVIEW : ContentStatus.DRAFT,
-        moderation: ModerationStatus.PENDING,
+        status: live ? ContentStatus.PUBLISHED : publish ? ContentStatus.IN_REVIEW : ContentStatus.DRAFT,
+        moderation: live ? ModerationStatus.APPROVED : ModerationStatus.PENDING,
+        publishedAt: live ? new Date() : undefined,
         clientDraftId: dto.clientDraftId,
         visibleFrom:
           publish && user?.publishDelayHours
@@ -142,6 +224,7 @@ export class PostsService {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('Post not found');
     if (post.authorId !== userId) throw new ForbiddenException('This is not your post');
+    this.assertOwnMedia(dto);
 
     if (dto.photos) {
       await this.prisma.postPhoto.deleteMany({ where: { postId: id } });
@@ -166,9 +249,11 @@ export class PostsService {
         latitude: dto.latitude,
         longitude: dto.longitude,
         locationName: dto.locationName,
-        // An edit after rejection returns the post to the queue.
+        // An edit after rejection returns the post to the queue, and so does an
+        // edit that makes a live post trip the word filter.
         moderation:
-          post.moderation === ModerationStatus.REJECTED
+          post.moderation === ModerationStatus.REJECTED ||
+          needsReview(dto.title ?? post.title, dto.body ?? post.body)
             ? ModerationStatus.PENDING
             : undefined,
       },
@@ -188,8 +273,9 @@ export class PostsService {
     return this.prisma.post.update({
       where: { id },
       data: {
-        status: ContentStatus.IN_REVIEW,
-        moderation: ModerationStatus.PENDING,
+        ...(needsReview(post.title, post.body, post.locationName)
+          ? { status: ContentStatus.IN_REVIEW, moderation: ModerationStatus.PENDING }
+          : { status: ContentStatus.PUBLISHED, moderation: ModerationStatus.APPROVED, publishedAt: new Date() }),
         visibleFrom: post.author.publishDelayHours
           ? new Date(Date.now() + post.author.publishDelayHours * 3_600_000)
           : undefined,
@@ -208,13 +294,14 @@ export class PostsService {
     return { deleted: true };
   }
 
-  myPosts(userId: string, q: PostQueryDto) {
-    return this.prisma.post.findMany({
+  async myPosts(userId: string, q: PostQueryDto) {
+    const posts = await this.prisma.post.findMany({
       where: { authorId: userId, ...(q.status ? { status: q.status } : {}) },
       select: { ...POST_CARD, status: true, moderation: true, moderationNote: true },
       orderBy: { updatedAt: 'desc' },
       skip: q.skip, take: q.take,
     });
+    return this.toCards(posts, userId);
   }
 
   /** Photos as map pins — the "photo-to-map linking" feature in Module 4. */

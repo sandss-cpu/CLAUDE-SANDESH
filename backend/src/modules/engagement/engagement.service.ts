@@ -2,11 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { ModerationStatus, Role, TargetType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { BookmarkDto, CommentDto, ReactDto } from './dto/engagement.dto';
-
-/** Words that route a comment straight to human review (Apple Guideline 1.2). */
-const AUTO_FLAG = [
-  'kill', 'fraud', 'scam', 'whore', 'bitch', 'randi', 'chor',
-];
+import { needsReview } from '../../common/utils/content-filter';
 
 @Injectable()
 export class EngagementService {
@@ -109,8 +105,7 @@ export class EngagementService {
   // ---------- comments ----------
 
   async comment(dto: CommentDto, userId: string) {
-    const lower = dto.body.toLowerCase();
-    const suspicious = AUTO_FLAG.some((w) => lower.includes(w));
+    const suspicious = needsReview(dto.body);
 
     return this.prisma.comment.create({
       data: {

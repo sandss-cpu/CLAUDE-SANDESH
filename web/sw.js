@@ -5,11 +5,36 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v1';
+const SHELL_CACHE = 'bato-shell-v2';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
-const SHELL = ['/', '/index.html', '/manifest.json', '/login.html', '/admin.html'];
+const SHELL = ['/', '/index.html', '/manifest.json', '/config.js', '/login.html', '/admin.html'];
+
+/**
+ * Pages and scripts: network first, so a deploy reaches readers on their next
+ * visit. If the network has not answered within `ms` (a bus in a valley), the
+ * cached copy is served instead, so reading never waits on signal.
+ */
+function networkThenCache(request, ms = 3000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (res) => { if (!settled && res) { settled = true; resolve(res); } };
+    const cached = () => caches.match(request).then((hit) => hit || caches.match('/index.html'));
+
+    const timer = setTimeout(() => cached().then(done), ms);
+    fetch(request)
+      .then((res) => {
+        if (res.ok && new URL(request.url).origin === self.location.origin) {
+          const copy = res.clone();
+          caches.open(SHELL_CACHE).then((c) => c.put(request, copy));
+        }
+        clearTimeout(timer);
+        done(res);
+      })
+      .catch(() => cached().then((hit) => { clearTimeout(timer); done(hit || Response.error()); }));
+  });
+}
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -102,8 +127,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Shell: cache first, then network.
-  event.respondWith(
-    caches.match(request).then((hit) => hit || fetch(request).catch(() => caches.match('/index.html'))),
-  );
+  // Shell. Cache-first here meant a deployed update never reached anyone
+  // who had visited before.
+  event.respondWith(networkThenCache(request));
 });

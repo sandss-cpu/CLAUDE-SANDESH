@@ -97,6 +97,14 @@ tr:last-child td{border-bottom:none}
 .checks{display:flex;gap:18px;margin-top:14px}
 .checks label{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text);font-size:13.5px}
 .checks input{width:auto}
+.cover-field{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.cover-preview{width:168px;height:100px;border-radius:var(--r-sm);background:var(--surface-2);
+  border:1.5px dashed var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;
+  flex:none;font-size:12px;color:var(--text-dim)}
+.cover-preview img{width:100%;height:100%;object-fit:cover}
+.hint{font-size:12px;color:var(--text-dim);margin-top:6px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);
+  white-space:nowrap;border:0}
 </style>
 </head>
 <body>
@@ -129,17 +137,73 @@ const state = {
 
 /* =========================== API =========================== */
 
+function tokenExpiresSoon(token){
+  try{
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.exp * 1000 - Date.now() < 30_000;
+  }catch(_){
+    return true;
+  }
+}
+
+let refreshing = null;
+/**
+ * One refresh at a time across tabs: the server ends the whole session when a
+ * refresh token is presented twice, which two tabs refreshing together would do.
+ */
+function refreshSession(){
+  if(refreshing) return refreshing;
+  const run = async () => {
+    const stored = JSON.parse(localStorage.getItem('bato.admin.auth') || 'null');
+    if(!stored?.refreshToken){ const e = new Error('signed out'); e.expired = true; throw e; }
+    if(stored.accessToken !== state.auth?.accessToken && !tokenExpiresSoon(stored.accessToken)){
+      state.auth = stored;
+      return stored;
+    }
+    const res = await fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: stored.refreshToken }),
+    });
+    if(!res.ok){ const e = new Error('Could not refresh the session'); e.expired = res.status === 401; throw e; }
+    const { data } = await res.json();
+    state.auth = { ...stored, accessToken: data.accessToken, refreshToken: data.refreshToken };
+    localStorage.setItem('bato.admin.auth', JSON.stringify(state.auth));
+    return state.auth;
+  };
+  refreshing = (navigator.locks ? navigator.locks.request('bato-admin-refresh', run) : run())
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+/**
+ * fetch with the admin session. A 401 only means "session ended" when there is
+ * a session; on the sign-in screen it is a wrong password and must reach the form.
+ */
+async function authedFetch(url, opts = {}){
+  if(!state.auth) return fetch(url, opts);
+  const ended = () => { signOut('Your session ended. Sign in again.'); return new Error('Session ended'); };
+
+  if(tokenExpiresSoon(state.auth.accessToken)){
+    try{ await refreshSession(); }catch(err){ if(err.expired) throw ended(); }
+  }
+  const call = () => fetch(url, {
+    ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${state.auth.accessToken}` },
+  });
+  let res = await call();
+  if(res.status === 401){
+    try{ await refreshSession(); }catch(err){ if(err.expired) throw ended(); throw err; }
+    res = await call();
+    if(res.status === 401) throw ended();
+  }
+  return res;
+}
+
 async function api(path, opts = {}){
-  const headers = { 'Content-Type': 'application/json' };
-  if(state.auth?.accessToken) headers.Authorization = `Bearer ${state.auth.accessToken}`;
-  const res = await fetch(`${API}${path}`, {
-    method: opts.method || 'GET', headers,
+  const res = await authedFetch(`${API}${path}`, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json' },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if(res.status === 401){
-    signOut('Your session expired — sign in again.');
-    throw new Error('Session expired');
-  }
   const json = await res.json().catch(() => ({}));
   if(!res.ok) throw new Error(json?.message || json?.error?.message || 'Something went wrong');
   return json.data;
@@ -433,6 +497,22 @@ function articleForm(a){
           <input id="af-title" value="${esc(a?.title)}" required minlength="3">
           <label for="af-subtitle">Subtitle</label>
           <input id="af-subtitle" value="${esc(a?.subtitle)}">
+          <label>Cover image</label>
+          <div class="cover-field">
+            <div id="af-cover-preview" class="cover-preview">
+              ${a?.coverImageUrl ? `<img src="${esc(a.coverImageUrl)}" alt="Cover preview">` : '<span>No cover yet</span>'}
+            </div>
+            <div>
+              <input id="af-cover" type="hidden" value="${esc(a?.coverImageUrl)}">
+              <div class="row-actions">
+                <button class="btn btn-sm" type="button" onclick="$('#af-cover-file').click()">Upload image</button>
+                <button class="btn btn-sm btn-ghost" type="button" onclick="setCover('')">Remove</button>
+              </div>
+              <div id="af-cover-status" class="hint" aria-live="polite">JPG, PNG, WebP or AVIF, up to 8 MB</div>
+              <input id="af-cover-file" class="sr-only" type="file" accept="image/*" tabindex="-1"
+                     aria-label="Choose cover image" onchange="uploadCover([...this.files]); this.value=''">
+            </div>
+          </div>
           <div class="two-col">
             <div>
               <label for="af-category">Category</label>
@@ -474,11 +554,60 @@ function openArticleForm(article){
 }
 function closeArticleForm(){ state.articles.editing = null; renderMain(); }
 
+/* =========================== image upload =========================== */
+
+/** Resize and re-encode (which also strips EXIF location data) before upload. */
+async function prepareImage(file, maxDim = 2000){
+  let bitmap;
+  try{ bitmap = await createImageBitmap(file); }catch(_){ return file; }
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+  return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+}
+
+async function uploadImages(files){
+  const form = new FormData();
+  for(const f of files) form.append('files', await prepareImage(f));
+  const res = await authedFetch(`${API}/media/upload`, { method: 'POST', body: form });
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(json?.message || 'Upload failed. Please try again.');
+  return json.data;
+}
+
+function setCover(url){
+  $('#af-cover').value = url;
+  $('#af-cover-preview').innerHTML = url
+    ? `<img src="${esc(url)}" alt="Cover preview">`
+    : '<span>No cover yet</span>';
+}
+
+async function uploadCover(files){
+  if(!files.length) return;
+  const status = $('#af-cover-status');
+  status.textContent = 'Uploading…';
+  try{
+    const { files: saved } = await uploadImages(files.slice(0, 1));
+    setCover(saved[0].url);
+    status.textContent = 'Uploaded. Save the article to keep it.';
+  }catch(err){
+    status.textContent = err.message;
+  }
+}
+
 async function saveArticle(e, id){
   e.preventDefault();
   const dto = {
     title: $('#af-title').value.trim(),
     subtitle: $('#af-subtitle').value.trim() || undefined,
+    coverImageUrl: $('#af-cover').value || null,
     categoryId: $('#af-category').value || undefined,
     issueId: $('#af-issue').value || undefined,
     body: $('#af-body').value,

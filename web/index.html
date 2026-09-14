@@ -181,6 +181,69 @@ label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:var(-
 
 /* ---------- template chips ---------- */
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+
+/* ---------- photo picker ---------- */
+.label-note{font-weight:500;margin-left:6px}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:6px}
+.ph{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;margin:0;
+  background:var(--surface-2);border:1px solid var(--line)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-tag,.ph-cover{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:700;padding:3px 9px;
+  border-radius:999px;color:#fff;border:0}
+.ph-tag{background:var(--brand)}
+.ph-cover{background:rgba(28,26,46,.74);min-height:28px;cursor:pointer}
+.ph-remove{position:absolute;top:5px;right:5px;width:32px;height:32px;border-radius:50%;border:0;
+  background:rgba(28,26,46,.74);color:#fff;font-size:19px;line-height:1;cursor:pointer}
+.ph-add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:100%;
+  border:1.5px dashed var(--line);color:var(--brand);font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.ph-add span{font-size:26px;line-height:1}
+.ph-busy{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  font-size:12px;color:var(--text-dim)}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand);
+  animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);
+  white-space:nowrap;border:0}
+
+/* ---------- read tabs & traveller vlogs ---------- */
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:4px;margin:16px 0 4px}
+.seg button{flex:1;min-height:40px;border:0;background:none;border-radius:999px;font:inherit;font-weight:700;
+  font-size:14px;color:var(--text-dim);cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.vlog{padding:0;overflow:hidden}
+.vlog-open{display:block;width:100%;text-align:left;color:inherit;background:none;border:0;padding:0;font:inherit;cursor:pointer}
+.vlog-cover{display:block;width:100%;height:200px;object-fit:cover;background:var(--surface-2)}
+.vlog h3{font-size:19px;margin-bottom:4px}
+.vlog-by{font-size:12.5px;color:var(--text-dim);font-weight:600}
+.vlog .card-body p{margin-top:8px}
+.vlog-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:0 16px 14px}
+.vote-bar{display:flex;gap:8px}
+.vote{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 15px;border-radius:999px;
+  border:1.5px solid var(--line);background:var(--surface);font:inherit;font-size:14px;color:var(--text);cursor:pointer}
+.vote b{font-variant-numeric:tabular-nums}
+.vote.up[aria-pressed="true"]{background:#E4F3E7;border-color:var(--green);color:#1F6B30}
+.vote.down[aria-pressed="true"]{background:#FCE9EC;border-color:var(--rhodo);color:#9C1C36}
+html[data-theme="night"] .vote.up[aria-pressed="true"]{background:#16301C;color:#A9DDB4}
+html[data-theme="night"] .vote.down[aria-pressed="true"]{background:#3A1420;color:#F4B4C1}
+.vote:disabled{opacity:.65;cursor:default}
+.vlog-photos{font-size:12.5px;color:var(--text-dim);font-weight:600}
+.reader .vlog-foot{padding:18px 0 8px}
+.reader .vlog-by{margin-bottom:6px}
+.gallery{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;margin:14px 0 4px;padding-bottom:6px}
+.gallery img{flex:none;width:86%;max-height:380px;object-fit:cover;border-radius:14px;scroll-snap-align:center;
+  background:var(--surface-2)}
+.gallery img:only-child{width:100%}
+.empty-state{text-align:center;padding:36px 12px;color:var(--text-dim);display:flex;flex-direction:column;
+  align-items:center;gap:12px}
+.status-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;
+  background:var(--surface-2);color:var(--text-dim)}
+.status-pill.live{background:#E4F3E7;color:#1F6B30}
+.status-pill.review{background:#FDF1DA;color:#8A5300}
+.status-pill.rejected{background:#FCE9EC;color:#9C1C36}
+.mine-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.mine-row:last-child{border-bottom:0}
+.mine-row strong{font-size:15px;display:block}
+.mine-row small{color:var(--text-dim);font-size:12.5px}
 .chip{
   border:1.5px solid var(--line);background:var(--surface);border-radius:999px;
   padding:9px 14px;font-size:13.5px;font-weight:600;min-height:40px
@@ -328,9 +391,16 @@ const state = {
   session: null,
   liveApi: false,
   audio: { playing: false, pct: 0, timer: null },
-  draft: { template: 'FREEFORM', title: '', body: '', place: '' },
+  draft: { template: 'FREEFORM', title: '', body: '', place: '', photos: [] },
+  uploading: 0,
   trip: null,
   auth: null,
+  readTab: 'magazine',
+  vlogs: { items: [], loaded: false, loading: false, error: '', demo: false },
+  post: null,
+  votePending: {},
+  publishing: false,
+  myPosts: { items: [], loaded: false, loading: false },
 };
 
 /* ---------- account: phone-OTP session from login.html ---------- */
@@ -552,8 +622,10 @@ function paintMast(){
 const SCREENS = {
 
   read(){
+    if(state.readTab === 'vlogs') return readTabs() + vlogsFeed();
     const [hero, ...rest] = DEMO.articles;
     return `
+      ${readTabs()}
       ${offlineChip()}
       <button class="card hero-card" onclick="openArticle('${hero.slug}')">
         <div class="card-art" style="background:${CAT_ART[hero.cat]}">
@@ -624,6 +696,29 @@ const SCREENS = {
       </div>`;
   },
 
+  post(){
+    const p = state.post;
+    if(!p) return SCREENS.read();
+    const photos = p.photos?.length ? p.photos : (p.coverImageUrl ? [{ url: p.coverImageUrl }] : []);
+    return `
+      <button class="chip" onclick="go('read')" style="margin:14px 0 4px">← Back to vlogs</button>
+      <article class="reader">
+        <span class="tag c-road">Traveller vlog</span>
+        <h1>${esc(p.title)}</h1>
+        <div class="vlog-by">By ${esc(p.author?.name || 'Traveller')}${p.locationName ? ` · ${esc(p.locationName)}` : ''} · ${timeAgo(p.publishedAt)}</div>
+        ${photos.length ? `
+          <div class="gallery" tabindex="0" aria-label="Photos, scroll sideways for more">
+            ${photos.map((ph, i) => `
+              <img src="${esc(ph.url)}" alt="${esc(ph.caption || `Photo ${i + 1} of ${photos.length}`)}"
+                   loading="${i ? 'lazy' : 'eager'}">`).join('')}
+          </div>` : ''}
+        <div class="article-body">
+          ${p.partial ? `<p>${esc(p.body)}</p><p class="vlog-by">Loading the full story…</p>` : md(p.body || '')}
+        </div>
+        <div class="vlog-foot">${voteBar(p)}</div>
+      </article>`;
+  },
+
   write(){
     if(!state.auth){
       return `
@@ -631,8 +726,8 @@ const SCREENS = {
         <div class="card" style="padding:var(--pad)">
           <h3 style="margin-bottom:6px">Sign in to vlog</h3>
           <p style="margin:0 0 4px;color:var(--text-dim);font-size:14.5px">
-            Publishing under your name — so a moderator, and the byline in the magazine if you're
-            elevated — needs a quick phone sign-in first.
+            Stories are published under your name, so sign in with your email or phone first.
+            It takes a minute, and the best stories are printed in the magazine with your byline.
           </p>
           <a class="btn btn-primary" style="margin-top:14px"
              href="login.html?returnTo=${encodeURIComponent('index.html#write')}">Sign in or create an account</a>
@@ -672,14 +767,35 @@ const SCREENS = {
       <textarea id="bdy" placeholder="Got off at Dumre on a whim…"
                 oninput="state.draft.body=this.value">${esc(d.body)}</textarea>
 
+      <label>Photos <span class="label-note">Up to ${MAX_PHOTOS} · the first is the cover</span></label>
+      <div class="photo-grid">
+        ${(d.photos || []).map((p, i) => `
+          <figure class="ph">
+            <img src="${esc(p.url)}" alt="Photo ${i + 1}" loading="lazy">
+            ${i === 0
+              ? '<span class="ph-tag">Cover</span>'
+              : `<button class="ph-cover" onclick="makeCover(${i})">Make cover</button>`}
+            <button class="ph-remove" onclick="removePhoto(${i})" aria-label="Remove photo ${i + 1}">×</button>
+          </figure>`).join('')}
+        ${state.uploading ? `
+          <div class="ph ph-busy" role="status"><span class="spin"></span>Uploading ${state.uploading}…</div>` : ''}
+        ${(d.photos || []).length < MAX_PHOTOS && !state.uploading ? `
+          <button class="ph ph-add" onclick="document.getElementById('photoInput').click()">
+            <span aria-hidden="true">+</span>Add photos</button>` : ''}
+      </div>
+      <input id="photoInput" class="sr-only" type="file" accept="image/*" multiple tabindex="-1"
+             aria-label="Choose photos" onchange="addPhotos([...this.files]); this.value=''">
+
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="saveDraft()">Save draft</button>
-        <button class="btn btn-primary" onclick="publish()">Publish</button>
+        <button class="btn btn-primary" onclick="publish()" ${state.publishing ? 'disabled' : ''}>
+          ${state.publishing ? 'Publishing…' : 'Publish'}</button>
       </div>
       <p style="font-size:13px;color:var(--text-dim)">
-        Every story is checked by a moderator before it appears. The best ones are printed in the
-        magazine with your name on them.
-      </p>`;
+        Your story goes live for other travellers straight away. Anyone can report a story that breaks
+        the rules, and the best ones are printed in the magazine with your name on them.
+      </p>
+      ${myPostsSection()}`;
   },
 
   trip(){
@@ -902,26 +1018,382 @@ function openBiz(slug){
   state.business = DEMO.businesses.find(b => b.slug === slug);
   go('business');
 }
+/* ---------- traveller vlogs ---------- */
+const DEMO_VLOGS = [
+  { id:'demo-1', title:'Two hours in Bandipur on the way to Pokhara',
+    excerpt:'Got off at Dumre on a whim and took the jeep up the ridge. The bazaar was closed to traffic and completely quiet.',
+    author:{ name:'Anish Shrestha' }, locationName:'Bandipur, Tanahun', coverImageUrl:null, _count:{ photos:0 },
+    publishedAt:new Date(Date.now() - 3 * 3600e3).toISOString(), upvotes:12, downvotes:1, myVote:0 },
+  { id:'demo-2', title:'What the Mugling stop actually costs',
+    excerpt:'Dal bhat NPR 350, tea NPR 40, toilet NPR 20. Order the moment you sit down; the bus waits twenty minutes.',
+    author:{ name:'Sita Karki' }, locationName:'Mugling, Chitwan', coverImageUrl:null, _count:{ photos:0 },
+    publishedAt:new Date(Date.now() - 26 * 3600e3).toISOString(), upvotes:8, downvotes:0, myVote:0 },
+];
+
+/* ---------- session: 15-minute access token, rotated with the refresh token ---------- */
+function tokenExpiresSoon(token){
+  try{
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.exp * 1000 - Date.now() < 30_000;
+  }catch(_){
+    return true;
+  }
+}
+
+let refreshing = null;
+/**
+ * One refresh at a time, across every open tab. The server treats a reused
+ * refresh token as stolen and ends the whole session, so two tabs refreshing
+ * with the same token at once would sign the traveller out.
+ */
+function refreshSession(){
+  if(refreshing) return refreshing;
+  const run = async () => {
+    const stored = JSON.parse(localStorage.getItem('bato.auth') || 'null');
+    if(!stored?.refreshToken){ const e = new Error('signed out'); e.expired = true; throw e; }
+    // Another tab may have rotated the token while this one waited for the lock.
+    if(stored.accessToken !== state.auth?.accessToken && !tokenExpiresSoon(stored.accessToken)){
+      state.auth = stored;
+      return stored;
+    }
+    const res = await fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: stored.refreshToken }),
+    });
+    if(!res.ok){
+      const e = new Error('Could not refresh the session');
+      e.expired = res.status === 401;
+      throw e;
+    }
+    const { data } = await res.json();
+    state.auth = { ...stored, accessToken: data.accessToken, refreshToken: data.refreshToken };
+    localStorage.setItem('bato.auth', JSON.stringify(state.auth));
+    return state.auth;
+  };
+  refreshing = (navigator.locks ? navigator.locks.request('bato-refresh', run) : run())
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+/** fetch with the traveller's session: refreshes a stale token first, and retries once on 401. */
+async function authed(url, opts = {}){
+  if(!state.auth) return fetch(url, opts);
+  const ended = () => { signOut(); return new Error('Your session ended. Sign in again to continue.'); };
+
+  if(tokenExpiresSoon(state.auth.accessToken)){
+    try{ await refreshSession(); }catch(err){ if(err.expired) throw ended(); }
+  }
+  const call = () => fetch(url, {
+    ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${state.auth.accessToken}` },
+  });
+  let res = await call();
+  if(res.status === 401){
+    try{ await refreshSession(); }catch(err){ if(err.expired) throw ended(); throw err; }
+    res = await call();
+    if(res.status === 401) throw ended();
+  }
+  return res;
+}
+
+function timeAgo(iso){
+  if(!iso) return '';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if(s < 60) return 'just now';
+  if(s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if(s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if(s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+}
+
+function readTabs(){
+  return `
+    <div class="seg" role="tablist" aria-label="What to read">
+      <button role="tab" aria-selected="${state.readTab !== 'vlogs'}" onclick="setReadTab('magazine')">Magazine</button>
+      <button role="tab" aria-selected="${state.readTab === 'vlogs'}" onclick="setReadTab('vlogs')">Traveller vlogs</button>
+    </div>`;
+}
+function setReadTab(tab){
+  state.readTab = tab;
+  try{ sessionStorage.setItem('bato.readTab', tab); }catch(_){}
+  render();
+}
+
+async function loadVlogs(){
+  const v = state.vlogs;
+  if(v.loading) return;
+  v.loading = true; v.error = '';
+  try{
+    if(!state.liveApi){
+      v.items = DEMO_VLOGS; v.demo = true;
+    }else{
+      const res = await authed(`${API}/posts?limit=30`);
+      const json = await res.json().catch(() => ({}));
+      if(!res.ok) throw new Error(json?.message || 'Could not load traveller stories');
+      v.items = json.data.items; v.demo = false;
+    }
+  }catch(err){
+    v.error = state.online ? err.message : "You're offline. Traveller stories load when you have signal.";
+  }finally{
+    v.loading = false; v.loaded = true;
+    if(state.screen === 'read' && state.readTab === 'vlogs') render();
+  }
+}
+
+function voteBar(p){
+  const busy = state.votePending[p.id] ? 'disabled' : '';
+  const id = esc(p.id);
+  return `
+    <div class="vote-bar" role="group" aria-label="Vote on this story">
+      <button class="vote up" aria-pressed="${p.myVote === 1}" ${busy}
+              onclick="vote('${id}', ${p.myVote === 1 ? 0 : 1})"
+              aria-label="Upvote. ${p.upvotes} upvote${p.upvotes === 1 ? '' : 's'}">
+        <span aria-hidden="true">👍</span><b>${p.upvotes}</b></button>
+      <button class="vote down" aria-pressed="${p.myVote === -1}" ${busy}
+              onclick="vote('${id}', ${p.myVote === -1 ? 0 : -1})"
+              aria-label="Downvote. ${p.downvotes} downvote${p.downvotes === 1 ? '' : 's'}">
+        <span aria-hidden="true">👎</span><b>${p.downvotes}</b></button>
+    </div>`;
+}
+
+function vlogCard(p){
+  const cover = p.coverImageUrl
+    ? `<img class="vlog-cover" src="${esc(p.coverImageUrl)}" alt="" loading="lazy">`
+    : '';
+  return `
+    <article class="card vlog">
+      <button class="vlog-open" onclick="openPost('${esc(p.id)}')"
+              aria-label="Read ${esc(p.title)}, by ${esc(p.author?.name || 'a traveller')}">
+        ${cover}
+        <div class="card-body">
+          <h3>${esc(p.title)}</h3>
+          <div class="vlog-by">${esc(p.author?.name || 'Traveller')}${p.locationName ? ` · ${esc(p.locationName)}` : ''} · ${timeAgo(p.publishedAt)}</div>
+          ${p.excerpt ? `<p>${esc(p.excerpt)}</p>` : ''}
+        </div>
+      </button>
+      <div class="vlog-foot">
+        ${voteBar(p)}
+        ${p._count?.photos > 1 ? `<span class="vlog-photos">📷 ${p._count.photos} photos</span>` : ''}
+      </div>
+    </article>`;
+}
+
+function vlogsFeed(){
+  const v = state.vlogs;
+  if(!v.loaded && !v.loading) loadVlogs();
+  if(!v.loaded) {
+    return `<div class="empty-state" role="status"><span class="spin"></span>Loading traveller stories…</div>`;
+  }
+  if(v.error && !v.items.length){
+    return `
+      <div class="empty-state">
+        <p>${esc(v.error)}</p>
+        <button class="btn btn-ghost" onclick="state.vlogs.loaded=false;render()">Try again</button>
+      </div>`;
+  }
+  return `
+    <div class="sec-head"><h2>From travellers</h2><span>Newest first</span></div>
+    ${v.demo ? `<div class="offline-chip warn"><span class="dot"></span>
+      <span>Sample stories. Connect to the server for live vlogs and voting.</span></div>` : ''}
+    ${v.items.length ? v.items.map(vlogCard).join('') : `
+      <div class="empty-state">
+        <p>No vlogs yet. Be the first to share a story from the road.</p>
+      </div>`}
+    <button class="btn btn-primary" style="margin:6px 0 10px" onclick="go('write')">Share your own story</button>`;
+}
+
+async function openPost(id){
+  const fromList = state.vlogs.items.find((p) => p.id === id);
+  state.post = fromList ? { ...fromList, body: fromList.excerpt, photos: [], partial: true } : null;
+  go('post');
+  if(state.vlogs.demo || !state.liveApi){
+    if(state.post) state.post.partial = false;
+    render();
+    return;
+  }
+  try{
+    const res = await authed(`${API}/posts/${encodeURIComponent(id)}`);
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'Could not open this story');
+    if(state.screen === 'post'){ state.post = json.data; render(); }
+  }catch(err){
+    toast(err.message);
+    if(state.post){ state.post.partial = false; render(); }
+  }
+}
+
+async function vote(id, value){
+  if(state.vlogs.demo || !state.liveApi){ toast('Voting needs the live server'); return; }
+  if(!state.auth){
+    toast('Sign in to vote');
+    setTimeout(() => { location.href = `login.html?returnTo=${encodeURIComponent('index.html#read')}`; }, 800);
+    return;
+  }
+  if(state.votePending[id]) return;
+
+  const targets = [state.vlogs.items.find((p) => p.id === id), state.post?.id === id ? state.post : null]
+    .filter((p, i, all) => p && all.indexOf(p) === i);
+  const before = targets.map((p) => ({ p, up: p.upvotes, down: p.downvotes, mine: p.myVote }));
+  // Optimistic: the count moves on tap; it is corrected or rolled back when the server answers.
+  for(const p of targets){
+    if(p.myVote === 1) p.upvotes--;
+    if(p.myVote === -1) p.downvotes--;
+    if(value === 1) p.upvotes++;
+    if(value === -1) p.downvotes++;
+    p.myVote = value;
+  }
+  state.votePending[id] = true; render();
+
+  try{
+    const res = await authed(`${API}/posts/${encodeURIComponent(id)}/vote`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || "Your vote didn't go through. Try again.");
+    for(const p of targets){ p.upvotes = json.data.up; p.downvotes = json.data.down; p.myVote = json.data.myVote; }
+  }catch(err){
+    for(const b of before){ b.p.upvotes = b.up; b.p.downvotes = b.down; b.p.myVote = b.mine; }
+    toast(err.message);
+  }finally{
+    delete state.votePending[id];
+    render();
+  }
+}
+
+async function loadMyPosts(){
+  const m = state.myPosts;
+  m.loading = true;
+  try{
+    const res = await authed(`${API}/posts/mine?limit=20`);
+    const json = await res.json().catch(() => ({}));
+    m.items = res.ok && Array.isArray(json.data) ? json.data : [];
+  }catch(_){
+    m.items = [];
+  }finally{
+    m.loading = false; m.loaded = true;
+    if(state.screen === 'write') render();
+  }
+}
+
+function myPostsSection(){
+  const m = state.myPosts;
+  if(!state.liveApi || !state.auth) return '';
+  if(!m.loaded && !m.loading) loadMyPosts();
+  if(!m.loaded || !m.items.length) return '';
+  const label = (p) =>
+    p.moderation === 'REJECTED' ? ['rejected', 'Not published']
+    : p.status === 'PUBLISHED' && p.moderation === 'APPROVED' ? ['live', 'Live']
+    : p.status === 'DRAFT' ? ['', 'Draft']
+    : ['review', 'In review'];
+  return `
+    <div class="sec-head"><h2>Your stories</h2><span>${m.items.length}</span></div>
+    <div class="card" style="padding:4px 16px">
+      ${m.items.map((p) => {
+        const [cls, text] = label(p);
+        return `
+          <div class="mine-row">
+            <div style="min-width:0">
+              <strong>${esc(p.title)}</strong>
+              <small>${timeAgo(p.publishedAt || p.createdAt)} · 👍 ${p.upvotes} · 👎 ${p.downvotes}</small>
+              ${p.moderation === 'REJECTED' && p.moderationNote
+                ? `<small style="display:block">Moderator note: ${esc(p.moderationNote)}</small>` : ''}
+            </div>
+            <span class="status-pill ${cls}">${text}</span>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
 function setTemplate(v){ state.draft.template = v; render(); }
+function persistDraft(){ localStorage.setItem('bato.draft', JSON.stringify(state.draft)); }
 function saveDraft(){
-  localStorage.setItem('bato.draft', JSON.stringify(state.draft));
+  persistDraft();
   toast('Draft saved on this phone');
+}
+
+/* ---------- photos ---------- */
+const MAX_PHOTOS = 10;
+
+/**
+ * Re-encode before upload. Smaller files matter on highway data, and
+ * re-encoding drops EXIF metadata, which on a phone photo includes the exact
+ * GPS position — the thing hideExactLocation exists to protect.
+ */
+async function prepareImage(file, maxDim = 1600){
+  let bitmap;
+  try{ bitmap = await createImageBitmap(file); }catch(_){ return file; }
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+}
+
+async function uploadImages(files){
+  const form = new FormData();
+  for(const f of files) form.append('files', await prepareImage(f));
+  const res = await authed(`${API}/media/upload`, { method: 'POST', body: form });
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(json?.message || 'Upload failed. Please try again.');
+  return json.data;
+}
+
+async function addPhotos(files){
+  const d = state.draft;
+  d.photos = d.photos || [];
+  const room = MAX_PHOTOS - d.photos.length;
+  if(!files.length) return;
+  if(!state.online){ toast('Photos need a connection — add them when you have signal'); return; }
+  if(!state.liveApi){ toast('Photo upload needs the live server'); return; }
+  const batch = files.slice(0, room);
+  if(files.length > room) toast(`Only ${room} more photo${room === 1 ? '' : 's'} fit in one story`);
+
+  state.uploading = batch.length; render();
+  try{
+    const { files: saved, rejectedCount } = await uploadImages(batch);
+    d.photos.push(...saved.map((f) => ({ url: f.url })));
+    persistDraft();
+    toast(rejectedCount
+      ? `${saved.length} added · ${rejectedCount} skipped (not a real image)`
+      : `${saved.length} photo${saved.length === 1 ? '' : 's'} added`);
+  }catch(err){
+    toast(err.message);
+  }finally{
+    state.uploading = 0;
+    if(state.screen === 'write') render();
+  }
+}
+function removePhoto(i){ state.draft.photos.splice(i, 1); persistDraft(); render(); }
+function makeCover(i){
+  const [photo] = state.draft.photos.splice(i, 1);
+  state.draft.photos.unshift(photo);
+  persistDraft(); render();
 }
 
 /** Post body the API expects, from the on-device draft. */
 function draftPayload(){
   const d = state.draft;
-  return { title: d.title, body: d.body, template: d.template, locationName: d.place || undefined };
+  const photos = (d.photos || []).map((p) => ({ url: p.url }));
+  return {
+    title: d.title, body: d.body, template: d.template, locationName: d.place || undefined,
+    photos: photos.length ? photos : undefined,
+    coverImageUrl: photos[0]?.url,
+  };
 }
 
 /** True network call, used only once the traveller has signed in. */
 async function apiCreatePost(publishNow){
-  const res = await fetch(`${API}/posts${publishNow ? '/publish' : ''}`, {
+  const res = await authed(`${API}/posts${publishNow ? '/publish' : ''}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.auth.accessToken}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(draftPayload()),
   });
-  if(res.status === 401){ signOut(); throw new Error('Your session expired — sign in again.'); }
   const json = await res.json().catch(() => ({}));
   if(!res.ok) throw new Error(json?.message || 'Could not reach the server. Saved on this phone instead.');
   return json.data;
@@ -929,21 +1401,34 @@ async function apiCreatePost(publishNow){
 
 async function publish(){
   if(!state.draft.title.trim()){ toast('Give it a title first'); return; }
-  saveDraft();
+  if(!state.draft.body.trim()){ toast('Write a line or two about it first'); return; }
+  if(state.uploading){ toast('Wait for your photos to finish uploading'); return; }
+  if(state.publishing) return;
+  persistDraft();
 
-  if(state.liveApi && state.auth && state.online){
-    try{
-      await apiCreatePost(true);
-      toast('Sent for review');
-    }catch(err){
-      toast(err.message);
-    }
-  } else {
-    toast(state.online ? 'Sent for review' : 'Queued — sends when you reconnect');
+  // The draft is only cleared once the server has it, so a failed or offline
+  // publish never loses what the traveller wrote.
+  if(!state.online){ toast('No signal. Your draft is saved; publish when you have a connection.'); return; }
+  if(!state.liveApi){ toast('Publishing needs the live server. Your draft is saved on this phone.'); return; }
+
+  state.publishing = true; render();
+  try{
+    const post = await apiCreatePost(true);
+    state.draft = { template:'FREEFORM', title:'', body:'', place:'', photos:[] };
+    persistDraft();
+    state.vlogs.loaded = false;
+    state.myPosts.loaded = false;
+    toast(post.moderation === 'APPROVED'
+      ? "Published. It's live in Traveller vlogs."
+      : "Sent for a quick check before it appears.");
+    state.readTab = 'vlogs';
+    state.publishing = false;
+    go('read');
+  }catch(err){
+    state.publishing = false;
+    toast(err.message);
+    if(state.screen === 'write') render();
   }
-
-  state.draft = { template:'FREEFORM', title:'', body:'', place:'' };
-  go('read');
 }
 function save(){ toast('Saved to your reading list'); }
 function tripFromArticle(){
@@ -1037,6 +1522,7 @@ $('#dismissInstall').onclick = () => {
   if(draft){ try { state.draft = JSON.parse(draft); } catch(_){} }
 
   loadAuth();
+  try{ state.readTab = sessionStorage.getItem('bato.readTab') || 'magazine'; }catch(_){}
   const hashScreen = location.hash.replace('#', '');
   if(NAV.some(([k]) => k === hashScreen)) state.screen = hashScreen;
 
@@ -1061,6 +1547,8 @@ $('#dismissInstall').onclick = () => {
 
   render();
   await resolveScan();
+  // Anything fetched before the API answered was sample data; load the real thing now.
+  if(state.liveApi){ state.vlogs.loaded = false; state.myPosts.loaded = false; }
   render();
   maybeShowInstall(sessions);
 })();
