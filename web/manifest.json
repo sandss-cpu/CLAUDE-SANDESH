@@ -1,0 +1,16 @@
+{
+  "name": "Bato — Nepal Travel Magazine",
+  "short_name": "Bato",
+  "description": "Read, plan and explore Nepal. Works offline.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1C1A2E",
+  "theme_color": "#5B3FA8",
+  "lang": "en",
+  "categories": ["travel", "magazines", "navigation"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

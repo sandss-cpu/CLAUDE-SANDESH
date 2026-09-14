@@ -1,0 +1,944 @@
+// =====================================================================
+//  QR TRAVEL MAGAZINE & TOURISM PLATFORM  —  Prisma schema
+//  PostgreSQL. Geospatial columns use plain lat/lng doubles plus an
+//  optional PostGIS geography column added via raw migration SQL.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------- ENUMS -------------------------
+
+enum Role {
+  READER
+  CONTRIBUTOR
+  BUSINESS_OWNER
+  OPERATOR_ADMIN
+  MODERATOR
+  EDITOR
+  ADMIN
+}
+
+enum Language {
+  NE
+  EN
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ESCALATED
+}
+
+enum TargetType {
+  ARTICLE
+  POST
+  COMMENT
+  BUSINESS
+  REVIEW
+  USER
+}
+
+enum ReactionType {
+  LIKE
+  LOVE
+  HELPFUL
+  WOW
+}
+
+enum BusinessCategory {
+  HOTEL
+  HOMESTAY
+  LODGE
+  RESTAURANT
+  CAFE
+  TREKKING_AGENCY
+  ADVENTURE
+  PARAGLIDING
+  RENTAL
+  GUIDE
+  HANDICRAFT
+  TOUR_OPERATOR
+  TRANSPORT
+}
+
+enum BusinessTier {
+  FREE
+  VERIFIED
+  FEATURED
+  PREMIUM
+}
+
+enum LeadType {
+  PROFILE_VIEW
+  CALL
+  WHATSAPP
+  VIBER
+  DIRECTIONS
+  WEBSITE
+  ENQUIRY
+  COUPON_VIEW
+}
+
+enum PlaceType {
+  BUS_STOP
+  TOILET
+  ATM
+  PHARMACY
+  HOSPITAL
+  POLICE
+  FUEL
+  DRINKING_WATER
+  VIEWPOINT
+  TEAHOUSE
+  TEMPLE
+  MONASTERY
+  MUSEUM
+  TREK_START
+  CAMPSITE
+  OTHER
+}
+
+enum BudgetStyle {
+  BACKPACKER
+  STANDARD
+  COMFORT
+}
+
+enum PostTemplate {
+  FREEFORM
+  MY_TREK
+  A_DAY_IN
+  WHERE_I_ATE
+  GETTING_THERE
+  WHAT_IT_COST
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  MISINFORMATION
+  ILLEGAL
+  SEXUAL_CONTENT
+  COPYRIGHT
+  UNSAFE_BUSINESS
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
+enum ModerationAct {
+  APPROVE
+  REJECT
+  HIDE
+  DELETE
+  WARN_USER
+  SUSPEND_USER
+  UNSUSPEND_USER
+  CHANGE_ROLE
+  RESET_MFA
+}
+
+// ------------------------- IDENTITY -------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  phone         String?  @unique
+  email         String?  @unique
+  name          String
+  avatarUrl     String?
+  bio           String?
+  homeDistrict  String?
+  language      Language @default(NE)
+  role          Role     @default(READER)
+  isPhoneVerified Boolean @default(false)
+  isSuspended   Boolean  @default(false)
+  suspendedUntil DateTime?
+  /// TOTP second factor. Mandatory for privileged roles — an SMS code alone
+  /// is not an acceptable gate on platform administration (SIM-swap risk).
+  totpSecret     String?
+  totpConfirmedAt DateTime?
+  // privacy
+  hideExactLocation Boolean @default(true)
+  publishDelayHours Int     @default(0) // solo-traveller safety: delay geo publish
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  articles          Article[]         @relation("ArticleAuthor")
+  posts             Post[]
+  comments          Comment[]
+  reactions         Reaction[]
+  bookmarks         Bookmark[]
+  itineraries       Itinerary[]
+  reviews           Review[]
+  redemptions       CouponRedemption[]
+  refreshTokens     RefreshToken[]
+  ownedBusinesses   Business[]        @relation("BusinessOwner")
+  reportsMade       Report[]          @relation("Reporter")
+  moderationActions ModerationEntry[] @relation("Moderator")
+  emergencyContacts EmergencyContact[]
+  sosEvents         SosEvent[]
+  following         Follow[]          @relation("Follower")
+  followers         Follow[]          @relation("Following")
+  operatorLinks     OperatorAdmin[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@map("otp_codes")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  /// All tokens rotated from one login share a familyId. Presenting an
+  /// already-revoked token means it was stolen, so the whole family dies.
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@map("follows")
+}
+
+// ------------------------- ROUTES, OPERATORS, QR -------------------------
+
+model Route {
+  id          String  @id @default(uuid())
+  code        String  @unique          // e.g. KTM-PKR
+  name        String                    // Kathmandu – Pokhara
+  nameNe      String?
+  startPlace  String
+  endPlace    String
+  distanceKm  Int?
+  typicalHours Float?
+  description String?
+  createdAt   DateTime @default(now())
+
+  vehicles        Vehicle[]
+  qrCodes         QrCode[]
+  articleLinks    ArticleRoute[]
+  businessTargets BusinessRouteTarget[]
+  rideFeedback    RideFeedback[]
+  leads           BusinessLead[]
+
+  @@map("routes")
+}
+
+model Operator {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  contactPhone String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  vehicles Vehicle[]
+  qrCodes  QrCode[]
+  admins   OperatorAdmin[]
+
+  @@map("operators")
+}
+
+model OperatorAdmin {
+  operatorId String
+  userId     String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([operatorId, userId])
+  @@map("operator_admins")
+}
+
+model Vehicle {
+  id         String  @id @default(uuid())
+  operatorId String
+  routeId    String?
+  plateNo    String
+  label      String?
+  seatCount  Int?
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  operator     Operator       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  route        Route?         @relation(fields: [routeId], references: [id])
+  qrCodes      QrCode[]
+  rideFeedback RideFeedback[]
+  lostItems    LostItem[]
+
+  @@unique([operatorId, plateNo])
+  @@map("vehicles")
+}
+
+/// A physical sticker. shortCode is what appears in the URL: /r/{shortCode}
+model QrCode {
+  id         String  @id @default(uuid())
+  shortCode  String  @unique
+  operatorId String?
+  vehicleId  String?
+  routeId    String?
+  seatNo     String?
+  placement  String? // SEAT_BACK, WINDOW, POSTER
+  isActive   Boolean @default(true)
+  printedAt  DateTime?
+  replacedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  operator Operator? @relation(fields: [operatorId], references: [id])
+  vehicle  Vehicle?  @relation(fields: [vehicleId], references: [id])
+  route    Route?    @relation(fields: [routeId], references: [id])
+  scans    ScanEvent[]
+
+  @@index([routeId])
+  @@map("qr_codes")
+}
+
+model ScanEvent {
+  id        String   @id @default(uuid())
+  qrCodeId  String
+  sessionId String
+  ipHash    String?
+  userAgent String?
+  isFirstScan Boolean @default(true)
+  scannedAt DateTime @default(now())
+
+  qrCode QrCode @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId, scannedAt])
+  /// resolve() checks "has this device scanned before" on every single scan.
+  /// Without this index that is a full table scan on the hottest path.
+  @@index([sessionId])
+  @@index([scannedAt])
+  @@map("scan_events")
+}
+
+// ------------------------- MAGAZINE -------------------------
+
+model Category {
+  id       String  @id @default(uuid())
+  slug     String  @unique
+  name     String
+  nameNe   String?
+  colorHex String  @default("F4A024")
+  icon     String?
+  sortOrder Int    @default(0)
+
+  articles Article[]
+
+  @@map("categories")
+}
+
+model Issue {
+  id          String        @id @default(uuid())
+  number      Int           @unique
+  title       String
+  titleNe     String?
+  strapline   String?
+  coverImageUrl String?
+  season      String?
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  articles Article[]
+
+  @@map("issues")
+}
+
+model Article {
+  id           String        @id @default(uuid())
+  slug         String        @unique
+  title        String
+  subtitle     String?
+  body         String        // markdown
+  coverImageUrl String?
+  audioUrl     String?       // pre-generated TTS, cached offline
+  readMinutes  Int           @default(3)
+  language     Language      @default(EN)
+  status       ContentStatus @default(DRAFT)
+  isSponsored  Boolean       @default(false)
+  isFeatured   Boolean       @default(false)
+  /// set when a community post is elevated into the magazine
+  sourcePostId String?       @unique
+  categoryId   String?
+  issueId      String?
+  authorId     String?
+  sponsorBusinessId String?
+  publishedAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  category   Category? @relation(fields: [categoryId], references: [id])
+  issue      Issue?    @relation(fields: [issueId], references: [id])
+  author     User?     @relation("ArticleAuthor", fields: [authorId], references: [id])
+  sourcePost Post?     @relation("ElevatedPost", fields: [sourcePostId], references: [id])
+  sponsor    Business? @relation(fields: [sponsorBusinessId], references: [id])
+
+  routeLinks   ArticleRoute[]
+  destinations ArticleDestination[]
+
+  @@index([status, publishedAt])
+  @@map("articles")
+}
+
+/// Route-aware content: which corridors an article belongs to.
+model ArticleRoute {
+  articleId String
+  routeId   String
+  sortOrder Int    @default(0)
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  route     Route   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, routeId])
+  @@map("article_routes")
+}
+
+model Destination {
+  id          String  @id @default(uuid())
+  slug        String  @unique
+  name        String
+  nameNe      String?
+  district    String
+  province    String?
+  latitude    Float
+  longitude   Float
+  description String?
+  heroImageUrl String?
+  createdAt   DateTime @default(now())
+
+  articles ArticleDestination[]
+  posts    Post[]
+  places   Place[]
+  businesses Business[]
+
+  @@map("destinations")
+}
+
+model ArticleDestination {
+  articleId     String
+  destinationId String
+  article       Article     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, destinationId])
+  @@map("article_destinations")
+}
+
+// ------------------------- USER-GENERATED CONTENT -------------------------
+
+model Post {
+  id            String           @id @default(uuid())
+  authorId      String
+  title         String
+  body          String
+  template      PostTemplate     @default(FREEFORM)
+  coverImageUrl String?
+  destinationId String?
+  latitude      Float?
+  longitude     Float?
+  locationName  String?
+  status        ContentStatus    @default(DRAFT)
+  moderation    ModerationStatus @default(PENDING)
+  moderationNote String?
+  /// Client-generated id so an offline draft syncs exactly once.
+  /// Kept separate from moderationNote, which moderators overwrite.
+  clientDraftId String?
+  /// true once an editor promotes it into a magazine issue
+  isElevated    Boolean          @default(false)
+  publishedAt   DateTime?
+  /// honours User.publishDelayHours for solo-traveller safety
+  visibleFrom   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  destination Destination? @relation(fields: [destinationId], references: [id])
+  photos      PostPhoto[]
+  elevatedTo  Article?     @relation("ElevatedPost")
+
+  @@unique([authorId, clientDraftId])
+  @@index([status, moderation, publishedAt])
+  @@index([authorId])
+  @@map("posts")
+}
+
+model PostPhoto {
+  id        String  @id @default(uuid())
+  postId    String
+  url       String
+  caption   String?
+  latitude  Float?
+  longitude Float?
+  sortOrder Int     @default(0)
+  post      Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_photos")
+}
+
+model Comment {
+  id         String           @id @default(uuid())
+  userId     String
+  targetType TargetType
+  targetId   String
+  parentId   String?
+  body       String
+  moderation ModerationStatus @default(APPROVED)
+  createdAt  DateTime         @default(now())
+
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentThread")
+
+  @@index([targetType, targetId])
+  @@map("comments")
+}
+
+model Reaction {
+  id         String       @id @default(uuid())
+  userId     String
+  targetType TargetType
+  targetId   String
+  type       ReactionType @default(LIKE)
+  createdAt  DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@map("reactions")
+}
+
+model Bookmark {
+  id         String     @id @default(uuid())
+  userId     String
+  targetType TargetType
+  targetId   String
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@map("bookmarks")
+}
+
+// ------------------------- MAPS & PLACES -------------------------
+
+model Place {
+  id            String    @id @default(uuid())
+  name          String
+  nameNe        String?
+  type          PlaceType
+  latitude      Float
+  longitude     Float
+  altitudeM     Int?
+  district      String?
+  destinationId String?
+  notes         String?
+  isVerified    Boolean   @default(false)
+  osmId         String?
+  createdAt     DateTime  @default(now())
+
+  destination   Destination?    @relation(fields: [destinationId], references: [id])
+  itineraryStops ItineraryStop[]
+
+  @@index([type])
+  @@map("places")
+}
+
+/// Downloadable offline map bundle metadata (MBTiles pack served from CDN).
+model MapPack {
+  id         String   @id @default(uuid())
+  slug       String   @unique
+  name       String
+  region     String
+  version    Int      @default(1)
+  sizeBytes  BigInt
+  downloadUrl String
+  checksum   String?
+  minLat     Float
+  minLng     Float
+  maxLat     Float
+  maxLng     Float
+  updatedAt  DateTime @updatedAt
+
+  @@map("map_packs")
+}
+
+// ------------------------- ITINERARIES -------------------------
+
+model Itinerary {
+  id            String      @id @default(uuid())
+  userId        String?
+  title         String
+  summary       String?
+  dayCount      Int         @default(1)
+  budgetStyle   BudgetStyle @default(STANDARD)
+  estimatedCostNpr Int?
+  isTemplate    Boolean     @default(false)
+  isPublic      Boolean     @default(false)
+  shareToken    String?     @unique
+  sourceArticleId String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days ItineraryDay[]
+
+  @@index([isTemplate])
+  @@map("itineraries")
+}
+
+model ItineraryDay {
+  id          String @id @default(uuid())
+  itineraryId String
+  dayNumber   Int
+  title       String?
+  notes       String?
+
+  itinerary Itinerary       @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  stops     ItineraryStop[]
+
+  @@unique([itineraryId, dayNumber])
+  @@map("itinerary_days")
+}
+
+model ItineraryStop {
+  id         String  @id @default(uuid())
+  dayId      String
+  sortOrder  Int     @default(0)
+  name       String
+  time       String?
+  notes      String?
+  costNpr    Int?
+  placeId    String?
+  businessId String?
+
+  day      ItineraryDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  place    Place?       @relation(fields: [placeId], references: [id])
+  business Business?    @relation(fields: [businessId], references: [id])
+
+  @@map("itinerary_stops")
+}
+
+model Permit {
+  id          String  @id @default(uuid())
+  code        String  @unique  // TIMS, ACAP, SNP
+  name        String
+  region      String
+  costNprSaarc Int?
+  costNprForeign Int?
+  costNprNepali Int?
+  whereToObtain String
+  notes       String?
+
+  @@map("permits")
+}
+
+// ------------------------- BUSINESS PLATFORM -------------------------
+
+model Business {
+  id          String           @id @default(uuid())
+  slug        String           @unique
+  name        String
+  category    BusinessCategory
+  description String?
+  ownerId     String?
+  destinationId String?
+  district    String?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  phone       String?
+  whatsapp    String?
+  viber       String?
+  website     String?
+  priceRange  String?          // NPR 1500-4000
+  amenities   String[]         @default([])
+  tier        BusinessTier     @default(FREE)
+  isActive    Boolean          @default(true)
+  verifiedAt  DateTime?
+  verifiedBy  String?
+  verificationNote String?
+  subscriptionEndsAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  owner        User?       @relation("BusinessOwner", fields: [ownerId], references: [id])
+  destination  Destination? @relation(fields: [destinationId], references: [id])
+  photos       BusinessPhoto[]
+  routeTargets BusinessRouteTarget[]
+  coupons      Coupon[]
+  reviews      Review[]
+  leads        BusinessLead[]
+  sponsoredArticles Article[]
+  itineraryStops    ItineraryStop[]
+  subscriptionEvents SubscriptionEvent[]
+
+  @@index([category, tier])
+  @@map("businesses")
+}
+
+model BusinessPhoto {
+  id         String @id @default(uuid())
+  businessId String
+  url        String
+  caption    String?
+  sortOrder  Int    @default(0)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("business_photos")
+}
+
+/// Route-corridor targeting: show this business to readers on this route.
+model BusinessRouteTarget {
+  businessId String
+  routeId    String
+  priority   Int      @default(0)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  route      Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@id([businessId, routeId])
+  @@map("business_route_targets")
+}
+
+model Coupon {
+  id             String   @id @default(uuid())
+  businessId     String
+  title          String
+  description    String?
+  discountLabel  String   // "10% off", "Free tea"
+  validFrom      DateTime @default(now())
+  validTo        DateTime
+  maxRedemptions Int?
+  perUserLimit   Int      @default(1)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  business    Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  redemptions CouponRedemption[]
+
+  @@map("coupons")
+}
+
+/// One row per issued code. This is the lead-attribution proof shown to businesses.
+model CouponRedemption {
+  id         String    @id @default(uuid())
+  couponId   String
+  userId     String?
+  code       String    @unique
+  issuedAt   DateTime  @default(now())
+  redeemedAt DateTime?
+  routeId    String?
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([couponId, redeemedAt])
+  @@map("coupon_redemptions")
+}
+
+model Review {
+  id           String           @id @default(uuid())
+  businessId   String
+  userId       String
+  rating       Int
+  body         String?
+  /// verified reviews are tied to a redeemed coupon
+  redemptionId String?
+  moderation   ModerationStatus @default(PENDING)
+  reply        String?
+  repliedAt    DateTime?
+  createdAt    DateTime         @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@map("reviews")
+}
+
+model BusinessLead {
+  id         String   @id @default(uuid())
+  businessId String
+  type       LeadType
+  userId     String?
+  routeId    String?
+  sessionId  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  route    Route?   @relation(fields: [routeId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@map("business_leads")
+}
+
+/// Billing lifecycle audit. Separate from ModerationEntry because the
+/// scheduler has no moderator to attribute an expiry to.
+model SubscriptionEvent {
+  id          String       @id @default(uuid())
+  businessId  String
+  fromTier    BusinessTier
+  toTier      BusinessTier
+  reason      String       // UPGRADED | RENEWED | EXPIRED | CANCELLED
+  actorId     String?      // null when the nightly job did it
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@map("subscription_events")
+}
+
+// ------------------------- OPERATOR FEEDBACK -------------------------
+
+model RideFeedback {
+  id          String   @id @default(uuid())
+  vehicleId   String?
+  routeId     String?
+  sessionId   String
+  cleanliness Int
+  driving     Int
+  punctuality Int
+  staff       Int
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  route   Route?   @relation(fields: [routeId], references: [id])
+
+  @@index([vehicleId, createdAt])
+  @@map("ride_feedback")
+}
+
+model LostItem {
+  id          String   @id @default(uuid())
+  vehicleId   String?
+  seatNo      String?
+  description String
+  contactPhone String
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  @@map("lost_items")
+}
+
+// ------------------------- SAFETY -------------------------
+
+model EmergencyNumber {
+  id       String  @id @default(uuid())
+  district String?
+  label    String
+  phone    String
+  category String  // POLICE, AMBULANCE, HOSPITAL, RESCUE, EMBASSY, TOURIST_POLICE
+  isNational Boolean @default(false)
+
+  @@index([district])
+  @@map("emergency_numbers")
+}
+
+model EmergencyContact {
+  id     String @id @default(uuid())
+  userId String
+  name   String
+  phone  String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
+}
+
+model SosEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  latitude  Float?
+  longitude Float?
+  message   String?
+  channel   String   @default("DATA") // DATA | SMS
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sos_events")
+}
+
+// ------------------------- TRUST & SAFETY -------------------------
+
+model Report {
+  id         String       @id @default(uuid())
+  reporterId String?
+  targetType TargetType
+  targetId   String
+  reason     ReportReason
+  detail     String?
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+
+  reporter User? @relation("Reporter", fields: [reporterId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("reports")
+}
+
+/// Append-only moderation audit trail.
+model ModerationEntry {
+  id          String        @id @default(uuid())
+  moderatorId String
+  targetType  TargetType
+  targetId    String
+  action      ModerationAct
+  note        String?
+  createdAt   DateTime      @default(now())
+
+  moderator User @relation("Moderator", fields: [moderatorId], references: [id])
+
+  @@index([targetType, targetId])
+  @@map("moderation_entries")
+}

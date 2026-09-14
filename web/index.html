@@ -1,0 +1,1068 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bato — Nepal Travel Magazine</title>
+<meta name="theme-color" content="#5B3FA8">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   "Prayer Flag" design system — palette and rules taken directly
+   from the feature specification, section 7.
+   ============================================================ */
+:root{
+  --saffron:#F4A024; --dusk:#5B3FA8; --rhodo:#E8455F; --teal:#159A8C;
+  --prayer:#2F6FD0; --terracotta:#C4562E; --ink:#1C1A2E; --paper:#FDFAF3;
+  --green:#3E9B4F; --amber:#E5892E;
+
+  --bg:var(--paper); --surface:#fff; --surface-2:#F6F1E6;
+  --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --brand:var(--dusk); --accent:var(--saffron);
+
+  --r-sm:8px; --r:14px; --r-lg:22px;
+  --tap:48px;              /* minimum target — accuracy on a moving bus */
+  --pad:18px;
+  --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
+  --dur:.22s;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+/* Night buses are the norm on long routes: dark mode is essential, not optional.
+   Deep purple-black base, warm dimmed accents, no pure white to dazzle a cabin. */
+html[data-theme="night"]{
+  --bg:#141024; --surface:#1E1834; --surface-2:#271F42;
+  --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  --saffron:#E8A33F; --rhodo:#DC6076; --teal:#3DAFA1;
+  --prayer:#5B8FE0; --terracotta:#CE7550; --brand:#8B6FD4; --accent:#E8A33F;
+  --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+/* Harsh midday sun on a highway: maximum contrast, no mid-tones. */
+html[data-theme="sun"]{
+  --bg:#fff; --surface:#fff; --surface-2:#F0EDE4; --text:#000;
+  --text-dim:#2A2A2A; --line:#000; --brand:#3A2270; --accent:#B96A00;
+  --shadow:none;
+}
+html[data-motion="off"] *{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--font-body);
+  font-size:17px;line-height:1.6;           /* spec minimum for a vibrating vehicle */
+  padding-bottom:calc(78px + env(safe-area-inset-bottom));
+  overflow-x:hidden;
+}
+h1,h2,h3{font-family:var(--font-display);line-height:1.15;margin:0;font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+a{color:var(--prayer)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+.wrap{max-width:560px;margin:0 auto;padding:0 var(--pad)}
+
+/* ---------- masthead: the route-aware signature ---------- */
+.mast{
+  background:linear-gradient(135deg,var(--dusk) 0%,#7A4FC4 55%,var(--rhodo) 140%);
+  color:#fff;padding:calc(14px + env(safe-area-inset-top)) 0 20px;position:relative;overflow:hidden;
+}
+html[data-theme="sun"] .mast{background:#3A2270}
+/* Prayer-flag bunting: the five colours, used once, as the brand mark. */
+.flags{display:flex;height:5px;width:100%}
+.flags i{flex:1}
+.mast-in{padding:0 var(--pad);max-width:560px;margin:0 auto;position:relative;z-index:1}
+.eyebrow{
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;
+  opacity:.85;display:flex;align-items:center;gap:7px;margin-bottom:6px
+}
+.mast h1{font-size:27px;color:#fff;margin-bottom:3px}
+.mast .sub{font-size:14px;opacity:.85}
+.mast-row{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.seat{
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);
+  border-radius:var(--r-sm);padding:5px 9px;font-size:11px;font-weight:600;
+  text-align:center;line-height:1.3;white-space:nowrap
+}
+.seat b{display:block;font-size:16px}
+
+/* ---------- offline state: friendly, never an error ---------- */
+.offline-chip{
+  display:flex;align-items:center;gap:9px;background:var(--surface);
+  border:1px solid var(--line);border-left:4px solid var(--green);
+  border-radius:var(--r);padding:11px 13px;margin:14px 0;font-size:14px;box-shadow:var(--shadow)
+}
+.offline-chip.warn{border-left-color:var(--amber)}
+.offline-chip .dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+.offline-chip.warn .dot{background:var(--amber)}
+
+/* ---------- section-coded colour ---------- */
+.tag{
+  display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;padding:4px 9px;border-radius:999px;color:#fff
+}
+.c-trekking{background:var(--teal)} .c-heritage{background:var(--terracotta)}
+.c-food{background:var(--saffron)} .c-festivals{background:var(--rhodo)}
+.c-wildlife{background:var(--green)} .c-road{background:var(--prayer)}
+
+/* ---------- cards ---------- */
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 12px}
+.sec-head h2{font-size:21px}
+.sec-head span{font-size:12px;color:var(--text-dim);font-weight:600}
+
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow);
+  transition:transform var(--dur) ease;text-align:left;width:100%;display:block
+}
+.card:active{transform:scale(.985)}
+.card-art{height:132px;position:relative;display:flex;align-items:flex-end;padding:12px}
+.card-body{padding:14px 16px 16px}
+.card h3{font-size:19px;margin-bottom:5px}
+.card p{margin:0;font-size:14.5px;color:var(--text-dim)}
+.meta{display:flex;gap:12px;align-items:center;margin-top:11px;font-size:12.5px;color:var(--text-dim);font-weight:600}
+.meta .listen{color:var(--brand);display:flex;align-items:center;gap:4px}
+
+.hero-card .card-art{height:190px}
+.hero-card h3{font-size:24px}
+
+.rail{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
+  padding:2px var(--pad) 6px;margin:0 calc(var(--pad) * -1);-webkit-overflow-scrolling:touch}
+.rail::-webkit-scrollbar{display:none}
+.rail .card{min-width:216px;max-width:216px;scroll-snap-align:start;margin:0}
+.rail .card-art{height:110px}
+
+/* ---------- skeleton in brand colours, never grey ---------- */
+.skel{border-radius:var(--r);background:
+  linear-gradient(100deg,var(--surface-2) 30%,rgba(244,160,36,.16) 50%,var(--surface-2) 70%);
+  background-size:220% 100%;animation:sweep 1.3s infinite}
+@keyframes sweep{to{background-position:-220% 0}}
+
+/* ---------- reader ---------- */
+.reader{padding-top:6px}
+.reader h1{font-size:30px;margin:16px 0 8px}
+.reader .standfirst{font-size:18px;color:var(--text-dim);margin-bottom:16px}
+.article-body{font-size:17.5px}
+.article-body p{margin:0 0 17px}
+.article-body strong{color:var(--brand)}
+.article-body em{color:var(--text-dim)}
+.listen-bar{
+  position:sticky;top:8px;z-index:5;display:flex;align-items:center;gap:12px;
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:8px 8px 8px 16px;box-shadow:var(--shadow);margin:14px 0 20px
+}
+.listen-bar .lbl{flex:1;font-size:13.5px;font-weight:600}
+.listen-bar .lbl small{display:block;font-weight:400;color:var(--text-dim);font-size:12px}
+.play{
+  width:var(--tap);height:var(--tap);border-radius:50%;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-size:17px;flex:none
+}
+.progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:7px}
+.progress i{display:block;height:100%;background:var(--accent);width:0}
+
+/* ---------- forms & buttons ---------- */
+.btn{
+  min-height:var(--tap);border-radius:var(--r);padding:0 20px;font-weight:700;font-size:15.5px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%
+}
+.btn-primary{background:var(--accent);color:#231600}
+html[data-theme="night"] .btn-primary{color:#241802}
+.btn-brand{background:var(--brand);color:#fff}
+.btn-ghost{border:1.5px solid var(--line);background:var(--surface)}
+.btn-row{display:flex;gap:10px;margin:16px 0}
+input,textarea,select{
+  width:100%;min-height:var(--tap);background:var(--surface);color:var(--text);
+  border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;font:inherit;font-size:16px
+}
+textarea{min-height:130px;resize:vertical;line-height:1.55}
+label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--text-dim)}
+
+/* ---------- template chips ---------- */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.chip{
+  border:1.5px solid var(--line);background:var(--surface);border-radius:999px;
+  padding:9px 14px;font-size:13.5px;font-weight:600;min-height:40px
+}
+.chip[aria-pressed="true"]{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+/* ---------- business & coupon ---------- */
+.biz{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px;margin-bottom:10px;width:100%;text-align:left}
+.biz .sq{width:54px;height:54px;border-radius:11px;flex:none;display:grid;place-items:center;font-size:22px}
+.biz h4{margin:0;font-size:16px;font-family:var(--font-display);font-weight:600}
+.biz small{color:var(--text-dim);font-size:12.5px}
+.badge-v{color:var(--green);font-weight:700;font-size:11.5px}
+.coupon{
+  background:linear-gradient(120deg,var(--saffron),var(--rhodo));color:#fff;border-radius:var(--r-lg);
+  padding:18px;margin:16px 0;position:relative;overflow:hidden
+}
+.coupon .code{
+  font-family:var(--font-display);font-size:31px;letter-spacing:.13em;font-weight:700;
+  background:rgba(255,255,255,.19);border:1px dashed rgba(255,255,255,.55);
+  border-radius:var(--r);padding:11px;text-align:center;margin-top:12px
+}
+
+/* ---------- itinerary ---------- */
+.day{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:15px;margin-bottom:12px}
+.day-h{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.day-n{width:34px;height:34px;border-radius:10px;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-weight:700;font-size:14px;flex:none}
+.stop{display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line)}
+.stop time{font-size:12px;font-weight:700;color:var(--accent);min-width:62px;padding-top:2px}
+
+/* ---------- safety ---------- */
+.sos{background:var(--rhodo);color:#fff;border-radius:var(--r-lg);padding:18px;text-align:center;margin-bottom:16px}
+.sos .btn{background:#fff;color:var(--rhodo);margin-top:12px}
+.num{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
+.num a{font-family:var(--font-display);font-size:19px;font-weight:700;text-decoration:none;color:var(--brand)}
+
+/* ---------- bottom navigation: one-thumb reach ---------- */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;
+  background:var(--surface);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -3px 18px rgba(28,26,46,.09)
+}
+nav button{
+  flex:1;min-height:var(--tap);padding:9px 2px 8px;display:flex;flex-direction:column;
+  align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--text-dim);
+  letter-spacing:.02em
+}
+nav button svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+nav button[aria-current="page"]{color:var(--brand)}
+nav button[aria-current="page"] svg{stroke:var(--brand)}
+
+/* ---------- install banner: second session onwards, never the first ---------- */
+.install{
+  position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:50;
+  background:var(--ink);color:#fff;border-radius:var(--r-lg);padding:15px;display:none;
+  gap:13px;align-items:center;box-shadow:0 10px 34px rgba(0,0,0,.32);max-width:536px;margin:0 auto
+}
+.install.show{display:flex;animation:rise .3s ease}
+@keyframes rise{from{transform:translateY(14px);opacity:0}}
+.install .ico{width:44px;height:44px;border-radius:12px;background:var(--accent);
+  display:grid;place-items:center;font-size:22px;flex:none}
+.install p{margin:0;font-size:13.5px;line-height:1.4}
+.install .stores{display:flex;gap:7px;margin-top:8px}
+.install .stores a{background:rgba(255,255,255,.14);border-radius:8px;padding:6px 10px;
+  font-size:11.5px;font-weight:700;color:#fff;text-decoration:none}
+.install .x{font-size:22px;color:#fff;opacity:.5;padding:8px;min-height:var(--tap)}
+
+.settings{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 20px}
+.hidden{display:none!important}
+.empty{text-align:center;padding:44px 20px;color:var(--text-dim)}
+.empty .big{font-size:42px;margin-bottom:10px}
+.empty h3{font-size:19px;margin-bottom:6px;color:var(--text)}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));
+  background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:14px;
+  font-weight:600;z-index:60;opacity:0;pointer-events:none;transition:opacity var(--dur)
+}
+html[data-theme="night"] .toast{background:var(--surface-2);border:1px solid var(--line)}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="mast-row">
+      <div>
+        <div class="eyebrow"><span id="routeIcon">🚌</span><span id="eyebrow">Loading route…</span></div>
+        <h1 id="mastTitle">Bato</h1>
+        <div class="sub" id="mastSub">Nepal's travel magazine</div>
+      </div>
+      <div class="seat" id="seatChip">Seat<b>—</b></div>
+    </div>
+  </div>
+  <div class="flags" style="margin-top:16px" aria-hidden="true">
+    <i style="background:#2F6FD0"></i><i style="background:#FDFAF3"></i>
+    <i style="background:#E8455F"></i><i style="background:#3E9B4F"></i>
+    <i style="background:#F4A024"></i>
+  </div>
+</header>
+
+<main class="wrap" id="view"></main>
+
+<nav id="nav" aria-label="Main"></nav>
+
+<div class="install" id="installBar" role="dialog" aria-label="Get the app">
+  <div class="ico">📲</div>
+  <div style="flex:1">
+    <p><strong>Keep Bato for the whole journey.</strong> The app holds offline maps that a browser can't.</p>
+    <div class="stores">
+      <a href="#" id="playLink">Google Play</a>
+      <a href="#" id="iosLink">App Store</a>
+    </div>
+  </div>
+  <button class="x" id="dismissInstall" aria-label="Not now">×</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ==========================================================================
+   Bato — PWA prototype
+   Talks to the NestJS API when it is reachable, and falls back to bundled
+   demo content otherwise, so the whole flow can be shown with no backend.
+   ========================================================================== */
+
+const API = localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const DEMO_QR = 'DEMO2024';
+
+const state = {
+  screen: 'read',
+  article: null,
+  business: null,
+  online: navigator.onLine,
+  packCached: 0,
+  packRequested: 0,
+  packFailed: 0,
+  promptFromSession: 2,
+  route: null,
+  operator: null,
+  seat: null,
+  session: null,
+  liveApi: false,
+  audio: { playing: false, pct: 0, timer: null },
+  draft: { template: 'FREEFORM', title: '', body: '', place: '' },
+  trip: null,
+  auth: null,
+};
+
+/* ---------- account: phone-OTP session from login.html ---------- */
+function loadAuth(){
+  try{ state.auth = JSON.parse(localStorage.getItem('bato.auth') || 'null'); }
+  catch(_){ state.auth = null; }
+}
+function signOut(){
+  const auth = state.auth;
+  state.auth = null;
+  localStorage.removeItem('bato.auth');
+  render();
+  toast('Signed out');
+  if(auth?.refreshToken){
+    fetch(`${API}/auth/logout`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: auth.refreshToken }),
+    }).catch(()=>{});
+  }
+}
+
+/* ---------- demo content (mirrors prisma/seed.ts) ---------- */
+const DEMO = {
+  route: { code:'KTM-PKR', name:'Kathmandu – Pokhara', nameNe:'काठमाडौं – पोखरा',
+           startPlace:'Kathmandu', endPlace:'Pokhara', distanceKm:200, typicalHours:7 },
+  operator: { name:'Ganapati Deluxe' },
+  seat: '12',
+  issue: { number:1, title:'The Prithvi Highway',
+           strapline:'Everything worth stopping for between Kathmandu and Pokhara' },
+  articles: [
+    { slug:'bandipur-the-town-time-forgot', title:'Bandipur: the town that stepped off the highway',
+      subtitle:'A Newar trading post that survived by being bypassed',
+      cat:'heritage', catName:'Heritage', readMinutes:4, audio:true, featured:true,
+      body:`When the Prithvi Highway was cut through the valley below in the 1970s, Bandipur lost its reason to exist. The mule trains stopped. The traders left for Dumre. What remained was a Newar bazaar town, largely untouched, sitting on a ridge at 1,030 metres.
+
+That accident of neglect is now the reason to climb the eight kilometres up from Dumre. The main street is closed to vehicles. The buildings are the original shuttered Newar houses, most now restored. On a clear morning you can see from Dhaulagiri to Ganesh Himal without leaving the bazaar.
+
+**Getting there.** Any Kathmandu–Pokhara bus will drop you at Dumre. From there it is a thirty-minute jeep ride, or two hours on foot if you take the old stone stairway.
+
+**What to do.** Walk to Tundikhel at the western end for the mountain view. Visit the Bindebasini temple. Take the twenty-minute path to Siddha Gufa, one of the largest caves in Nepal.
+
+**When to go.** October to December for the clearest mountain views. Avoid July and August, when the cloud sits on the ridge for days.` },
+    { slug:'what-to-eat-on-the-prithvi-highway', title:'What to eat between Kathmandu and Pokhara',
+      subtitle:'A rest-stop guide for people who have been on this bus before',
+      cat:'food', catName:'Food', readMinutes:3, audio:true,
+      body:`Everybody stops at Malekhu for fish. Not everybody should.
+
+The Trishuli river fish at Malekhu is genuinely good when it is fresh, which depends entirely on the hour and the stall. Arrive at eleven in the morning and it will be excellent. Arrive at three in the afternoon on a slow day and you are eating something that has been sitting in oil.
+
+**Naubise, first hour.** Very good sel roti and hot milk tea at the small stalls before the climb.
+
+**Kurintar, third hour.** The dal bhat here is consistently better than at Mugling, and plates are refilled without argument.
+
+**Mugling, midpoint.** Everyone stops here. That is precisely why the food is mediocre and the toilets are the worst on the route.
+
+**A practical note.** Bus stops on this route last fifteen to twenty-five minutes. Order the moment you sit down, and do not order anything cooked from raw.` },
+    { slug:'first-time-on-a-night-bus', title:'Your first night bus in Nepal',
+      subtitle:'What nobody tells you before you board',
+      cat:'road', catName:'On the Road', readMinutes:3, audio:true,
+      body:`The night bus is the cheapest way to cross Nepal and the least comfortable. Both facts are worth knowing before you commit.
+
+**Choose your seat deliberately.** The rear axle amplifies every pothole. Seats in the middle, over neither axle, are the smoothest.
+
+**The bus will be cold.** Long-distance buses run the air conditioning hard, and mountain nights are genuinely cold.
+
+**Motion sickness is common.** Take medication before boarding rather than after symptoms start, sit forward, and avoid reading. If you want to pass the time, listen instead.
+
+**Keep valuables on your body.** Not in the overhead rack, not in the luggage hold.
+
+**Arrival is early.** Night buses often arrive between four and six in the morning, before guesthouses open.` },
+    { slug:'manakamana-cable-car', title:'The cable car that saved a three-hour climb',
+      subtitle:'Manakamana, straight off the highway',
+      cat:'heritage', catName:'Heritage', readMinutes:2, audio:true,
+      body:`The Manakamana temple sits at 1,302 metres above the Trishuli valley. Until 1998, reaching it meant a three-hour uphill walk from Abu Khaireni. Now it is a ten-minute cable car from Kurintar, directly beside the highway.
+
+The name means "wish-fulfilling". Devotees who receive what they asked for return to complete the vow, which is why queues are longest after examination results and around weddings.
+
+**Practical details.** Nepali and foreign fares differ. Expect long queues on Saturdays and during Dashain.
+
+**Worth knowing.** Goats travel in their own cabins. If you are travelling with children, this is the part of the day they remember.` },
+  ],
+  businesses: [
+    { slug:'old-bandipur-inn', name:'Old Bandipur Inn', cat:'HOMESTAY', icon:'🏡',
+      district:'Tanahun', tier:'FEATURED', verified:true, price:'NPR 2,500 – 5,000',
+      colour:'var(--terracotta)', phone:'+977 980 000 0000',
+      about:'A restored Newar house on the closed-to-traffic main street. Six rooms, hot water, and a terrace facing the ridge.' },
+    { slug:'thakali-kitchen-dumre', name:'Thakali Kitchen Dumre', cat:'RESTAURANT', icon:'🍛',
+      district:'Tanahun', tier:'VERIFIED', verified:true, price:'NPR 350 – 700',
+      colour:'var(--saffron)', phone:'+977 980 000 0000',
+      about:'Thakali dal bhat two minutes from the Dumre junction. Plates refilled without asking.' },
+    { slug:'sarangkot-sunrise-paragliding', name:'Sarangkot Sunrise Paragliding', cat:'PARAGLIDING',
+      icon:'🪂', district:'Kaski', tier:'VERIFIED', verified:true, price:'NPR 8,000',
+      colour:'var(--prayer)', phone:'+977 980 000 0000',
+      about:'Tandem flights from Sarangkot over Phewa Lake. Licensed pilots, morning slots only.' },
+  ],
+  safety: [
+    { label:'Police', phone:'100' }, { label:'Ambulance', phone:'102' },
+    { label:'Fire', phone:'101' }, { label:'Tourist Police', phone:'1144' },
+    { label:'Traffic Police', phone:'103' },
+    { label:'Western Regional Hospital, Pokhara', phone:'+977 61 520461' },
+  ],
+  packs: [
+    { name:'Gandaki Province', mb:184, have:true },
+    { name:'Bagmati Province', mb:156, have:false },
+    { name:'Annapurna Trekking Region', mb:62, have:false },
+  ],
+  trip: {
+    title:'3 days in Pokhara', budget:'NPR 9,000 – 19,500',
+    days:[
+      { n:1, title:'Arrive and Lakeside', stops:[
+        { t:'Afternoon', name:'Phewa Lake boat', note:'Hire a doonga from the eastern jetty.' },
+        { t:'Evening', name:'Lakeside dinner', note:'' }]},
+      { n:2, title:'Sarangkot sunrise', stops:[
+        { t:'5:30 AM', name:'Sarangkot viewpoint', note:'Leave Lakeside by 4:45.' },
+        { t:'10:00 AM', name:'Paragliding', note:'Weather-dependent.' },
+        { t:'Afternoon', name:'World Peace Pagoda', note:'' }]},
+      { n:3, title:'Caves and departure', stops:[
+        { t:'Morning', name:'Davis Falls and Gupteshwor Cave', note:'' },
+        { t:'1:00 PM', name:'Bus to Kathmandu', note:'Book the day before.' }]},
+    ]
+  }
+};
+
+/* ---------- utilities ---------- */
+const $ = (s) => document.querySelector(s);
+const esc = (s='') => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CAT_ART = {
+  heritage:'linear-gradient(135deg,#C4562E,#E8894F)',
+  food:'linear-gradient(135deg,#F4A024,#E8455F)',
+  road:'linear-gradient(135deg,#2F6FD0,#5B3FA8)',
+  trekking:'linear-gradient(135deg,#159A8C,#2F6FD0)',
+  festivals:'linear-gradient(135deg,#E8455F,#5B3FA8)',
+  wildlife:'linear-gradient(135deg,#3E9B4F,#159A8C)',
+};
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function md(text){
+  return text.split(/\n{2,}/).map(p =>
+    `<p>${esc(p).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')}</p>`
+  ).join('');
+}
+
+/* ---------- session: install prompt only from the 2nd visit ---------- */
+function sessionCount(){
+  const n = Number(localStorage.getItem('bato.sessions') || 0) + 1;
+  localStorage.setItem('bato.sessions', n);
+  if(!localStorage.getItem('bato.sid')){
+    localStorage.setItem('bato.sid', 'sid_' + Math.random().toString(36).slice(2,14));
+  }
+  state.session = localStorage.getItem('bato.sid');
+  return n;
+}
+
+/* ---------- API with graceful demo fallback ---------- */
+async function resolveScan(){
+  try{
+    const res = await fetch(`${API}/qr/r/${DEMO_QR}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sessionId: state.session }),
+      signal: AbortSignal.timeout(2500),
+    });
+    if(!res.ok) throw new Error('bad status');
+    const { data } = await res.json();
+    state.liveApi = true;
+    state.route = data.route; state.operator = data.operator;
+    state.seat = data.scan?.seatNo;
+    if(data.routeArticles?.length){
+      DEMO.articles = data.routeArticles.map(a => ({
+        slug:a.slug, title:a.title, subtitle:a.subtitle,
+        cat:a.category?.slug || 'road', catName:a.category?.name || 'On the Road',
+        readMinutes:a.readMinutes, audio:!!a.audioUrl, body:'',
+      }));
+    }
+    cachePack(data.offlinePack);
+    wireStoreLinks(data.appLinks);
+  }catch(_){
+    state.liveApi = false;
+    state.route = DEMO.route; state.operator = DEMO.operator; state.seat = DEMO.seat;
+    state.packCached = DEMO.articles.length;
+  }
+  paintMast();
+}
+
+function cachePack(pack){
+  if(!pack) return;
+  // Do not claim anything is saved until the service worker confirms it is.
+  state.packRequested = pack.articleCount || 0;
+  if(navigator.serviceWorker?.controller){
+    navigator.serviceWorker.controller.postMessage({
+      type:'CACHE_PACK',
+      urls: (pack.articles || [])
+        .flatMap(a => [a.url, a.audioUrl, a.imageUrl])
+        .filter(Boolean),
+    });
+  }
+}
+
+function wireStoreLinks(links){
+  if(!links) return;
+  if(links.playStoreUrl) $('#playLink').href = links.playStoreUrl;
+  if(links.appStoreUrl)  $('#iosLink').href  = links.appStoreUrl;
+  state.promptFromSession = links.promptInstallFromSession || 2;
+}
+
+function paintMast(){
+  const r = state.route;
+  $('#eyebrow').textContent = r ? `On the ${r.name} route` : 'Bato';
+  $('#mastTitle').textContent = DEMO.issue.title;
+  $('#mastSub').textContent = state.operator
+    ? `Issue ${DEMO.issue.number} · ${state.operator.name}`
+    : DEMO.issue.strapline;
+  $('#seatChip').innerHTML = `Seat<b>${state.seat || '—'}</b>`;
+}
+
+/* ---------- screens ---------- */
+const SCREENS = {
+
+  read(){
+    const [hero, ...rest] = DEMO.articles;
+    return `
+      ${offlineChip()}
+      <button class="card hero-card" onclick="openArticle('${hero.slug}')">
+        <div class="card-art" style="background:${CAT_ART[hero.cat]}">
+          <span class="tag c-${hero.cat}">${esc(hero.catName)}</span>
+        </div>
+        <div class="card-body">
+          <h3>${esc(hero.title)}</h3>
+          <p>${esc(hero.subtitle)}</p>
+          <div class="meta">
+            <span>${hero.readMinutes} min read</span>
+            ${hero.audio ? '<span class="listen">🎧 Listen</span>' : ''}
+          </div>
+        </div>
+      </button>
+
+      <div class="sec-head">
+        <h2>Along this road</h2>
+        <span>${DEMO.articles.length} stories</span>
+      </div>
+      ${rest.map(a => `
+        <button class="card" onclick="openArticle('${a.slug}')">
+          <div class="card-body" style="display:flex;gap:13px;align-items:flex-start">
+            <div style="width:62px;height:62px;border-radius:12px;flex:none;background:${CAT_ART[a.cat]}"></div>
+            <div style="flex:1;min-width:0">
+              <span class="tag c-${a.cat}">${esc(a.catName)}</span>
+              <h3 style="margin-top:7px;font-size:17px">${esc(a.title)}</h3>
+              <div class="meta">
+                <span>${a.readMinutes} min</span>
+                ${a.audio ? '<span class="listen">🎧</span>' : ''}
+              </div>
+            </div>
+          </div>
+        </button>`).join('')}
+
+      <div class="sec-head">
+        <h2>Stops on this corridor</h2>
+        <span>Verified</span>
+      </div>
+      ${DEMO.businesses.map(b => bizRow(b)).join('')}
+    `;
+  },
+
+  article(){
+    const a = state.article;
+    if(!a) return SCREENS.read();
+    return `
+      <button class="chip" onclick="go('read')" style="margin:14px 0 4px">← Back</button>
+      <div class="reader">
+        <span class="tag c-${a.cat}">${esc(a.catName)}</span>
+        <h1>${esc(a.title)}</h1>
+        <div class="standfirst">${esc(a.subtitle)}</div>
+
+        <div class="listen-bar">
+          <button class="play" id="playBtn" onclick="toggleAudio()" aria-label="Play narration">▶</button>
+          <div class="lbl">
+            Listen instead
+            <small>Reading on a moving bus is how people get sick</small>
+            <div class="progress"><i id="prog"></i></div>
+          </div>
+        </div>
+
+        <div class="article-body">${md(a.body || 'This story is available in the full issue.')}</div>
+
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="save()">☆ Save offline</button>
+          <button class="btn btn-primary" onclick="tripFromArticle()">Make this my trip</button>
+        </div>
+      </div>`;
+  },
+
+  write(){
+    if(!state.auth){
+      return `
+        <div class="sec-head"><h2>Write a story</h2><span>Two taps</span></div>
+        <div class="card" style="padding:var(--pad)">
+          <h3 style="margin-bottom:6px">Sign in to vlog</h3>
+          <p style="margin:0 0 4px;color:var(--text-dim);font-size:14.5px">
+            Publishing under your name — so a moderator, and the byline in the magazine if you're
+            elevated — needs a quick phone sign-in first.
+          </p>
+          <a class="btn btn-primary" style="margin-top:14px"
+             href="login.html?returnTo=${encodeURIComponent('index.html#write')}">Sign in with your phone</a>
+        </div>`;
+    }
+
+    const d = state.draft;
+    const templates = [
+      ['FREEFORM','Just writing'], ['MY_TREK','My trek'], ['A_DAY_IN','A day in…'],
+      ['WHERE_I_ATE','Where I ate'], ['GETTING_THERE','Getting there'], ['WHAT_IT_COST','What it cost'],
+    ];
+    return `
+      <div class="sec-head"><h2>Write a story</h2><span>As ${esc(state.auth.user?.name || 'you')}</span></div>
+      <div class="offline-chip ${state.online?'':'warn'}">
+        <span class="dot"></span>
+        <span>${state.online
+          ? 'Online. Your story publishes as soon as you send it.'
+          : 'No signal. Write anyway — this saves and publishes itself when you reconnect.'}</span>
+      </div>
+
+      <label>Pick a shape</label>
+      <div class="chips">
+        ${templates.map(([v,l]) =>
+          `<button class="chip" aria-pressed="${d.template===v}" onclick="setTemplate('${v}')">${l}</button>`
+        ).join('')}
+      </div>
+
+      <label for="ttl">Title</label>
+      <input id="ttl" value="${esc(d.title)}" placeholder="Two hours in Bandipur"
+             oninput="state.draft.title=this.value">
+
+      <label for="loc">Where were you?</label>
+      <input id="loc" value="${esc(d.place)}" placeholder="Bandipur, Tanahun"
+             oninput="state.draft.place=this.value">
+
+      <label for="bdy">Your story</label>
+      <textarea id="bdy" placeholder="Got off at Dumre on a whim…"
+                oninput="state.draft.body=this.value">${esc(d.body)}</textarea>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="saveDraft()">Save draft</button>
+        <button class="btn btn-primary" onclick="publish()">Publish</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-dim)">
+        Every story is checked by a moderator before it appears. The best ones are printed in the
+        magazine with your name on them.
+      </p>`;
+  },
+
+  trip(){
+    const t = state.trip || DEMO.trip;
+    return `
+      <div class="sec-head"><h2>${esc(t.title)}</h2><span>${esc(t.budget)}</span></div>
+      <div class="offline-chip"><span class="dot"></span>
+        <span>Saved on this phone. Works with no signal.</span></div>
+      ${t.days.map(d => `
+        <div class="day">
+          <div class="day-h">
+            <div class="day-n">${d.n}</div>
+            <h3 style="font-size:17px">${esc(d.title)}</h3>
+          </div>
+          ${d.stops.map(s => `
+            <div class="stop">
+              <time>${esc(s.t)}</time>
+              <div>
+                <strong style="font-size:15.5px">${esc(s.name)}</strong>
+                ${s.note ? `<div style="font-size:13.5px;color:var(--text-dim)">${esc(s.note)}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>`).join('')}
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="toast('Link copied')">Share</button>
+        <button class="btn btn-brand" onclick="toast('Saved as PDF')">Export PDF</button>
+      </div>
+      <div class="sec-head"><h2>Permits you'll need</h2><span>Before you go</span></div>
+      <div class="num"><div><strong>TIMS card</strong><br><small style="color:var(--text-dim)">Nepal Tourism Board</small></div><span style="font-weight:700">NPR 2,000</span></div>
+      <div class="num"><div><strong>ACAP</strong><br><small style="color:var(--text-dim)">Annapurna Conservation Area</small></div><span style="font-weight:700">NPR 3,000</span></div>`;
+  },
+
+  map(){
+    return `
+      <div class="sec-head"><h2>Offline maps</h2><span>Download at the bus park</span></div>
+      <div class="offline-chip warn"><span class="dot"></span>
+        <span>Highway coverage drops after Naubise. Download now while you have signal.</span></div>
+      ${DEMO.packs.map((p,i) => `
+        <div class="biz">
+          <div class="sq" style="background:var(--teal);color:#fff">🗺</div>
+          <div style="flex:1">
+            <h4>${esc(p.name)}</h4>
+            <small>${p.mb} MB${p.have ? ' · on this phone' : ''}</small>
+          </div>
+          <button class="chip" onclick="getPack(${i})">${p.have ? 'Ready' : 'Get'}</button>
+        </div>`).join('')}
+
+      <div class="sec-head"><h2>On this stretch</h2><span>Next 40 km</span></div>
+      ${[
+        ['🚻','Kurintar rest stop','Toilets, tea, 15 min halt'],
+        ['⛽','Mugling fuel','Fuel and ATM'],
+        ['🏥','Bharatpur Hospital','42 km · emergency'],
+        ['🌄','Bandipur ridge','Turn off at Dumre'],
+      ].map(([i,n,s]) => `
+        <div class="biz">
+          <div class="sq" style="background:var(--surface-2)">${i}</div>
+          <div><h4>${n}</h4><small>${s}</small></div>
+        </div>`).join('')}
+      <p style="font-size:13px;color:var(--text-dim);margin-top:16px">
+        The full map runs in the app, which can hold packs this size. A browser cannot —
+        phones clear that storage when they run low.
+      </p>`;
+  },
+
+  business(){
+    const b = state.business;
+    if(!b) return SCREENS.read();
+    return `
+      <button class="chip" onclick="go('read')" style="margin:14px 0 10px">← Back</button>
+      <div class="card">
+        <div class="card-art" style="background:${b.colour};height:150px">
+          <span class="tag" style="background:rgba(0,0,0,.3)">${esc(b.cat)}</span>
+        </div>
+        <div class="card-body">
+          <h3 style="font-size:22px">${esc(b.name)}</h3>
+          <p style="margin-top:4px">${esc(b.district)} · ${esc(b.price)}</p>
+          ${b.verified ? '<div class="badge-v" style="margin-top:8px">✓ Verified — documents and premises checked</div>' : ''}
+          <p style="margin-top:12px;color:var(--text)">${esc(b.about)}</p>
+        </div>
+      </div>
+
+      <div class="coupon">
+        <strong style="font-size:17px">10% off for Bato readers</strong>
+        <div style="font-size:13.5px;opacity:.9;margin-top:4px">Show this screen when you arrive.</div>
+        <div class="code" id="cCode">TAP TO CLAIM</div>
+        <button class="btn" style="background:#fff;color:var(--rhodo);margin-top:12px"
+                onclick="claim()">Claim this offer</button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="lead('CALL')">📞 Call</button>
+        <button class="btn btn-ghost" onclick="lead('WHATSAPP')">💬 WhatsApp</button>
+      </div>
+      <button class="btn btn-brand" onclick="lead('DIRECTIONS')">Directions</button>`;
+  },
+
+  more(){
+    const theme = document.documentElement.dataset.theme;
+    const motion = document.documentElement.dataset.motion === 'off';
+    return `
+      <div class="sec-head"><h2>Account</h2><span></span></div>
+      ${state.auth ? `
+        <div class="num"><span>Signed in as ${esc(state.auth.user?.name || 'Traveller')}</span>
+          <button class="chip" onclick="signOut()">Sign out</button></div>
+      ` : `
+        <a class="btn btn-ghost" href="login.html?returnTo=${encodeURIComponent('index.html#more')}">
+          Sign in to vlog
+        </a>
+      `}
+
+      <div class="sec-head"><h2>Rate this ride</h2><span>Anonymous</span></div>
+      <p style="font-size:14px;color:var(--text-dim);margin-top:0">
+        ${esc(state.operator?.name || 'Your operator')} sees the averages, never who said what.
+      </p>
+      ${['Cleanliness','Driving','Punctuality','Staff'].map(k => `
+        <div class="num">
+          <strong>${k}</strong>
+          <span>${[1,2,3,4,5].map(n =>
+            `<button class="star" data-k="${k}" data-n="${n}"
+              onclick="rate(this)" style="font-size:23px;padding:5px;min-height:44px">☆</button>`).join('')}</span>
+        </div>`).join('')}
+      <button class="btn btn-primary" style="margin-top:16px" onclick="toast('Thanks — sent to the operator')">Send rating</button>
+
+      <div class="sec-head"><h2>Emergency</h2><span>Works offline</span></div>
+      <div class="sos">
+        <strong style="font-size:17px">Need help now?</strong>
+        <div style="font-size:14px;opacity:.92;margin-top:4px">
+          Sends your position to your saved contacts. Falls back to a text message with no data.
+        </div>
+        <button class="btn" onclick="toast('Hold 3 seconds to send an SOS')">Send SOS</button>
+      </div>
+      ${DEMO.safety.map(n => `
+        <div class="num"><span>${esc(n.label)}</span>
+          <a href="tel:${n.phone.replace(/\s/g,'')}">${esc(n.phone)}</a></div>`).join('')}
+
+      <div class="sec-head"><h2>Reading comfort</h2><span></span></div>
+      <div class="settings">
+        <button class="chip" aria-pressed="${theme==='day'}" onclick="setTheme('day')">☀ Day</button>
+        <button class="chip" aria-pressed="${theme==='night'}" onclick="setTheme('night')">🌙 Night bus</button>
+        <button class="chip" aria-pressed="${theme==='sun'}" onclick="setTheme('sun')">🔆 Bright sun</button>
+        <button class="chip" aria-pressed="${motion}" onclick="toggleMotion()">
+          ${motion ? '✓ ' : ''}Stop movement
+        </button>
+      </div>
+      <p style="font-size:13px;color:var(--text-dim)">
+        Night mode is for the cabin lights being off. Bright sun raises contrast for the window seat.
+        Stopping movement helps if the road is making you queasy.
+      </p>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:22px">
+        ${state.liveApi ? 'Connected to the API.' : 'Running on bundled demo content — start the backend to go live.'}
+      </p>`;
+  },
+};
+
+function offlineChip(){
+  const saved = state.liveApi ? state.packCached : DEMO.articles.length;
+
+  if(!state.online){
+    return `<div class="offline-chip warn"><span class="dot"></span>
+      <span>You're offline. Here are the ${saved} stories you already have.</span></div>`;
+  }
+  // Honest about a partial download rather than reporting the requested count.
+  if(state.liveApi && state.packFailed){
+    return `<div class="offline-chip warn"><span class="dot"></span>
+      <span>${saved} of ${state.packRequested} stories saved. Still downloading the rest —
+      stay on this screen while you have signal.</span></div>`;
+  }
+  return `<div class="offline-chip"><span class="dot"></span>
+    <span>Ready to read offline — ${saved} stories saved to this phone.</span></div>`;
+}
+
+function bizRow(b){
+  return `
+    <button class="biz" onclick="openBiz('${b.slug}')">
+      <div class="sq" style="background:${b.colour};color:#fff">${b.icon}</div>
+      <div style="flex:1;min-width:0">
+        <h4>${esc(b.name)}</h4>
+        <small>${esc(b.district)} · ${esc(b.price)}</small>
+        ${b.verified ? '<div class="badge-v">✓ Verified</div>' : ''}
+      </div>
+      <span style="color:var(--text-dim);font-size:19px">›</span>
+    </button>`;
+}
+
+/* ---------- navigation ---------- */
+const NAV = [
+  ['read','Read','M4 5h16M4 12h16M4 19h10'],
+  ['write','Write','M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z'],
+  ['trip','Trips','M9 3v15M15 6v15M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z'],
+  ['map','Maps','M12 21s7-6.4 7-11a7 7 0 10-14 0c0 4.6 7 11 7 11z M12 10a1.6 1.6 0 100-3.2 1.6 1.6 0 000 3.2'],
+  ['more','More','M4 6h16M4 12h16M4 18h16'],
+];
+
+function paintNav(){
+  $('#nav').innerHTML = NAV.map(([k,l,d]) => `
+    <button onclick="go('${k}')" ${state.screen===k ? 'aria-current="page"' : ''}>
+      <svg viewBox="0 0 24 24"><path d="${d}"/></svg>${l}
+    </button>`).join('');
+}
+
+function go(screen){
+  state.screen = screen;
+  stopAudio();
+  render();
+  window.scrollTo({ top:0, behavior: document.documentElement.dataset.motion==='off' ? 'auto' : 'smooth' });
+}
+
+function render(){
+  const key = SCREENS[state.screen] ? state.screen : 'read';
+  $('#view').innerHTML = SCREENS[key]();
+  paintNav();
+}
+
+/* ---------- actions ---------- */
+function openArticle(slug){
+  state.article = DEMO.articles.find(a => a.slug === slug);
+  go('article');
+}
+function openBiz(slug){
+  state.business = DEMO.businesses.find(b => b.slug === slug);
+  go('business');
+}
+function setTemplate(v){ state.draft.template = v; render(); }
+function saveDraft(){
+  localStorage.setItem('bato.draft', JSON.stringify(state.draft));
+  toast('Draft saved on this phone');
+}
+
+/** Post body the API expects, from the on-device draft. */
+function draftPayload(){
+  const d = state.draft;
+  return { title: d.title, body: d.body, template: d.template, locationName: d.place || undefined };
+}
+
+/** True network call, used only once the traveller has signed in. */
+async function apiCreatePost(publishNow){
+  const res = await fetch(`${API}/posts${publishNow ? '/publish' : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.auth.accessToken}` },
+    body: JSON.stringify(draftPayload()),
+  });
+  if(res.status === 401){ signOut(); throw new Error('Your session expired — sign in again.'); }
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(json?.message || 'Could not reach the server. Saved on this phone instead.');
+  return json.data;
+}
+
+async function publish(){
+  if(!state.draft.title.trim()){ toast('Give it a title first'); return; }
+  saveDraft();
+
+  if(state.liveApi && state.auth && state.online){
+    try{
+      await apiCreatePost(true);
+      toast('Sent for review');
+    }catch(err){
+      toast(err.message);
+    }
+  } else {
+    toast(state.online ? 'Sent for review' : 'Queued — sends when you reconnect');
+  }
+
+  state.draft = { template:'FREEFORM', title:'', body:'', place:'' };
+  go('read');
+}
+function save(){ toast('Saved to your reading list'); }
+function tripFromArticle(){
+  state.trip = { ...DEMO.trip, title: 'Trip: ' + (state.article?.title.split(':')[0] || 'Bandipur') };
+  toast('Trip created — edit anything');
+  go('trip');
+}
+function getPack(i){
+  const p = DEMO.packs[i];
+  if(p.have){ toast('Already on this phone'); return; }
+  toast(`Downloading ${p.name} — ${p.mb} MB`);
+  setTimeout(() => { p.have = true; render(); toast(`${p.name} ready offline`); }, 1400);
+}
+function claim(){
+  const code = Array.from({length:6}, () =>
+    '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*32)]).join('');
+  $('#cCode').textContent = code;
+  toast('Show this code at the counter');
+}
+function lead(type){
+  const msg = { CALL:'Calling…', WHATSAPP:'Opening WhatsApp…', DIRECTIONS:'Opening directions…' };
+  toast(msg[type]);
+  if(state.liveApi && state.business){
+    fetch(`${API}/businesses/${state.business.slug}/lead`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ type, sessionId: state.session, routeId: state.route?.id }),
+    }).catch(()=>{});
+  }
+}
+function rate(btn){
+  const n = Number(btn.dataset.n);
+  btn.parentElement.querySelectorAll('.star').forEach(s => {
+    s.textContent = Number(s.dataset.n) <= n ? '★' : '☆';
+    s.style.color = Number(s.dataset.n) <= n ? 'var(--accent)' : '';
+  });
+}
+
+/* ---------- listen mode ---------- */
+function toggleAudio(){
+  state.audio.playing ? stopAudio() : startAudio();
+}
+function startAudio(){
+  state.audio.playing = true;
+  const btn = $('#playBtn'); if(btn) btn.textContent = '❚❚';
+  state.audio.timer = setInterval(() => {
+    state.audio.pct = Math.min(100, state.audio.pct + 1.6);
+    const bar = $('#prog'); if(bar) bar.style.width = state.audio.pct + '%';
+    if(state.audio.pct >= 100) stopAudio();
+  }, 180);
+  toast('Narration playing');
+}
+function stopAudio(){
+  clearInterval(state.audio.timer);
+  state.audio.playing = false;
+  const btn = $('#playBtn'); if(btn) btn.textContent = '▶';
+}
+
+/* ---------- appearance ---------- */
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem('bato.theme', t);
+  document.querySelector('meta[name=theme-color]')
+    .setAttribute('content', t === 'night' ? '#141024' : '#5B3FA8');
+  render();
+}
+function toggleMotion(){
+  const off = document.documentElement.dataset.motion === 'off';
+  document.documentElement.dataset.motion = off ? 'on' : 'off';
+  localStorage.setItem('bato.motion', off ? 'on' : 'off');
+  render();
+}
+
+/* ---------- install banner ---------- */
+function maybeShowInstall(sessions){
+  if(sessions < (state.promptFromSession || 2)) return;      // never on the first scan
+  if(localStorage.getItem('bato.installDismissed')) return;
+  setTimeout(() => $('#installBar').classList.add('show'), 3500);
+}
+$('#dismissInstall').onclick = () => {
+  $('#installBar').classList.remove('show');
+  localStorage.setItem('bato.installDismissed', '1');
+};
+
+/* ---------- boot ---------- */
+(async function init(){
+  const savedTheme = localStorage.getItem('bato.theme');
+  if(savedTheme) document.documentElement.dataset.theme = savedTheme;
+  document.documentElement.dataset.motion = localStorage.getItem('bato.motion') || 'on';
+
+  const draft = localStorage.getItem('bato.draft');
+  if(draft){ try { state.draft = JSON.parse(draft); } catch(_){} }
+
+  loadAuth();
+  const hashScreen = location.hash.replace('#', '');
+  if(NAV.some(([k]) => k === hashScreen)) state.screen = hashScreen;
+
+  const sessions = sessionCount();
+
+  window.addEventListener('online',  () => { state.online = true;  render(); toast('Back online'); });
+  window.addEventListener('offline', () => { state.online = false; render(); });
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if(e.data?.type === 'PACK_CACHED'){
+        state.packCached = e.data.cached;
+        state.packFailed = e.data.failed;
+        if(e.data.failed && e.data.firstFailure){
+          console.warn('Offline pack incomplete:', e.data.firstFailure);
+        }
+        if(state.screen === 'read') render();
+      }
+    });
+  }
+
+  render();
+  await resolveScan();
+  render();
+  maybeShowInstall(sessions);
+})();
+</script>
+</body>
+</html>

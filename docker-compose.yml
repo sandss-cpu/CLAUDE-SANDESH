@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: travel_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel
+      POSTGRES_DB: travel_magazine
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travel -d travel_magazine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional: serves the PWA in web/ on http://localhost:5173
+  web:
+    image: nginx:alpine
+    container_name: travel_web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:

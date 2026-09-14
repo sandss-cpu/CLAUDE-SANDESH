@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bato — Control Panel</title>
+<meta name="theme-color" content="#5B3FA8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --saffron:#F4A024; --dusk:#5B3FA8; --rhodo:#E8455F; --teal:#159A8C;
+  --terracotta:#C4562E; --ink:#1C1A2E; --paper:#FDFAF3; --green:#3E9B4F; --amber:#E5892E;
+  --bg:#F2EEE3; --surface:#fff; --surface-2:#F6F1E6;
+  --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --brand:var(--dusk); --accent:var(--saffron);
+  --r-sm:8px; --r:12px; --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:15px;line-height:1.5}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;margin:0}
+a{color:var(--brand)}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{
+  width:100%;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r-sm);
+  padding:9px 11px;font-size:14.5px;
+}
+textarea{min-height:220px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:13.5px;line-height:1.5}
+label{display:block;font-size:12.5px;font-weight:700;color:var(--text-dim);margin:12px 0 5px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;border:none;border-radius:var(--r-sm);
+  padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer;background:var(--surface-2);color:var(--text);
+}
+.btn:disabled{opacity:.5;cursor:default}
+.btn-primary{background:var(--accent);color:#231600}
+.btn-brand{background:var(--brand);color:#fff}
+.btn-danger{background:var(--rhodo);color:#fff}
+.btn-ghost{background:transparent;color:var(--text-dim)}
+.btn-sm{padding:5px 10px;font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:20px}
+.error{background:#FCE9EC;color:#9C1C36;border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px;margin-top:10px}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;background:var(--surface-2);color:var(--text-dim)}
+.pill.PUBLISHED{background:#E4F3E7;color:var(--green)}
+.pill.DRAFT{background:var(--surface-2)}
+.pill.IN_REVIEW{background:#FDF1DA;color:var(--amber)}
+.pill.ARCHIVED{background:#F0EDE4;color:var(--text-dim)}
+.pill.PENDING{background:#FDF1DA;color:var(--amber)}
+.pill.APPROVED{background:#E4F3E7;color:var(--green)}
+.pill.REJECTED{background:#FCE9EC;color:var(--rhodo)}
+.pill.OPEN{background:#FDF1DA;color:var(--amber)}
+
+/* ---------- login ---------- */
+#login-view{max-width:380px;margin:80px auto;padding:0 20px}
+#login-view h1{font-size:26px;margin-bottom:4px}
+#login-view p.sub{color:var(--text-dim);margin:0 0 20px}
+#login-view .btn{width:100%;justify-content:center;min-height:44px;margin-top:14px}
+.devcode,.secret{font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;color:var(--brand);word-break:break-all}
+.back{display:block;margin-bottom:16px;color:var(--text-dim);font-size:13.5px;text-decoration:none}
+
+/* ---------- shell ---------- */
+#shell{display:none;min-height:100vh}
+#shell.on{display:flex}
+aside{width:210px;flex:none;background:var(--ink);color:#fff;padding:20px 14px;min-height:100vh}
+aside h1{color:#fff;font-size:18px;margin-bottom:2px}
+aside .who{font-size:12px;color:#B7AEDC;margin-bottom:18px}
+aside nav button{
+  display:block;width:100%;text-align:left;background:none;border:none;color:#D8D2EE;
+  padding:10px 12px;border-radius:var(--r-sm);font-weight:600;font-size:14px;cursor:pointer;margin-bottom:2px
+}
+aside nav button.active{background:rgba(255,255,255,.14);color:#fff}
+aside .signout{margin-top:22px}
+main{flex:1;padding:26px 32px;max-width:1100px}
+.top-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+th{background:var(--surface-2);font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-dim)}
+tr:last-child td{border-bottom:none}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.filters{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.filters input,.filters select{width:auto;min-width:160px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px}
+.stat{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:24px;font-family:var(--font-display)}
+.stat span{font-size:12px;color:var(--text-dim)}
+.empty{color:var(--text-dim);font-size:13.5px;padding:16px 0}
+.modal-back{position:fixed;inset:0;background:rgba(28,26,46,.45);display:flex;align-items:flex-start;
+  justify-content:center;padding:40px 16px;overflow-y:auto;z-index:10}
+.modal{background:var(--surface);border-radius:var(--r);padding:24px;max-width:640px;width:100%;box-shadow:var(--shadow)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.checks{display:flex;gap:18px;margin-top:14px}
+.checks label{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--text);font-size:13.5px}
+.checks input{width:auto}
+</style>
+</head>
+<body>
+
+<div id="login-view"></div>
+
+<div id="shell">
+  <aside id="sidebar"></aside>
+  <main id="main"></main>
+</div>
+
+<script>
+const API = localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const $ = (s) => document.querySelector(s);
+const esc = (s='') => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtDate = (d) => d ? new Date(d).toLocaleString() : '—';
+
+const state = {
+  auth: null,
+  screen: 'articles',
+  error: '',
+  login: { step: 'phone', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false },
+  articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
+  categories: [], issues: [],
+  elevate: { items: [] },
+  moderation: { tab: 'posts', posts: [], comments: [], reviews: [], reports: [], queue: null },
+  users: { items: [], q: '', role: '', suspendedOnly: false },
+  overview: null, subscriptions: [], auditLog: [],
+};
+
+/* =========================== API =========================== */
+
+async function api(path, opts = {}){
+  const headers = { 'Content-Type': 'application/json' };
+  if(state.auth?.accessToken) headers.Authorization = `Bearer ${state.auth.accessToken}`;
+  const res = await fetch(`${API}${path}`, {
+    method: opts.method || 'GET', headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if(res.status === 401){
+    signOut('Your session expired — sign in again.');
+    throw new Error('Session expired');
+  }
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(json?.message || json?.error?.message || 'Something went wrong');
+  return json.data;
+}
+
+function loadAuth(){
+  try{ state.auth = JSON.parse(localStorage.getItem('bato.admin.auth') || 'null'); }
+  catch(_){ state.auth = null; }
+}
+function saveAuth(data){
+  state.auth = { accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user };
+  localStorage.setItem('bato.admin.auth', JSON.stringify(state.auth));
+}
+function freshLoginState(){
+  return { step: 'phone', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false };
+}
+
+function signOut(message){
+  const auth = state.auth;
+  state.auth = null;
+  state.login = freshLoginState();
+  localStorage.removeItem('bato.admin.auth');
+  renderRoot();
+  if(message) setLoginError(message);
+  if(auth?.refreshToken){
+    fetch(`${API}/auth/logout`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: auth.refreshToken }),
+    }).catch(()=>{});
+  }
+}
+function setLoginError(msg){ state.login.error = msg; renderLogin(); }
+
+/* =========================== login =========================== */
+
+const LOGIN_VIEWS = {
+  phone(){
+    const l = state.login;
+    return `
+      <h1>Bato control panel</h1>
+      <p class="sub">Editors, moderators and admins sign in with their phone, then an authenticator app.</p>
+      <form onsubmit="loginSubmitPhone(event)">
+        <label for="phone">Phone number</label>
+        <input id="phone" type="tel" inputmode="numeric" placeholder="98XXXXXXXX" value="${esc(l.phone)}" autofocus required>
+        ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+        <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Sending…':'Send code'}</button>
+      </form>
+      <a class="back" href="login.html" style="margin-top:16px">Travelling and want to vlog instead? Sign in here →</a>`;
+  },
+  code(){
+    const l = state.login;
+    return `
+      <h1>Enter the code</h1>
+      <p class="sub">Sent to ${esc(l.phone)}.</p>
+      ${l.devCode ? `<div class="card" style="margin-bottom:14px">No SMS gateway configured — code:
+        <div class="devcode">${esc(l.devCode)}</div></div>` : ''}
+      <form onsubmit="loginSubmitCode(event)">
+        <label for="code">6-digit code</label>
+        <input id="code" inputmode="numeric" maxlength="6" placeholder="123456" autofocus required>
+        ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+        <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Continue'}</button>
+      </form>
+      <button class="btn btn-ghost" style="margin-top:8px" onclick="state.login={step:'phone',phone:'',devCode:'',challengeToken:'',enrol:null,error:'',busy:false};renderLogin()">Use a different number</button>`;
+  },
+  mfa(){
+    const l = state.login;
+    return `
+      <h1>Authenticator code</h1>
+      <p class="sub">Enter the 6-digit code from Google Authenticator or Authy.</p>
+      <form onsubmit="loginSubmitMfa(event)">
+        <label for="mfacode">Code</label>
+        <input id="mfacode" inputmode="numeric" maxlength="6" placeholder="123456" autofocus required>
+        ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+        <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Sign in'}</button>
+      </form>`;
+  },
+  enrol(){
+    const l = state.login;
+    return `
+      <h1>Set up your authenticator</h1>
+      <p class="sub">This account has elevated permissions and needs a second factor before it can be used.</p>
+      ${l.enrol ? `
+        <div class="card" style="margin-bottom:14px">
+          <p style="margin:0 0 8px">Scan in Google Authenticator or Authy, or add this key manually:</p>
+          <div class="secret">${esc(l.enrol.secret)}</div>
+        </div>
+        <form onsubmit="loginSubmitEnrolConfirm(event)">
+          <label for="enrolcode">6-digit code from the app</label>
+          <input id="enrolcode" inputmode="numeric" maxlength="6" placeholder="123456" autofocus required>
+          ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+          <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Confirming…':'Confirm and sign in'}</button>
+        </form>` : `<p class="sub">Preparing enrolment…</p>`}`;
+  },
+};
+
+function renderLogin(){
+  $('#login-view').innerHTML = LOGIN_VIEWS[state.login.step]();
+}
+
+async function loginSubmitPhone(e){
+  e.preventDefault();
+  const l = state.login;
+  l.phone = $('#phone').value.trim(); l.error = ''; l.busy = true; renderLogin();
+  try{
+    const data = await api('/auth/otp/request', { method: 'POST', body: { phone: l.phone } });
+    l.devCode = data.devCode || '';
+    /**
+     * devCode only exists in the response when no SMS gateway is configured,
+     * which env.validation.ts refuses to allow in production — so this path
+     * is a no-op in a real deployment and only skips typing in local dev/testing.
+     */
+    if(l.devCode){
+      await completeOtpVerify(l.devCode);
+      return;
+    }
+    l.busy = false; l.step = 'code'; renderLogin();
+  }catch(err){ l.busy = false; l.error = err.message; renderLogin(); }
+}
+
+async function loginSubmitCode(e){
+  e.preventDefault();
+  await completeOtpVerify($('#code').value.trim());
+}
+
+async function completeOtpVerify(code){
+  const l = state.login;
+  l.error = ''; l.busy = true; l.step = 'code'; renderLogin();
+  try{
+    const data = await api('/auth/otp/verify', { method: 'POST', body: { phone: l.phone, code } });
+    if(data.mfaEnrolmentRequired){
+      l.challengeToken = data.challengeToken; l.busy = false; l.step = 'enrol'; renderLogin();
+      const enrol = await api('/auth/mfa/enrol/start', { method: 'POST', body: { challengeToken: l.challengeToken } });
+      l.enrol = enrol; renderLogin();
+      return;
+    }
+    if(data.mfaRequired){
+      l.challengeToken = data.challengeToken; l.busy = false; l.step = 'mfa'; renderLogin();
+      return;
+    }
+    onSignedIn(data);
+  }catch(err){ l.busy = false; l.step = 'code'; l.error = err.message; renderLogin(); }
+}
+
+async function loginSubmitMfa(e){
+  e.preventDefault();
+  const l = state.login;
+  const code = $('#mfacode').value.trim();
+  l.error = ''; l.busy = true; renderLogin();
+  try{
+    const data = await api('/auth/mfa/verify', { method: 'POST', body: { challengeToken: l.challengeToken, code } });
+    onSignedIn(data);
+  }catch(err){ l.busy = false; l.error = err.message; renderLogin(); }
+}
+
+async function loginSubmitEnrolConfirm(e){
+  e.preventDefault();
+  const l = state.login;
+  const code = $('#enrolcode').value.trim();
+  l.error = ''; l.busy = true; renderLogin();
+  try{
+    const data = await api('/auth/mfa/enrol/confirm', { method: 'POST', body: { challengeToken: l.challengeToken, code } });
+    onSignedIn(data);
+  }catch(err){ l.busy = false; l.error = err.message; renderLogin(); }
+}
+
+function onSignedIn(data){
+  const role = data.user?.role;
+  if(!['EDITOR','MODERATOR','ADMIN'].includes(role)){
+    state.login = freshLoginState();
+    state.login.error = 'This account does not have editorial or admin access.';
+    renderLogin();
+    return;
+  }
+  saveAuth(data);
+  state.login = freshLoginState();
+  state.screen = role === 'ADMIN' ? 'overview' : (role === 'EDITOR' ? 'articles' : 'moderation');
+  renderRoot();
+}
+
+/* =========================== shell =========================== */
+
+const SECTIONS = [
+  ['overview', 'Overview', ['ADMIN']],
+  ['articles', 'Articles', ['EDITOR', 'ADMIN']],
+  ['issues', 'Issues', ['EDITOR', 'ADMIN']],
+  ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
+  ['users', 'Users', ['MODERATOR', 'ADMIN']],
+];
+
+function visibleSections(){
+  const role = state.auth?.user?.role;
+  return SECTIONS.filter(([, , roles]) => roles.includes(role));
+}
+
+function renderSidebar(){
+  const role = state.auth?.user?.role;
+  $('#sidebar').innerHTML = `
+    <h1>Bato</h1>
+    <div class="who">${esc(state.auth?.user?.name || '')} · ${esc(role || '')}</div>
+    <nav>
+      ${visibleSections().map(([key, label]) =>
+        `<button class="${state.screen===key?'active':''}" onclick="goSection('${key}')">${label}</button>`
+      ).join('')}
+    </nav>
+    <div class="signout"><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
+}
+
+function goSection(key){ state.screen = key; renderMain(); renderSidebar(); }
+
+function renderRoot(){
+  if(state.auth){
+    $('#login-view').style.display = 'none';
+    $('#shell').classList.add('on');
+    renderSidebar();
+    renderMain();
+  } else {
+    $('#shell').classList.remove('on');
+    $('#login-view').style.display = 'block';
+    renderLogin();
+  }
+}
+
+async function renderMain(){
+  const html = await (SCREENS[state.screen] || SCREENS.articles)();
+  $('#main').innerHTML = html;
+}
+
+/* =========================== articles =========================== */
+
+async function loadArticles(){
+  const params = new URLSearchParams({ limit: '50' });
+  if(state.articles.status) params.set('status', state.articles.status);
+  if(state.articles.q) params.set('q', state.articles.q);
+  const data = await api(`/magazine/admin/articles?${params}`);
+  state.articles.items = data.items; state.articles.meta = data.meta;
+}
+async function loadReferenceData(){
+  if(!state.categories.length) state.categories = await api('/magazine/categories');
+  if(!state.issues.length) state.issues = (await api('/magazine/admin/issues')) || [];
+}
+
+function articleForm(a){
+  const isNew = !a || !a.id;
+  return `
+    <div class="modal-back" onclick="if(event.target===this) closeArticleForm()">
+      <div class="modal">
+        <h2 style="margin-bottom:14px">${isNew ? 'New article' : 'Edit article'}</h2>
+        <form onsubmit="saveArticle(event, ${isNew ? 'null' : `'${a.id}'`})">
+          <label for="af-title">Title</label>
+          <input id="af-title" value="${esc(a?.title)}" required minlength="3">
+          <label for="af-subtitle">Subtitle</label>
+          <input id="af-subtitle" value="${esc(a?.subtitle)}">
+          <div class="two-col">
+            <div>
+              <label for="af-category">Category</label>
+              <select id="af-category">
+                <option value="">—</option>
+                ${state.categories.map(c => `<option value="${c.id}" ${a?.category?.id===c.id||a?.categoryId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label for="af-issue">Issue</label>
+              <select id="af-issue">
+                <option value="">—</option>
+                ${state.issues.map(i => `<option value="${i.id}" ${a?.issue?.id===i.id||a?.issueId===i.id?'selected':''}>#${i.number} ${esc(i.title)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <label for="af-body">Body (markdown)</label>
+          <textarea id="af-body" required minlength="20">${esc(a?.body)}</textarea>
+          <div class="checks">
+            <label><input id="af-featured" type="checkbox" ${a?.isFeatured?'checked':''}> Featured</label>
+            <label><input id="af-sponsored" type="checkbox" ${a?.isSponsored?'checked':''}> Sponsored</label>
+          </div>
+          ${state.error ? `<div class="error">${esc(state.error)}</div>` : ''}
+          <div class="row-actions" style="margin-top:18px">
+            <button class="btn btn-primary" type="submit" ${state.articles.saving?'disabled':''}>
+              ${state.articles.saving ? 'Saving…' : (isNew ? 'Create draft' : 'Save changes')}
+            </button>
+            <button class="btn btn-ghost" type="button" onclick="closeArticleForm()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+}
+
+function openArticleForm(article){
+  state.articles.editing = article || {};
+  state.error = '';
+  renderMain();
+}
+function closeArticleForm(){ state.articles.editing = null; renderMain(); }
+
+async function saveArticle(e, id){
+  e.preventDefault();
+  const dto = {
+    title: $('#af-title').value.trim(),
+    subtitle: $('#af-subtitle').value.trim() || undefined,
+    categoryId: $('#af-category').value || undefined,
+    issueId: $('#af-issue').value || undefined,
+    body: $('#af-body').value,
+    isFeatured: $('#af-featured').checked,
+    isSponsored: $('#af-sponsored').checked,
+  };
+  state.articles.saving = true; state.error = ''; renderMain();
+  try{
+    if(id) await api(`/magazine/articles/${id}`, { method: 'PATCH', body: dto });
+    else await api('/magazine/articles', { method: 'POST', body: dto });
+    state.articles.saving = false; state.articles.editing = null;
+    await loadArticles(); renderMain();
+  }catch(err){
+    state.articles.saving = false; state.error = err.message; renderMain();
+  }
+}
+
+async function publishArticle(id){
+  await api(`/magazine/articles/${id}/publish`, { method: 'PATCH' });
+  await loadArticles(); renderMain();
+}
+async function archiveArticle(id){
+  await api(`/magazine/articles/${id}`, { method: 'PATCH', body: { status: 'ARCHIVED' } });
+  await loadArticles(); renderMain();
+}
+async function deleteArticleForever(id, title){
+  const typed = prompt(`This permanently deletes "${title}". Type DELETE to confirm.`);
+  if(typed !== 'DELETE') return;
+  await api(`/magazine/articles/${id}`, { method: 'DELETE' });
+  await loadArticles(); renderMain();
+}
+function filterArticles(patch){ Object.assign(state.articles, patch); loadArticles().then(renderMain); }
+
+async function screenArticles(){
+  await Promise.all([loadArticles(), loadReferenceData()]);
+  const a = state.articles;
+  const role = state.auth?.user?.role;
+  return `
+    <div class="top-row">
+      <h2>Articles</h2>
+      <button class="btn btn-primary" onclick="openArticleForm(null)">+ New article</button>
+    </div>
+    <div class="filters">
+      <input placeholder="Search title or subtitle…" value="${esc(a.q)}"
+             onchange="filterArticles({q:this.value})">
+      <select onchange="filterArticles({status:this.value})">
+        ${['', 'DRAFT', 'IN_REVIEW', 'PUBLISHED', 'ARCHIVED'].map(s =>
+          `<option value="${s}" ${a.status===s?'selected':''}>${s || 'All statuses'}</option>`).join('')}
+      </select>
+    </div>
+    ${a.items.length === 0 ? '<div class="empty">No articles match.</div>' : `
+      <table><thead><tr><th>Title</th><th>Status</th><th>Category</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+        ${a.items.map(x => `
+          <tr>
+            <td>${esc(x.title)}</td>
+            <td><span class="pill ${x.status}">${x.status}</span></td>
+            <td>${esc(x.category?.name || '—')}</td>
+            <td>${fmtDate(x.updatedAt)}</td>
+            <td class="row-actions">
+              <button class="btn btn-sm" onclick='editArticle("${x.id}")'>Edit</button>
+              ${x.status !== 'PUBLISHED' ? `<button class="btn btn-sm btn-brand" onclick="publishArticle('${x.id}')">Publish</button>` : ''}
+              ${x.status !== 'ARCHIVED' ? `<button class="btn btn-sm" onclick="archiveArticle('${x.id}')">Archive</button>` : ''}
+              ${role === 'ADMIN' ? `<button class="btn btn-sm btn-danger" onclick="deleteArticleForever('${x.id}', ${JSON.stringify(x.title)})">Delete forever</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody></table>`}
+    ${await screenElevate()}
+    ${a.editing ? articleForm(a.editing.id ? a.editing : null) : ''}`;
+}
+
+async function editArticle(id){
+  const full = await api(`/magazine/admin/articles/${id}`);
+  state.articles.editing = full;
+  renderMain();
+}
+
+async function screenElevate(){
+  const posts = await api('/posts?limit=50');
+  const candidates = (posts.items || []).filter((p) => !p.isElevated);
+  if(!candidates.length) return '';
+  return `
+    <div class="top-row" style="margin-top:30px"><h3>Approved traveller posts not yet in the magazine</h3></div>
+    <table><thead><tr><th>Title</th><th>Author</th><th>Published</th><th></th></tr></thead>
+    <tbody>
+      ${candidates.map(p => `
+        <tr>
+          <td>${esc(p.title)}</td>
+          <td>${esc(p.author?.name || '—')}</td>
+          <td>${fmtDate(p.publishedAt)}</td>
+          <td><button class="btn btn-sm btn-brand" onclick="elevatePost('${p.id}')">Elevate to magazine</button></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function elevatePost(postId){
+  try{
+    await api('/magazine/elevate', { method: 'POST', body: { postId } });
+    await loadArticles(); renderMain();
+  }catch(err){ alert(err.message); }
+}
+
+/* =========================== issues =========================== */
+
+async function screenIssues(){
+  await loadReferenceData();
+  return `
+    <div class="top-row"><h2>Issues</h2></div>
+    <form class="card" style="margin-bottom:20px;max-width:480px" onsubmit="createIssue(event)">
+      <label for="iss-num">Issue number</label>
+      <input id="iss-num" type="number" min="1" required>
+      <label for="iss-title">Title</label>
+      <input id="iss-title" required minlength="3">
+      <label for="iss-strapline">Strapline</label>
+      <input id="iss-strapline">
+      <button class="btn btn-primary" style="margin-top:14px" type="submit">Create issue</button>
+    </form>
+    ${state.issues.length === 0 ? '<div class="empty">No issues yet.</div>' : `
+      <table><thead><tr><th>#</th><th>Title</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${state.issues.map(i => `
+          <tr>
+            <td>${i.number}</td><td>${esc(i.title)}</td>
+            <td><span class="pill ${i.status || 'PUBLISHED'}">${i.status || 'PUBLISHED'}</span></td>
+            <td>${!i.publishedAt ? `<button class="btn btn-sm btn-brand" onclick="publishIssue('${i.id}')">Publish</button>` : ''}</td>
+          </tr>`).join('')}
+      </tbody></table>`}`;
+}
+
+async function createIssue(e){
+  e.preventDefault();
+  const dto = {
+    number: Number($('#iss-num').value), title: $('#iss-title').value.trim(),
+    strapline: $('#iss-strapline').value.trim() || undefined,
+  };
+  try{
+    await api('/magazine/issues', { method: 'POST', body: dto });
+    state.issues = []; await loadReferenceData(); renderMain();
+  }catch(err){ alert(err.message); }
+}
+async function publishIssue(id){
+  await api(`/magazine/issues/${id}/publish`, { method: 'PATCH' });
+  state.issues = []; await loadReferenceData(); renderMain();
+}
+
+/* =========================== moderation =========================== */
+
+async function loadModeration(){
+  const m = state.moderation;
+  const [queue, posts, comments, reviews, reports] = await Promise.all([
+    api('/moderation/queue'),
+    api('/moderation/posts'), api('/moderation/comments'),
+    api('/moderation/reviews'), api('/moderation/reports'),
+  ]);
+  m.queue = queue; m.posts = posts; m.comments = comments; m.reviews = reviews; m.reports = reports;
+}
+
+function modTable(items, targetType, columns){
+  if(!items.length) return '<div class="empty">Nothing pending.</div>';
+  return `
+    <table><thead><tr>${columns.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
+    <tbody>
+      ${items.map(x => `
+        <tr>
+          ${columns.map(c => `<td>${esc(c.render(x))}</td>`).join('')}
+          <td class="row-actions">
+            <button class="btn btn-sm btn-brand" onclick="moderate('${targetType}','${x.id}','APPROVE')">Approve</button>
+            <button class="btn btn-sm" onclick="moderate('${targetType}','${x.id}','REJECT')">Reject</button>
+            <button class="btn btn-sm btn-danger" onclick="moderate('${targetType}','${x.id}','DELETE')">Delete</button>
+          </td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function moderate(targetType, targetId, action){
+  const note = (action === 'REJECT' || action === 'DELETE') ? (prompt('Optional note for the audit log:') || undefined) : undefined;
+  await api('/moderation/act', { method: 'POST', body: { targetType, targetId, action, note } });
+  await loadModeration(); renderMain();
+}
+
+async function screenModeration(){
+  await loadModeration();
+  const m = state.moderation;
+  const tabs = [
+    ['posts', `Posts (${m.posts.length})`],
+    ['comments', `Comments (${m.comments.length})`],
+    ['reviews', `Reviews (${m.reviews.length})`],
+    ['reports', `Reports (${m.reports.length})`],
+  ];
+  const q = m.queue;
+  return `
+    <div class="top-row"><h2>Moderation</h2></div>
+    <div class="stat-grid">
+      <div class="stat"><b>${q.pendingPosts}</b><span>Pending posts</span></div>
+      <div class="stat"><b>${q.pendingComments}</b><span>Pending comments</span></div>
+      <div class="stat"><b>${q.pendingReviews}</b><span>Pending reviews</span></div>
+      <div class="stat"><b>${q.openReports}</b><span>Open reports${q.slaBreached ? ' — SLA breached' : ''}</span></div>
+    </div>
+    <div class="filters">
+      ${tabs.map(([k,l]) => `<button class="btn ${m.tab===k?'btn-brand':''}" onclick="state.moderation.tab='${k}';renderMain()">${l}</button>`).join('')}
+    </div>
+    ${m.tab === 'posts' ? modTable(m.posts, 'POST', [
+        {label:'Title', render:(p)=>p.title}, {label:'Author', render:(p)=>p.author?.name || '—'},
+      ]) : ''}
+    ${m.tab === 'comments' ? modTable(m.comments, 'COMMENT', [
+        {label:'Comment', render:(c)=>c.body?.slice(0,120)}, {label:'By', render:(c)=>c.user?.name || '—'},
+      ]) : ''}
+    ${m.tab === 'reviews' ? modTable(m.reviews, 'REVIEW', [
+        {label:'Business', render:(r)=>r.business?.name || '—'}, {label:'Rating', render:(r)=>r.rating},
+        {label:'By', render:(r)=>r.user?.name || '—'},
+      ]) : ''}
+    ${m.tab === 'reports' ? `
+      ${!m.reports.length ? '<div class="empty">No open reports.</div>' : `
+        <table><thead><tr><th>Target</th><th>Reason</th><th>Detail</th><th>Reported</th><th></th></tr></thead>
+        <tbody>
+          ${m.reports.map(r => `
+            <tr>
+              <td>${r.targetType} · ${r.targetId.slice(0,8)}…</td>
+              <td>${r.reason}</td><td>${esc(r.detail || '—')}</td><td>${fmtDate(r.createdAt)}</td>
+              <td class="row-actions">
+                <button class="btn btn-sm btn-brand" onclick="moderate('${r.targetType}','${r.targetId}','APPROVE')">Dismiss (approve target)</button>
+                <button class="btn btn-sm btn-danger" onclick="moderate('${r.targetType}','${r.targetId}','HIDE')">Act (hide target)</button>
+              </td>
+            </tr>`).join('')}
+        </tbody></table>`}` : ''}`;
+}
+
+/* =========================== users =========================== */
+
+async function loadUsers(){
+  const u = state.users;
+  const params = new URLSearchParams({ limit: '50' });
+  if(u.role) params.set('role', u.role);
+  if(u.suspendedOnly) params.set('suspendedOnly', 'true');
+  const data = await api(`/users/admin/directory?${params}`);
+  u.items = data.items || data;
+}
+
+async function suspendUser(id){
+  const days = prompt('Suspend for how many days? (blank = indefinite)');
+  if(days === null) return;
+  await api(`/users/${id}/suspend`, { method: 'PATCH', body: { days: days ? Number(days) : null } });
+  await loadUsers(); renderMain();
+}
+async function unsuspendUser(id){
+  await api(`/users/${id}/unsuspend`, { method: 'PATCH' });
+  await loadUsers(); renderMain();
+}
+async function changeRole(id, current){
+  const roles = ['READER','CONTRIBUTOR','BUSINESS_OWNER','OPERATOR_ADMIN','MODERATOR','EDITOR','ADMIN'];
+  const role = prompt(`New role (${roles.join(', ')}):`, current);
+  if(!role || !roles.includes(role)) return;
+  try{
+    await api(`/users/${id}/role`, { method: 'PATCH', body: { role } });
+    await loadUsers(); renderMain();
+  }catch(err){ alert(err.message); }
+}
+async function resetMfaFor(id){
+  if(!confirm("Reset this account's authenticator? They will need to enrol again.")) return;
+  await api(`/users/${id}/reset-mfa`, { method: 'PATCH' });
+  alert('Authenticator reset.');
+}
+
+async function screenUsers(){
+  await loadUsers();
+  const u = state.users;
+  const role = state.auth?.user?.role;
+  const isAdmin = role === 'ADMIN';
+  return `
+    <div class="top-row"><h2>Users</h2></div>
+    <div class="filters">
+      <select onchange="state.users.role=this.value;loadUsers().then(renderMain)">
+        ${['', 'READER', 'CONTRIBUTOR', 'BUSINESS_OWNER', 'OPERATOR_ADMIN', 'MODERATOR', 'EDITOR', 'ADMIN'].map(r =>
+          `<option value="${r}" ${u.role===r?'selected':''}>${r || 'All roles'}</option>`).join('')}
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" style="width:auto" ${u.suspendedOnly?'checked':''}
+          onchange="state.users.suspendedOnly=this.checked;loadUsers().then(renderMain)"> Suspended only
+      </label>
+    </div>
+    ${!u.items.length ? '<div class="empty">No users match.</div>' : `
+      <table><thead><tr><th>Name</th><th>Phone</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${u.items.map(x => `
+          <tr>
+            <td>${esc(x.name)}</td><td>${esc(x.phone || '—')}</td><td>${x.role}</td>
+            <td>${x.isSuspended ? '<span class="pill REJECTED">Suspended</span>' : '<span class="pill APPROVED">Active</span>'}</td>
+            <td class="row-actions">
+              ${x.isSuspended
+                ? `<button class="btn btn-sm btn-brand" onclick="unsuspendUser('${x.id}')">Unsuspend</button>`
+                : `<button class="btn btn-sm" onclick="suspendUser('${x.id}')">Suspend</button>`}
+              ${isAdmin ? `<button class="btn btn-sm" onclick="changeRole('${x.id}','${x.role}')">Change role</button>` : ''}
+              ${isAdmin ? `<button class="btn btn-sm" onclick="resetMfaFor('${x.id}')">Reset MFA</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody></table>`}`;
+}
+
+/* =========================== overview (admin only) =========================== */
+
+async function screenOverview(){
+  const [overview, subs, audit] = await Promise.all([
+    api('/admin/overview?days=30'), api('/admin/subscriptions'), api('/admin/audit-log?take=30'),
+  ]);
+  state.overview = overview; state.subscriptions = subs; state.auditLog = audit;
+  return `
+    <div class="top-row"><h2>Overview</h2><span class="pill">Last ${overview.periodDays} days</span></div>
+    <div class="stat-grid">
+      <div class="stat"><b>${overview.reach.scans}</b><span>QR scans</span></div>
+      <div class="stat"><b>${overview.reach.returnRate}%</b><span>Return rate</span></div>
+      <div class="stat"><b>${overview.audience.totalUsers}</b><span>Total users</span></div>
+      <div class="stat"><b>${overview.audience.publishedArticles}</b><span>Published articles</span></div>
+      <div class="stat"><b>${overview.queues.totalOutstanding}</b><span>Outstanding moderation${overview.queues.slaBreached?' — SLA breached':''}</span></div>
+      <div class="stat"><b>${overview.commercial.activeBusinesses}</b><span>Active businesses</span></div>
+      <div class="stat"><b>${overview.commercial.couponConversionRate}%</b><span>Coupon conversion</span></div>
+    </div>
+
+    <h3 style="margin-bottom:10px">Subscriptions</h3>
+    ${!subs.length ? '<div class="empty">No paid listings.</div>' : `
+      <table><thead><tr><th>Business</th><th>Tier</th><th>Days remaining</th><th></th></tr></thead>
+      <tbody>
+        ${subs.map(s => `
+          <tr><td>${esc(s.name)}</td><td>${s.tier}</td>
+          <td>${s.lapsed ? '<span class="pill REJECTED">Lapsed</span>' : (s.daysRemaining ?? '—')}</td><td></td></tr>`).join('')}
+      </tbody></table>`}
+
+    <h3 style="margin:26px 0 10px">Audit log</h3>
+    ${!audit.length ? '<div class="empty">No recent privileged actions.</div>' : `
+      <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Note</th></tr></thead>
+      <tbody>
+        ${audit.map(a => `
+          <tr>
+            <td>${fmtDate(a.createdAt)}</td><td>${esc(a.moderator?.name || '—')}</td>
+            <td>${a.action}</td><td>${a.targetType} · ${a.targetId.slice(0,8)}…</td><td>${esc(a.note || '—')}</td>
+          </tr>`).join('')}
+      </tbody></table>`}`;
+}
+
+const SCREENS = {
+  overview: screenOverview, articles: screenArticles, issues: screenIssues,
+  moderation: screenModeration, users: screenUsers,
+};
+
+/* =========================== boot =========================== */
+
+loadAuth();
+if(state.auth && !['EDITOR','MODERATOR','ADMIN'].includes(state.auth.user?.role)){
+  state.auth = null; localStorage.removeItem('bato.admin.auth');
+}
+if(state.auth){
+  const role = state.auth.user.role;
+  if(!visibleSections().length) state.screen = 'articles';
+}
+renderRoot();
+</script>
+</body>
+</html>
