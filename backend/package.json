@@ -13,7 +13,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
-    "seed:prod": "ts-node prisma/seed-prod.ts"
+    "seed:prod": "ts-node prisma/seed-prod.ts",
+    "accounts:test": "ts-node prisma/create-test-accounts.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

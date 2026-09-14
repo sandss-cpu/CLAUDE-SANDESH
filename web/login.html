@@ -92,7 +92,7 @@ try{ const t = localStorage.getItem('bato.theme'); if(t) document.documentElemen
 
 const state = {
   step: 'email', name: '', email: '', phone: '', devCode: '', devLink: '',
-  error: '', errorCode: '', notice: '', busy: false, showPw: false, resetToken: '',
+  error: '', errorCode: '', notice: '', busy: false, showPw: false, resetToken: '', challengeToken: '',
 };
 
 const $ = (s) => document.querySelector(s);
@@ -253,10 +253,22 @@ const VIEWS = {
       </form>
       <button class="btn btn-ghost" type="button" onclick="go('phone')">Use a different number</button>`;
   },
+  mfa(){
+    return `
+      <h1>Enter your authenticator code</h1>
+      <p class="sub">This account can also manage Bato, so it needs the 6-digit code from Google Authenticator or Authy.</p>
+      <form onsubmit="submitMfa(event)" novalidate>
+        <label for="mfacode">6-digit code</label>
+        <input id="mfacode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Checking…' : 'Sign in'}</button>
+      </form>
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Use a different account</button>`;
+  },
   mfaRequired(){
     return `
-      <h1>Use the control panel for this account</h1>
-      <p class="sub">Editor, moderator and admin accounts sign in with an authenticator app as well, in the control panel.</p>
+      <h1>Set up your authenticator first</h1>
+      <p class="sub">This account can manage Bato. Set up an authenticator app once in the control panel, then you can sign in here too.</p>
       <a class="btn" href="admin.html">Open the control panel</a>
       <button class="btn btn-ghost" type="button" onclick="go('email')">Use a different account</button>`;
   },
@@ -283,7 +295,9 @@ function fail(err, keep = {}){
 }
 
 function finish(data){
-  if(data.mfaRequired){ go('mfaRequired'); return; }
+  // Accounts with control-panel roles sign in here too, after their authenticator code.
+  if(data.mfaEnrolmentRequired){ go('mfaRequired'); return; }
+  if(data.mfaRequired){ go('mfa', { challengeToken: data.challengeToken }); return; }
   localStorage.setItem('bato.auth', JSON.stringify({
     accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user,
   }));
@@ -360,6 +374,27 @@ async function submitReset(e){
     go('email', { notice: data.message });
   }catch(err){
     if(err.status === 400 && /link/i.test(err.message)){ go('linkFailed', { error: err.message }); return; }
+    fail(err);
+  }
+}
+
+async function submitMfa(e){
+  e.preventDefault();
+  const code = $('#mfacode').value.trim();
+  if(!/^\d{6}$/.test(code)){
+    state.error = 'Enter the 6 digits from your authenticator app.';
+    render();
+    $('#mfacode').focus();
+    return;
+  }
+  busy(); render();
+  try{
+    finish(await api('/auth/mfa/verify', { challengeToken: state.challengeToken, code }));
+  }catch(err){
+    if(err.status === 401 && /expired/i.test(err.message)){
+      go('email', { error: 'That took too long. Sign in again.' });
+      return;
+    }
     fail(err);
   }
 }
