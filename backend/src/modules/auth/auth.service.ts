@@ -1,17 +1,32 @@
 import {
   BadRequestException, ForbiddenException, HttpException, HttpStatus,
-  Injectable, Logger, UnauthorizedException,
+  Injectable, Logger, NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Role } from '@prisma/client';
+import { EmailTokenType, Role, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { SmsService } from './sms.service';
+import { MailService } from './mail.service';
 import { isPrivileged, MfaService } from './mfa.service';
-import { otpMayBeReturnedInResponse } from '../../config/env.validation';
-import { normalisePhone, RequestOtpDto, VerifyOtpDto } from './dto/auth.dto';
+import { otpMayBeReturnedInResponse, phoneLoginEnabled } from '../../config/env.validation';
+import {
+  EmailLoginDto, EmailRegisterDto, normaliseEmail, normalisePhone, PasswordResetDto,
+  RequestOtpDto, VerifyOtpDto,
+} from './dto/auth.dto';
+
+const VERIFY_TTL_MS = 24 * 3_600_000;
+const RESET_TTL_MS = 60 * 60_000;
+
+/**
+ * Verified against when the account does not exist, so a wrong email and a
+ * wrong password take the same time and cannot be told apart. Generated at
+ * runtime so it is a real hash with the same cost parameters.
+ */
+let dummyHash: Promise<string> | null = null;
+const getDummyHash = () => (dummyHash ??= argon2.hash(crypto.randomBytes(16).toString('hex')));
 
 /** Token scopes. A scoped token cannot be used as a normal session. */
 export const SCOPE_MFA_PENDING = 'mfa_pending';
@@ -27,11 +42,19 @@ export class AuthService {
     private config: ConfigService,
     private sms: SmsService,
     private mfa: MfaService,
+    private mail: MailService,
   ) {}
+
+  private assertPhoneLogin() {
+    if (!phoneLoginEnabled(this.config.get('PHONE_LOGIN_ENABLED'), this.config.get('NODE_ENV'))) {
+      throw new NotFoundException('Phone sign-in is not available. Use your email instead.');
+    }
+  }
 
   // ---------------- step 1: OTP ----------------
 
   async requestOtp(dto: RequestOtpDto) {
+    this.assertPhoneLogin();
     const phone = normalisePhone(dto.phone);
     const ttl = Number(this.config.get('OTP_TTL_MINUTES') ?? 5);
 
@@ -83,6 +106,7 @@ export class AuthService {
   // ---------------- step 2: verify, then branch on privilege ----------------
 
   async verifyOtp(dto: VerifyOtpDto) {
+    this.assertPhoneLogin();
     const phone = normalisePhone(dto.phone);
     const maxAttempts = Number(this.config.get('OTP_MAX_ATTEMPTS') ?? 5);
 
@@ -123,16 +147,27 @@ export class AuthService {
       });
     }
 
+    return { isNewUser: isNew, ...(await this.completeSignIn(user)) };
+  }
+
+  /**
+   * The last step of every sign-in method, so phone and email cannot drift
+   * apart on who needs a second factor.
+   */
+  private async completeSignIn(user: User) {
+    const stillSuspended =
+      user.isSuspended && (!user.suspendedUntil || user.suspendedUntil > new Date());
+    if (stillSuspended) throw new ForbiddenException('This account is suspended.');
+
     // Ordinary travellers are done here.
     if (!isPrivileged(user.role)) {
       const tokens = await this.issueTokens(user.id, user.role);
-      return { isNewUser: isNew, mfaRequired: false, user: this.publicUser(user), ...tokens };
+      return { mfaRequired: false, user: this.publicUser(user), ...tokens };
     }
 
     // Privileged roles must present a second factor, or enrol one first.
     if (!user.totpConfirmedAt) {
       return {
-        isNewUser: isNew,
         mfaRequired: true,
         mfaEnrolmentRequired: true,
         challengeToken: await this.scopedToken(user.id, SCOPE_MFA_ENROL, '15m'),
@@ -142,12 +177,166 @@ export class AuthService {
     }
 
     return {
-      isNewUser: false,
       mfaRequired: true,
       mfaEnrolmentRequired: false,
       challengeToken: await this.scopedToken(user.id, SCOPE_MFA_PENDING, '5m'),
       message: 'Enter the 6-digit code from your authenticator app.',
     };
+  }
+
+  // ---------------- email + password ----------------
+
+  /**
+   * Always answers the same way whether or not the address is registered, so
+   * the form cannot be used to discover who has an account.
+   */
+  async registerEmail(dto: EmailRegisterDto) {
+    const email = normaliseEmail(dto.email);
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const generic = { sent: true, message: 'Check your inbox for a link to confirm your email.' };
+
+    if (existing?.emailVerifiedAt) return generic;
+
+    const passwordHash = await argon2.hash(dto.password);
+    // An unverified account has no access yet, so letting a re-registration
+    // replace its password is safe: the link still goes to the real inbox.
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: existing.id }, data: { passwordHash, name: dto.name.trim() },
+        })
+      : await this.prisma.user.create({
+          data: { email, name: dto.name.trim(), passwordHash, language: 'EN' },
+        });
+
+    const devLink = await this.sendLink(user, EmailTokenType.VERIFY);
+    return { ...generic, devLink };
+  }
+
+  async resendVerification(emailRaw: string) {
+    const email = normaliseEmail(emailRaw);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const generic = { sent: true, message: 'If that account needs confirming, a new link is on its way.' };
+    if (!user || user.emailVerifiedAt || !user.passwordHash) return generic;
+    const devLink = await this.sendLink(user, EmailTokenType.VERIFY);
+    return { ...generic, devLink };
+  }
+
+  async verifyEmail(rawToken: string) {
+    const record = await this.consumeLinkToken(rawToken, EmailTokenType.VERIFY);
+    const user = await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { emailVerifiedAt: new Date() },
+    });
+    return { verified: true, ...(await this.completeSignIn(user)) };
+  }
+
+  async loginEmail(dto: EmailLoginDto) {
+    const email = normaliseEmail(dto.email);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    const ok = await argon2
+      .verify(user?.passwordHash ?? (await getDummyHash()), dto.password)
+      .catch(() => false);
+    if (!user || !user.passwordHash || !ok) {
+      throw new UnauthorizedException('Email or password is incorrect.');
+    }
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Confirm your email first. We can send the link again.',
+      });
+    }
+    return this.completeSignIn(user);
+  }
+
+  async forgotPassword(emailRaw: string) {
+    const email = normaliseEmail(emailRaw);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const generic = { sent: true, message: 'If an account uses that email, a reset link is on its way.' };
+    if (!user) return generic;
+    const devLink = await this.sendLink(user, EmailTokenType.RESET);
+    return { ...generic, devLink };
+  }
+
+  async resetPassword(dto: PasswordResetDto) {
+    const record = await this.consumeLinkToken(dto.token, EmailTokenType.RESET);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: record.userId },
+        // Receiving the reset link proves the inbox, so it also verifies it.
+        data: {
+          passwordHash: await argon2.hash(dto.password),
+          emailVerifiedAt: record.user.emailVerifiedAt ?? new Date(),
+        },
+      }),
+      // Anyone holding a session from before the reset is signed out.
+      this.prisma.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null }, data: { revokedAt: new Date() },
+      }),
+      this.prisma.emailToken.updateMany({
+        where: { userId: record.userId, type: EmailTokenType.RESET, consumedAt: null },
+        data: { consumedAt: new Date() },
+      }),
+    ]);
+    return { reset: true, message: 'Password updated. Sign in with your new password.' };
+  }
+
+  /** Issues a link token and emails it. Returns the link only when it may be echoed (dev). */
+  private async sendLink(user: User, type: EmailTokenType): Promise<string | undefined> {
+    const recent = await this.prisma.emailToken.count({
+      where: { userId: user.id, type, createdAt: { gt: new Date(Date.now() - 15 * 60_000) } },
+    });
+    if (recent >= 3) {
+      throw new HttpException('Too many emails requested. Please wait 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const raw = crypto.randomBytes(32).toString('base64url');
+    await this.prisma.emailToken.create({
+      data: {
+        userId: user.id, type, tokenHash: this.hash(raw),
+        expiresAt: new Date(Date.now() + (type === EmailTokenType.VERIFY ? VERIFY_TTL_MS : RESET_TTL_MS)),
+      },
+    });
+
+    const web = (this.config.get<string>('PUBLIC_WEB_URL') ?? 'http://localhost:5173').replace(/\/$/, '');
+    const url = `${web}/login.html?${type === EmailTokenType.VERIFY ? 'verify' : 'reset'}=${raw}`;
+    const content = type === EmailTokenType.VERIFY
+      ? this.mail.linkEmail({
+          heading: 'Confirm your email',
+          intro: `Namaste ${user.name}, confirm this address to start sharing your travels on Bato.`,
+          cta: 'Confirm email', url,
+          footer: 'This link expires in 24 hours. If you did not sign up, ignore this email.',
+        })
+      : this.mail.linkEmail({
+          heading: 'Reset your password',
+          intro: 'Someone asked to reset the password for your Bato account.',
+          cta: 'Choose a new password', url,
+          footer: 'This link expires in 1 hour. If it was not you, you can safely ignore it.',
+        });
+
+    const subject = type === EmailTokenType.VERIFY ? 'Confirm your Bato email' : 'Reset your Bato password';
+    const sent = await this.mail.send(user.email!, subject, content.text, content.html);
+    const mayEcho = otpMayBeReturnedInResponse(this.config.get('NODE_ENV'), this.mail.isConfigured);
+    if (!sent && !mayEcho) {
+      throw new HttpException('Could not send the email. Please try again shortly.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return mayEcho ? url : undefined;
+  }
+
+  private async consumeLinkToken(raw: string, type: EmailTokenType) {
+    const record = await this.prisma.emailToken.findUnique({
+      where: { tokenHash: this.hash(raw) },
+      include: { user: true },
+    });
+    if (!record || record.type !== type || record.consumedAt || record.expiresAt <= new Date()) {
+      throw new BadRequestException(
+        type === EmailTokenType.VERIFY
+          ? 'This confirmation link is invalid or has expired. Request a new one.'
+          : 'This reset link is invalid or has expired. Request a new one.',
+      );
+    }
+    await this.prisma.emailToken.update({ where: { id: record.id }, data: { consumedAt: new Date() } });
+    return record;
   }
 
   /** Step 3 for privileged roles: challenge token + TOTP becomes a real session. */
@@ -183,8 +372,10 @@ export class AuthService {
 
   // ---------------- tokens ----------------
 
-  private publicUser(u: { id: string; name: string; phone: string; role: Role; language: string }) {
-    return { id: u.id, name: u.name, phone: u.phone, role: u.role, language: u.language };
+  private publicUser(u: {
+    id: string; name: string; phone: string | null; email: string | null; role: Role; language: string;
+  }) {
+    return { id: u.id, name: u.name, phone: u.phone, email: u.email, role: u.role, language: u.language };
   }
 
   private scopedToken(sub: string, scope: string, expiresIn: string) {

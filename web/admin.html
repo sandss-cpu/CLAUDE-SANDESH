@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bato — Control Panel</title>
 <meta name="theme-color" content="#5B3FA8">
+<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -56,6 +57,10 @@ label{display:block;font-size:12.5px;font-weight:700;color:var(--text-dim);margi
 #login-view h1{font-size:26px;margin-bottom:4px}
 #login-view p.sub{color:var(--text-dim);margin:0 0 20px}
 #login-view .btn{width:100%;justify-content:center;min-height:44px;margin-top:14px}
+.login-tabs{display:flex;background:var(--surface-2);border-radius:999px;padding:4px;margin-bottom:6px}
+.login-tabs button{flex:1;min-height:38px;border:none;background:none;border-radius:999px;font-weight:700;
+  font-size:14px;color:var(--text-dim);cursor:pointer}
+.login-tabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .devcode,.secret{font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;color:var(--brand);word-break:break-all}
 .back{display:block;margin-bottom:16px;color:var(--text-dim);font-size:13.5px;text-decoration:none}
 
@@ -104,7 +109,7 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <script>
-const API = localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
 const $ = (s) => document.querySelector(s);
 const esc = (s='') => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtDate = (d) => d ? new Date(d).toLocaleString() : '—';
@@ -113,7 +118,7 @@ const state = {
   auth: null,
   screen: 'articles',
   error: '',
-  login: { step: 'phone', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false },
+  login: { step: 'email', email: '', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false },
   articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
   categories: [], issues: [],
   elevate: { items: [] },
@@ -149,7 +154,7 @@ function saveAuth(data){
   localStorage.setItem('bato.admin.auth', JSON.stringify(state.auth));
 }
 function freshLoginState(){
-  return { step: 'phone', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false };
+  return { step: 'email', email: '', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false };
 }
 
 function signOut(message){
@@ -170,12 +175,37 @@ function setLoginError(msg){ state.login.error = msg; renderLogin(); }
 
 /* =========================== login =========================== */
 
+const loginTabs = (active) => `
+  <div class="login-tabs" role="tablist" aria-label="Sign-in method">
+    <button role="tab" type="button" aria-selected="${active==='email'}" onclick="switchLogin('email')">Email</button>
+    <button role="tab" type="button" aria-selected="${active==='phone'}" onclick="switchLogin('phone')">Phone</button>
+  </div>`;
+
+function switchLogin(step){ state.login = { ...freshLoginState(), step }; renderLogin(); }
+
 const LOGIN_VIEWS = {
+  email(){
+    const l = state.login;
+    return `
+      <h1>Bato control panel</h1>
+      <p class="sub">Editors, moderators and admins sign in, then confirm with an authenticator app.</p>
+      ${loginTabs('email')}
+      <form onsubmit="loginSubmitEmail(event)">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" value="${esc(l.email)}" autofocus required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        ${l.error ? `<div class="error" role="alert">${esc(l.error)}</div>` : ''}
+        <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Signing in…':'Continue'}</button>
+      </form>
+      <a class="back" href="login.html" style="margin-top:16px">Forgot your password? Reset it on the sign-in page →</a>`;
+  },
   phone(){
     const l = state.login;
     return `
       <h1>Bato control panel</h1>
       <p class="sub">Editors, moderators and admins sign in with their phone, then an authenticator app.</p>
+      ${loginTabs('phone')}
       <form onsubmit="loginSubmitPhone(event)">
         <label for="phone">Phone number</label>
         <input id="phone" type="tel" inputmode="numeric" placeholder="98XXXXXXXX" value="${esc(l.phone)}" autofocus required>
@@ -263,19 +293,35 @@ async function completeOtpVerify(code){
   const l = state.login;
   l.error = ''; l.busy = true; l.step = 'code'; renderLogin();
   try{
-    const data = await api('/auth/otp/verify', { method: 'POST', body: { phone: l.phone, code } });
-    if(data.mfaEnrolmentRequired){
-      l.challengeToken = data.challengeToken; l.busy = false; l.step = 'enrol'; renderLogin();
-      const enrol = await api('/auth/mfa/enrol/start', { method: 'POST', body: { challengeToken: l.challengeToken } });
-      l.enrol = enrol; renderLogin();
-      return;
-    }
-    if(data.mfaRequired){
-      l.challengeToken = data.challengeToken; l.busy = false; l.step = 'mfa'; renderLogin();
-      return;
-    }
-    onSignedIn(data);
+    await handleSignInResult(await api('/auth/otp/verify', { method: 'POST', body: { phone: l.phone, code } }));
   }catch(err){ l.busy = false; l.step = 'code'; l.error = err.message; renderLogin(); }
+}
+
+async function loginSubmitEmail(e){
+  e.preventDefault();
+  const l = state.login;
+  l.email = $('#email').value.trim();
+  const password = $('#password').value;
+  l.error = ''; l.busy = true; renderLogin();
+  try{
+    await handleSignInResult(await api('/auth/email/login', { method: 'POST', body: { email: l.email, password } }));
+  }catch(err){ l.busy = false; l.step = 'email'; l.error = err.message; renderLogin(); }
+}
+
+/** Same branching for every sign-in method: session, authenticator code, or first-time enrolment. */
+async function handleSignInResult(data){
+  const l = state.login;
+  if(data.mfaEnrolmentRequired){
+    l.challengeToken = data.challengeToken; l.busy = false; l.step = 'enrol'; renderLogin();
+    l.enrol = await api('/auth/mfa/enrol/start', { method: 'POST', body: { challengeToken: l.challengeToken } });
+    renderLogin();
+    return;
+  }
+  if(data.mfaRequired){
+    l.challengeToken = data.challengeToken; l.busy = false; l.step = 'mfa'; renderLogin();
+    return;
+  }
+  onSignedIn(data);
 }
 
 async function loginSubmitMfa(e){

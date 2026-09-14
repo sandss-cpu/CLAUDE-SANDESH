@@ -1,4 +1,6 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, Length, Matches } from 'class-validator';
+import {
+  IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Length, Matches, MaxLength,
+} from 'class-validator';
 import { Language } from '@prisma/client';
 
 /** Nepali mobile numbers: 98/97/96 + 8 digits. Accepts an optional +977 prefix. */
@@ -43,6 +45,49 @@ export class MfaVerifyDto {
 export class RefreshDto {
   @IsString() @IsNotEmpty()
   refreshToken: string;
+}
+
+const PASSWORD_RULE = { message: 'Use at least 8 characters for your password' };
+
+export class EmailRegisterDto {
+  @IsString() @Length(2, 60, { message: 'Enter your name (2–60 characters)' })
+  name: string;
+
+  @IsEmail({}, { message: 'Enter a valid email address' }) @MaxLength(254)
+  email: string;
+
+  @IsString() @Length(8, 128, PASSWORD_RULE)
+  password: string;
+}
+
+export class EmailLoginDto {
+  @IsEmail({}, { message: 'Enter a valid email address' }) @MaxLength(254)
+  email: string;
+
+  @IsString() @Length(1, 128)
+  password: string;
+}
+
+export class EmailOnlyDto {
+  @IsEmail({}, { message: 'Enter a valid email address' }) @MaxLength(254)
+  email: string;
+}
+
+export class TokenDto {
+  @IsString() @Length(20, 200)
+  token: string;
+}
+
+export class PasswordResetDto {
+  @IsString() @Length(20, 200)
+  token: string;
+
+  @IsString() @Length(8, 128, PASSWORD_RULE)
+  password: string;
+}
+
+export function normaliseEmail(raw: string): string {
+  return raw.trim().toLowerCase();
 }
 
 export function normalisePhone(raw: string): string {

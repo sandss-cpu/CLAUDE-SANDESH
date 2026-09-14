@@ -5,162 +5,401 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sign in — Bato</title>
 <meta name="theme-color" content="#5B3FA8">
+<meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="config.js"></script>
 <style>
 /* Same "Prayer Flag" tokens as index.html, trimmed to what this page needs. */
 :root{
   --saffron:#F4A024; --dusk:#5B3FA8; --rhodo:#E8455F;
   --ink:#1C1A2E; --paper:#FDFAF3; --green:#3E9B4F;
-  --bg:var(--paper); --surface:#fff; --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --bg:var(--paper); --surface:#fff; --surface-2:#F6F1E6; --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
   --brand:var(--dusk); --accent:var(--saffron);
   --r:14px; --tap:48px; --pad:18px;
   --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
   --font-display:'Fraunces',Georgia,serif; --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
+html[data-theme="night"]{
+  --bg:#141024; --surface:#1E1834; --surface-2:#271F42; --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  --brand:#8B6FD4; --accent:#E8A33F; --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+html[data-theme="sun"]{
+  --bg:#fff; --surface:#fff; --surface-2:#F0EDE4; --text:#000; --text-dim:#2A2A2A; --line:#000;
+  --brand:#3A2270; --accent:#B96A00; --shadow:none;
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{
   margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-body);
-  font-size:17px;line-height:1.6;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-size:17px;line-height:1.6;display:flex;align-items:center;justify-content:center;
+  padding:24px 20px calc(24px + env(safe-area-inset-bottom));
 }
-main{width:100%;max-width:380px}
-h1{font-family:var(--font-display);font-size:26px;margin:0 0 4px;font-weight:700}
-p.sub{color:var(--text-dim);margin:0 0 22px;font-size:15px}
+main{width:100%;max-width:400px}
+h1{font-family:var(--font-display);font-size:27px;margin:0 0 4px;font-weight:700;line-height:1.2}
+p.sub{color:var(--text-dim);margin:0 0 20px;font-size:15px}
 label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--text-dim)}
 input{
   width:100%;min-height:var(--tap);background:var(--surface);color:var(--text);
   border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;font:inherit;font-size:16px;
 }
-input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .btn{
   min-height:var(--tap);border-radius:var(--r);padding:0 20px;font-weight:700;font-size:15.5px;
   display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  border:none;margin-top:18px;background:var(--accent);color:#231600;cursor:pointer;
+  border:none;margin-top:18px;background:var(--accent);color:#231600;cursor:pointer;text-decoration:none;font-family:inherit;
 }
 .btn:disabled{opacity:.55;cursor:default}
-.btn-ghost{background:transparent;color:var(--brand);font-weight:600;margin-top:10px}
+.btn-ghost{background:transparent;color:var(--brand);font-weight:600;margin-top:8px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  box-shadow:var(--shadow);padding:var(--pad);margin-top:18px}
-.hint{font-size:13px;color:var(--text-dim);margin-top:8px}
+  box-shadow:var(--shadow);padding:var(--pad);margin-top:18px;font-size:15px}
 .devcode{font-size:22px;font-weight:700;letter-spacing:.12em;color:var(--brand);margin-top:6px}
+.devlink{display:inline-block;margin-top:8px;color:var(--brand);font-weight:700;word-break:break-all}
 .error{background:#FCE9EC;color:#9C1C36;border-radius:var(--r);padding:10px 14px;font-size:14px;margin-top:14px}
+.ok{background:#E4F3E7;color:#1F6B30;border-radius:var(--r);padding:10px 14px;font-size:14px;margin-top:14px}
 html[data-theme="night"] .error{background:#3A1420;color:#F4B4C1}
+html[data-theme="night"] .ok{background:#16301C;color:#A9DDB4}
 .back{display:inline-block;margin-bottom:18px;color:var(--text-dim);font-size:14px;text-decoration:none}
+.tabs{display:flex;background:var(--surface-2);border-radius:999px;padding:4px;margin:0 0 20px}
+.tabs button{flex:1;min-height:40px;border:none;background:none;border-radius:999px;font:inherit;
+  font-weight:700;font-size:14.5px;color:var(--text-dim);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.pw{position:relative}
+.pw input{padding-right:64px}
+.pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:none;
+  color:var(--brand);font:inherit;font-size:13px;font-weight:700;padding:8px;cursor:pointer}
+.row{display:flex;justify-content:flex-end;margin-top:8px}
+.link{background:none;border:none;color:var(--brand);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:6px 0}
+.hint{font-size:12.5px;color:var(--text-dim);margin-top:6px}
+.spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand);
+  animation:spin .8s linear infinite;margin:10px 0}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
 </style>
 </head>
 <body>
 <main>
   <a class="back" href="index.html">← Back to Bato</a>
-  <div id="view"></div>
+  <div id="view" aria-live="polite"></div>
 </main>
 <script>
-const API = localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
 const params = new URLSearchParams(location.search);
-const returnTo = params.get('returnTo') || 'index.html#write';
+const safeReturn = (v) => (v && /^[\w.-]+\.html(#[\w-]*)?$/.test(v) ? v : 'index.html#write');
+const returnTo = safeReturn(params.get('returnTo'));
 
-const state = { step: 'phone', phone: '', devCode: '', error: '', busy: false };
+try{ const t = localStorage.getItem('bato.theme'); if(t) document.documentElement.dataset.theme = t; }catch(_){}
+
+const state = {
+  step: 'email', name: '', email: '', phone: '', devCode: '', devLink: '',
+  error: '', errorCode: '', notice: '', busy: false, showPw: false, resetToken: '',
+};
 
 const $ = (s) => document.querySelector(s);
-const esc = (s='') => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = (s='') => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 async function api(path, body){
   const res = await fetch(`${API}${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
-  if(!res.ok) throw new Error(json?.message || json?.error?.message || 'Something went wrong. Try again.');
+  if(!res.ok){
+    const err = new Error(json?.message || 'Something went wrong. Please try again.');
+    err.code = json?.code; err.status = res.status;
+    throw err;
+  }
   return json.data;
 }
 
-function render(){
-  $('#view').innerHTML = VIEWS[state.step]();
+function go(step, patch = {}){
+  Object.assign(state, { error: '', errorCode: '', notice: '', busy: false }, patch, { step });
+  render();
+  const first = $('#view input');
+  if(first) first.focus();
 }
 
+function render(){ $('#view').innerHTML = VIEWS[state.step](); }
+
+const tabs = (active) => `
+  <div class="tabs" role="tablist" aria-label="Sign-in method">
+    <button role="tab" type="button" aria-selected="${active==='email'}" onclick="go('email')">Email</button>
+    <button role="tab" type="button" aria-selected="${active==='phone'}" onclick="go('phone')">Phone</button>
+  </div>`;
+
+const alerts = () => `
+  ${state.error ? `<div class="error" role="alert">${esc(state.error)}
+    ${state.errorCode === 'EMAIL_NOT_VERIFIED'
+      ? `<div><button class="link" type="button" onclick="resend()">Send the confirmation link again</button></div>` : ''}
+  </div>` : ''}
+  ${state.notice ? `<div class="ok">${esc(state.notice)}</div>` : ''}`;
+
+const passwordField = (id, auto, label) => `
+  <label for="${id}">${label}</label>
+  <div class="pw">
+    <input id="${id}" type="${state.showPw ? 'text' : 'password'}" autocomplete="${auto}" required
+           minlength="${auto === 'new-password' ? 8 : 1}" maxlength="128">
+    <button type="button" onclick="togglePw('${id}')" aria-label="${state.showPw ? 'Hide' : 'Show'} password">
+      ${state.showPw ? 'Hide' : 'Show'}</button>
+  </div>
+  ${auto === 'new-password' ? '<div class="hint">At least 8 characters.</div>' : ''}`;
+
+const devLinkCard = () => state.devLink ? `
+  <div class="card">
+    <strong>Development mode:</strong> no email service is configured, so here is the link that would have been sent.
+    <a class="devlink" href="${esc(state.devLink)}">Open the link</a>
+  </div>` : '';
+
 const VIEWS = {
+  email(){
+    return `
+      <h1>Sign in to Bato</h1>
+      <p class="sub">Share your travels, vote on stories and save your trips.</p>
+      ${tabs('email')}
+      <form onsubmit="submitLogin(event)" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required value="${esc(state.email)}">
+        ${passwordField('password', 'current-password', 'Password')}
+        <div class="row"><button class="link" type="button" onclick="go('forgot', {email: $('#email').value})">Forgot password?</button></div>
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Signing in…' : 'Sign in'}</button>
+      </form>
+      <button class="btn btn-ghost" type="button" onclick="go('register', {email: $('#email').value})">New here? Create an account</button>`;
+  },
+  register(){
+    return `
+      <h1>Create your account</h1>
+      <p class="sub">We'll email you a link to confirm your address.</p>
+      <form onsubmit="submitRegister(event)" novalidate>
+        <label for="name">Your name</label>
+        <input id="name" autocomplete="name" required minlength="2" maxlength="60" value="${esc(state.name)}">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required value="${esc(state.email)}">
+        ${passwordField('password', 'new-password', 'Password')}
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Creating account…' : 'Create account'}</button>
+      </form>
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Already have an account? Sign in</button>`;
+  },
+  sent(){
+    return `
+      <h1>Check your inbox</h1>
+      <p class="sub">If <strong>${esc(state.email)}</strong> can be used, a link is on its way. It may take a minute, so check spam too.</p>
+      ${devLinkCard()}
+      ${alerts()}
+      <button class="btn btn-ghost" type="button" onclick="resend()" ${state.busy ? 'disabled' : ''}>Resend the link</button>
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Back to sign in</button>`;
+  },
+  forgot(){
+    return `
+      <h1>Reset your password</h1>
+      <p class="sub">Enter your email and we'll send you a reset link.</p>
+      <form onsubmit="submitForgot(event)" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required value="${esc(state.email)}">
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Sending…' : 'Send reset link'}</button>
+      </form>
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Back to sign in</button>`;
+  },
+  forgotSent(){
+    return `
+      <h1>Check your inbox</h1>
+      <p class="sub">If an account uses <strong>${esc(state.email)}</strong>, a reset link is on its way. It expires in 1 hour.</p>
+      ${devLinkCard()}
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Back to sign in</button>`;
+  },
+  reset(){
+    return `
+      <h1>Choose a new password</h1>
+      <p class="sub">You'll be signed out on every other device.</p>
+      <form onsubmit="submitReset(event)" novalidate>
+        ${passwordField('password', 'new-password', 'New password')}
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Saving…' : 'Save new password'}</button>
+      </form>`;
+  },
+  working(){
+    return `<h1>${esc(state.notice || 'One moment…')}</h1><div class="spinner" role="status" aria-label="Loading"></div>`;
+  },
+  linkFailed(){
+    return `
+      <h1>That link didn't work</h1>
+      <div class="error" role="alert">${esc(state.error)}</div>
+      <button class="btn" type="button" onclick="go('email')">Back to sign in</button>`;
+  },
   phone(){
     return `
-      <h1>Sign in to vlog</h1>
-      <p class="sub">Enter your phone number and we'll send you a code.</p>
-      <form onsubmit="submitPhone(event)">
+      <h1>Sign in to Bato</h1>
+      <p class="sub">Enter your Nepali mobile number and we'll text you a code.</p>
+      ${tabs('phone')}
+      <form onsubmit="submitPhone(event)" novalidate>
         <label for="phone">Phone number</label>
-        <input id="phone" type="tel" inputmode="numeric" placeholder="98XXXXXXXX"
-               value="${esc(state.phone)}" autofocus required>
-        ${state.error ? `<div class="error">${esc(state.error)}</div>` : ''}
-        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>
-          ${state.busy ? 'Sending…' : 'Send code'}
-        </button>
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="98XXXXXXXX" required value="${esc(state.phone)}">
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Sending…' : 'Send code'}</button>
       </form>`;
   },
   code(){
     return `
       <h1>Enter the code</h1>
       <p class="sub">We sent a 6-digit code to ${esc(state.phone)}.</p>
-      ${state.devCode ? `
-        <div class="card">
-          No SMS gateway configured on this server — here is the code:
-          <div class="devcode">${esc(state.devCode)}</div>
-        </div>` : ''}
-      <form onsubmit="submitCode(event)">
+      ${state.devCode ? `<div class="card">Development mode: no SMS gateway is configured. Your code is
+        <div class="devcode">${esc(state.devCode)}</div></div>` : ''}
+      <form onsubmit="submitCode(event)" novalidate>
         <label for="code">6-digit code</label>
-        <input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-               placeholder="123456" autofocus required>
-        ${state.error ? `<div class="error">${esc(state.error)}</div>` : ''}
-        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>
-          ${state.busy ? 'Checking…' : 'Sign in'}
-        </button>
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
+        ${alerts()}
+        <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Checking…' : 'Sign in'}</button>
       </form>
-      <button class="btn btn-ghost" type="button" onclick="state.step='phone';state.error='';render()">
-        Use a different number
-      </button>`;
+      <button class="btn btn-ghost" type="button" onclick="go('phone')">Use a different number</button>`;
   },
   mfaRequired(){
     return `
-      <h1>This account needs the admin panel</h1>
-      <p class="sub">
-        Accounts with editorial or admin permissions must sign in with an authenticator app,
-        which this traveller sign-in page doesn't handle.
-      </p>
-      <a class="btn" href="admin.html">Go to the admin panel</a>
-      <button class="btn btn-ghost" type="button" onclick="state.step='phone';state.error='';render()">
-        Use a different number
-      </button>`;
+      <h1>Use the control panel for this account</h1>
+      <p class="sub">Editor, moderator and admin accounts sign in with an authenticator app as well, in the control panel.</p>
+      <a class="btn" href="admin.html">Open the control panel</a>
+      <button class="btn btn-ghost" type="button" onclick="go('email')">Use a different account</button>`;
   },
 };
+
+function togglePw(id){
+  const val = $('#' + id)?.value || '';
+  state.showPw = !state.showPw;
+  const keep = { name: $('#name')?.value, email: $('#email')?.value };
+  render();
+  if(keep.name !== undefined && $('#name')) $('#name').value = keep.name;
+  if(keep.email !== undefined && $('#email')) $('#email').value = keep.email;
+  $('#' + id).value = val;
+  $('#' + id).focus();
+}
+
+function busy(){ state.error = ''; state.errorCode = ''; state.notice = ''; state.busy = true; }
+
+function fail(err, keep = {}){
+  state.busy = false; state.error = err.message; state.errorCode = err.code || '';
+  render();
+  if(keep.email && $('#email')) $('#email').value = keep.email;
+  if(keep.name && $('#name')) $('#name').value = keep.name;
+}
+
+function finish(data){
+  if(data.mfaRequired){ go('mfaRequired'); return; }
+  localStorage.setItem('bato.auth', JSON.stringify({
+    accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user,
+  }));
+  location.replace(returnTo);
+}
+
+function valid(){
+  const form = $('#view form');
+  if(form && !form.checkValidity()){
+    const bad = form.querySelector(':invalid');
+    const labelText = $(`label[for="${bad.id}"]`)?.textContent || 'This field';
+    state.error = bad.type === 'email' ? 'Enter a valid email address.'
+      : bad.id === 'password' && bad.minLength === 8 ? 'Use at least 8 characters for your password.'
+      : `${labelText} is required.`;
+    state.errorCode = '';
+    const keep = { email: $('#email')?.value, name: $('#name')?.value };
+    render();
+    if(keep.email && $('#email')) $('#email').value = keep.email;
+    if(keep.name && $('#name')) $('#name').value = keep.name;
+    $('#' + bad.id)?.focus();
+    return false;
+  }
+  return true;
+}
+
+async function submitLogin(e){
+  e.preventDefault();
+  if(!valid()) return;
+  state.email = $('#email').value.trim();
+  const password = $('#password').value;
+  busy(); render(); $('#email').value = state.email;
+  try{ finish(await api('/auth/email/login', { email: state.email, password })); }
+  catch(err){ fail(err, { email: state.email }); }
+}
+
+async function submitRegister(e){
+  e.preventDefault();
+  if(!valid()) return;
+  state.name = $('#name').value.trim();
+  state.email = $('#email').value.trim();
+  const password = $('#password').value;
+  busy(); render();
+  try{
+    const data = await api('/auth/email/register', { name: state.name, email: state.email, password });
+    go('sent', { devLink: data.devLink || '' });
+  }catch(err){ state.busy = false; state.error = err.message; render(); $('#name').value = state.name; $('#email').value = state.email; }
+}
+
+async function resend(){
+  state.busy = true;
+  try{
+    const data = await api('/auth/email/resend', { email: state.email || $('#email')?.value });
+    go('sent', { devLink: data.devLink || '', notice: 'A new link is on its way.' });
+  }catch(err){ state.busy = false; state.error = err.message; render(); }
+}
+
+async function submitForgot(e){
+  e.preventDefault();
+  if(!valid()) return;
+  state.email = $('#email').value.trim();
+  busy(); render();
+  try{
+    const data = await api('/auth/password/forgot', { email: state.email });
+    go('forgotSent', { devLink: data.devLink || '' });
+  }catch(err){ fail(err, { email: state.email }); }
+}
+
+async function submitReset(e){
+  e.preventDefault();
+  if(!valid()) return;
+  busy(); render();
+  try{
+    const data = await api('/auth/password/reset', { token: state.resetToken, password: $('#password')?.value || '' });
+    go('email', { notice: data.message });
+  }catch(err){
+    if(err.status === 400 && /link/i.test(err.message)){ go('linkFailed', { error: err.message }); return; }
+    fail(err);
+  }
+}
 
 async function submitPhone(e){
   e.preventDefault();
   state.phone = $('#phone').value.trim();
-  state.error = ''; state.busy = true; render();
+  busy(); render();
   try{
     const data = await api('/auth/otp/request', { phone: state.phone });
-    state.devCode = data.devCode || '';
-    state.busy = false; state.step = 'code'; render();
+    go('code', { devCode: data.devCode || '' });
   }catch(err){
-    state.busy = false; state.error = err.message; render();
+    if(err.status === 404) err.message = 'Phone sign-in is not available right now. Please use email.';
+    fail(err); $('#phone').value = state.phone;
   }
 }
 
 async function submitCode(e){
   e.preventDefault();
   const code = $('#code').value.trim();
-  state.error = ''; state.busy = true; render();
-  try{
-    const data = await api('/auth/otp/verify', { phone: state.phone, code });
-    if(data.mfaRequired){
-      state.busy = false; state.step = 'mfaRequired'; render();
-      return;
-    }
-    localStorage.setItem('bato.auth', JSON.stringify({
-      accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user,
-    }));
-    location.href = returnTo;
-  }catch(err){
-    state.busy = false; state.error = err.message; render();
-  }
+  busy(); render();
+  try{ finish(await api('/auth/otp/verify', { phone: state.phone, code })); }
+  catch(err){ fail(err); }
 }
 
-render();
+/* Links from emails land here. Strip the token from the address bar and history straight away. */
+(async function boot(){
+  const verify = params.get('verify');
+  const reset = params.get('reset');
+  if(verify || reset) history.replaceState(null, '', location.pathname);
+
+  if(verify){
+    go('working', { notice: 'Confirming your email…' });
+    try{ finish(await api('/auth/email/verify', { token: verify })); }
+    catch(err){ go('linkFailed', { error: err.message }); }
+    return;
+  }
+  if(reset){ go('reset', { resetToken: reset }); return; }
+  go(params.get('method') === 'phone' ? 'phone' : 'email');
+})();
 </script>
 </body>
 </html>

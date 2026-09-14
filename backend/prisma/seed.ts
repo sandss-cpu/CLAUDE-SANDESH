@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import { PrismaClient } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
@@ -404,12 +405,13 @@ Caught the next bus down at four and reached Pokhara by seven. Would do it again
 
   console.log('\nSeed complete.');
   console.log('  Demo QR short code : DEMO2024\n');
-  console.log('  Phone        Role             Sign-in');
-  console.log('  9800000001   Admin            OTP + authenticator enrolment');
-  console.log('  9800000002   Editor           OTP + authenticator enrolment');
-  console.log('  9800000003   Moderator        OTP + authenticator enrolment');
-  console.log('  9800000004   Business owner   OTP only');
-  console.log('  9800000005   Contributor      OTP only\n');
+  console.log('  Phone        Email                              Role             Sign-in');
+  console.log('  9800000001   admin@demo.bato.travel             Admin            + authenticator');
+  console.log('  9800000002   editor@demo.bato.travel            Editor           + authenticator');
+  console.log('  9800000003   moderator@demo.bato.travel         Moderator        + authenticator');
+  console.log('  9800000004   business-owner@demo.bato.travel    Business owner   password / OTP');
+  console.log('  9800000005   contributor@demo.bato.travel       Contributor      password / OTP');
+  console.log(`  Demo password for every email account: ${DEMO_PASSWORD}\n`);
   console.log('  Privileged roles must set up an authenticator app on first sign-in:');
   console.log('    1. POST /auth/otp/request     { phone }');
   console.log('    2. POST /auth/otp/verify      { phone, code }   -> challengeToken');
@@ -445,10 +447,15 @@ function upsertDestination(slug: string, name: string, nameNe: string, district:
   });
 }
 
-function upsertUser(phone: string, name: string, role: string, homeDistrict?: string) {
+/** Development only — prisma/seed-prod.ts never creates these accounts. */
+const DEMO_PASSWORD = 'BatoDemo#2026';
+
+async function upsertUser(phone: string, name: string, role: string, homeDistrict?: string) {
+  const email = `${role.toLowerCase().replace('_', '-')}@demo.bato.travel`;
+  const login = { email, passwordHash: await argon2.hash(DEMO_PASSWORD), emailVerifiedAt: new Date() };
   return prisma.user.upsert({
-    where: { phone }, update: { role: role as any },
-    create: { phone, name, role: role as any, isPhoneVerified: true, homeDistrict },
+    where: { phone }, update: { role: role as any, ...login },
+    create: { phone, name, role: role as any, isPhoneVerified: true, homeDistrict, ...login },
   });
 }
 

@@ -34,14 +34,21 @@ export function validateEnv(config: Record<string, unknown>) {
 
   // ---- production-only, and non-negotiable ----
   if (isProd) {
-    if (!str('SMS_GATEWAY_URL')) {
-      errors.push(
-        'SMS_GATEWAY_URL is required in production. Without it the login code is ' +
-        'returned in the API response, which is full account takeover.',
-      );
+    // Phone login is optional in production; when it is on, a real gateway is
+    // mandatory, because without one the login code is returned in the API
+    // response, which is full account takeover.
+    if (phoneLoginEnabled(str('PHONE_LOGIN_ENABLED'), 'production')) {
+      if (!str('SMS_GATEWAY_URL')) {
+        errors.push('SMS_GATEWAY_URL is required in production while PHONE_LOGIN_ENABLED=true');
+      }
+      if (!str('SMS_GATEWAY_TOKEN')) {
+        errors.push('SMS_GATEWAY_TOKEN is required in production while PHONE_LOGIN_ENABLED=true');
+      }
     }
-    if (!str('SMS_GATEWAY_TOKEN')) {
-      errors.push('SMS_GATEWAY_TOKEN is required in production');
+    // Same reasoning for email: without SMTP the verification link would be
+    // echoed back, letting anyone claim any address.
+    for (const k of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM']) {
+      if (!str(k)) errors.push(`${k} is required in production (email sign-in sends links)`);
     }
     const cors = str('CORS_ORIGINS');
     if (!cors) {
@@ -74,7 +81,14 @@ export function validateEnv(config: Record<string, unknown>) {
   return config;
 }
 
-/** True only when it is safe to hand a login code back over the API. */
+/** On by default in development; must be switched on explicitly in production. */
+export function phoneLoginEnabled(flag: string | undefined, nodeEnv: string | undefined): boolean {
+  if (flag === 'true') return true;
+  if (flag === 'false') return false;
+  return nodeEnv !== 'production';
+}
+
+/** True only when it is safe to hand a login code or link back over the API. */
 export function otpMayBeReturnedInResponse(
   nodeEnv: string | undefined,
   smsConfigured: boolean,

@@ -18,6 +18,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = exception.getStatus();
       const body = exception.getResponse();
       message = typeof body === 'string' ? body : (body as any).message ?? body;
+      if (typeof body === 'object' && typeof (body as any).code === 'string') code = (body as any).code;
+      // ValidationPipe returns one string per failed rule; clients show a single sentence.
+      if (Array.isArray(message)) message = message.join('. ');
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       code = exception.code;
       switch (exception.code) {

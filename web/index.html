@@ -6,6 +6,7 @@
 <title>Bato — Nepal Travel Magazine</title>
 <meta name="theme-color" content="#5B3FA8">
 <link rel="manifest" href="/manifest.json">
+<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -309,7 +310,7 @@ html[data-theme="night"] .toast{background:var(--surface-2);border:1px solid var
    demo content otherwise, so the whole flow can be shown with no backend.
    ========================================================================== */
 
-const API = localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
 const DEMO_QR = 'DEMO2024';
 
 const state = {
@@ -634,7 +635,7 @@ const SCREENS = {
             elevated — needs a quick phone sign-in first.
           </p>
           <a class="btn btn-primary" style="margin-top:14px"
-             href="login.html?returnTo=${encodeURIComponent('index.html#write')}">Sign in with your phone</a>
+             href="login.html?returnTo=${encodeURIComponent('index.html#write')}">Sign in or create an account</a>
         </div>`;
     }
 

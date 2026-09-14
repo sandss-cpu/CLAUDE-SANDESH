@@ -170,6 +170,10 @@ model User {
   language      Language @default(NE)
   role          Role     @default(READER)
   isPhoneVerified Boolean @default(false)
+  /// argon2id. Null for phone-only accounts.
+  passwordHash    String?
+  /// Email sign-in is refused until the owner has clicked the emailed link.
+  emailVerifiedAt DateTime?
   isSuspended   Boolean  @default(false)
   suspendedUntil DateTime?
   /// TOTP second factor. Mandatory for privileged roles — an SMS code alone
@@ -191,6 +195,7 @@ model User {
   reviews           Review[]
   redemptions       CouponRedemption[]
   refreshTokens     RefreshToken[]
+  emailTokens       EmailToken[]
   ownedBusinesses   Business[]        @relation("BusinessOwner")
   reportsMade       Report[]          @relation("Reporter")
   moderationActions ModerationEntry[] @relation("Moderator")
@@ -215,6 +220,27 @@ model OtpCode {
 
   @@index([phone, createdAt])
   @@map("otp_codes")
+}
+
+enum EmailTokenType {
+  VERIFY
+  RESET
+}
+
+/// Single-use link tokens. Only the sha256 is stored, so a database leak
+/// cannot be replayed as a verification or password-reset link.
+model EmailToken {
+  id         String         @id @default(uuid())
+  userId     String
+  type       EmailTokenType
+  tokenHash  String         @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime       @default(now())
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@map("email_tokens")
 }
 
 model RefreshToken {
