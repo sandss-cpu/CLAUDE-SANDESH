@@ -137,6 +137,9 @@ tr:last-child td{border-bottom:none}
 /* Scroll sideways on narrow screens rather than squeezing every column into a word-per-line stack. */
 .table-wrap table{box-shadow:none;min-width:880px}
 .table-wrap td small{white-space:nowrap}
+/* Tables placed straight into the page scroll inside themselves on narrow screens
+   instead of stretching the page (Articles, Users, Overview). */
+#main > table{display:block;max-width:100%;overflow-x:auto}
 .nowrap{white-space:nowrap}
 .pill.ACTIVE{background:#E4F3E7;color:var(--green)}
 .pill.SCHEDULED{background:#E6EEFB;color:#2F6FD0}
