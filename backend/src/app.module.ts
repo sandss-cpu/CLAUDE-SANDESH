@@ -28,6 +28,7 @@ import { SafetyModule } from './modules/safety/safety.module';
 import { MediaModule } from './modules/media/media.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { HealthModule } from './modules/health/health.module';
+import { AdsModule } from './modules/ads/ads.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { HealthModule } from './modules/health/health.module';
     SafetyModule,
     MediaModule,
     AdminModule,
+    AdsModule,
     HealthModule,
   ],
   providers: [

@@ -76,7 +76,9 @@ aside nav button{
 }
 aside nav button.active{background:rgba(255,255,255,.14);color:#fff}
 aside .signout{margin-top:22px}
-main{flex:1;padding:26px 32px;max-width:1100px}
+/* min-width:0 lets this flex child shrink, so wide tables scroll inside .table-wrap
+   instead of stretching the page and pushing the action buttons off-screen. */
+main{flex:1;min-width:0;padding:26px 32px;max-width:1100px}
 .top-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
 table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
@@ -105,6 +107,43 @@ tr:last-child td{border-bottom:none}
 .hint{font-size:12px;color:var(--text-dim);margin-top:6px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);
   white-space:nowrap;border:0}
+
+/* ---------- ads ---------- */
+.modal-wide{max-width:980px}
+.ad-form-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+.ad-preview-col{position:sticky;top:0}
+@media (max-width:860px){.ad-form-grid{grid-template-columns:1fr}.ad-preview-col{position:static;order:-1}}
+.inline-fields{display:flex;gap:8px}
+.inline-fields input{width:88px;flex:none}
+.link-choice{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 14px 10px;margin:16px 0 0}
+.link-choice legend{font-size:12.5px;font-weight:700;color:var(--text-dim);padding:0 6px}
+.link-choice label{display:flex;gap:8px;align-items:center;margin:6px 0;color:var(--text);font-weight:600;font-size:13.5px}
+.link-choice input{width:auto}
+.ad-cell{display:flex;gap:10px;align-items:center}
+.ad-cell img{width:64px;height:42px;object-fit:cover;border-radius:6px;flex:none;background:var(--surface-2)}
+.table-wrap{overflow-x:auto;border-radius:var(--r);box-shadow:var(--shadow)}
+/* Scroll sideways on narrow screens rather than squeezing every column into a word-per-line stack. */
+.table-wrap table{box-shadow:none;min-width:880px}
+.table-wrap td small{white-space:nowrap}
+.nowrap{white-space:nowrap}
+.pill.ACTIVE{background:#E4F3E7;color:var(--green)}
+.pill.SCHEDULED{background:#E6EEFB;color:#2F6FD0}
+.pill.PAUSED{background:#FDF1DA;color:#8A5300}
+.pill.EXPIRED{background:#F0EDE4;color:var(--text-dim)}
+.adp-rule{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:var(--font-display);font-size:11px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)}
+.adp-rule::before,.adp-rule::after{content:"";flex:1;height:3px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.adp-body{display:flex;gap:12px;background:#FDFAF3;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.adp-body img,.adp-noimg{width:38%;min-height:112px;object-fit:cover;flex:none;background:var(--surface-2)}
+.adp-noimg{display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim)}
+.adp-copy{padding:10px 12px 10px 0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.adp-from{font-size:10.5px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em}
+.adp-copy h3{font-size:16px;line-height:1.2}
+.adp-copy p{margin:0;font-size:13px;color:var(--text-dim)}
+.adp-cta{margin-top:auto;padding-top:4px;font-size:12.5px;font-weight:700;color:var(--brand)}
+.adp-banner .adp-body{flex-direction:column;gap:0}
+.adp-banner .adp-body img,.adp-banner .adp-noimg{width:100%;height:130px;min-height:0}
+.adp-banner .adp-copy{padding:10px 14px 12px}
 </style>
 </head>
 <body>
@@ -133,6 +172,7 @@ const state = {
   moderation: { tab: 'posts', posts: [], comments: [], reviews: [], reports: [], queue: null },
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
+  ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
 };
 
 /* =========================== API =========================== */
@@ -428,6 +468,7 @@ function onSignedIn(data){
 
 const SECTIONS = [
   ['overview', 'Overview', ['ADMIN']],
+  ['ads', 'Ads', ['ADMIN']],
   ['articles', 'Articles', ['EDITOR', 'ADMIN']],
   ['issues', 'Issues', ['EDITOR', 'ADMIN']],
   ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
@@ -470,6 +511,7 @@ function renderRoot(){
 async function renderMain(){
   const html = await (SCREENS[state.screen] || SCREENS.articles)();
   $('#main').innerHTML = html;
+  if(state.screen === 'ads' && state.ads.editing){ toggleAdLink(); updateAdPreview(); }
 }
 
 /* =========================== articles =========================== */
@@ -946,8 +988,316 @@ async function screenOverview(){
       </tbody></table>`}`;
 }
 
+/* =========================== ads (admin only) =========================== */
+
+const PLACEMENTS = {
+  TOP_BANNER: 'Top banner (Read screen)',
+  BETWEEN_STORIES: 'Between stories',
+  ARTICLE_TOP: 'Top of articles',
+  ARTICLE_BOTTOM: 'Bottom of articles',
+};
+const AD_STATUS_LABEL = { ACTIVE: 'Active', SCHEDULED: 'Scheduled', PAUSED: 'Paused', EXPIRED: 'Expired' };
+const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const isoDay = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function adTiming(ad){
+  if(ad.status === 'EXPIRED') return 'Ended';
+  if(ad.status === 'SCHEDULED'){
+    const days = Math.max(1, Math.ceil((new Date(ad.startsAt) - Date.now()) / 86_400_000));
+    return `Starts in ${plural(days, 'day')}`;
+  }
+  return `${plural(ad.daysLeft, 'day')} left`;
+}
+
+async function screenAds(){
+  const a = state.ads;
+  a.items = await api(`/ads/admin${a.status ? `?status=${a.status}` : ''}`);
+  return `
+    <div class="top-row">
+      <h2>Ads</h2>
+      <button class="btn btn-primary" onclick="openAdForm(null)">+ New ad</button>
+    </div>
+    <div class="filters">
+      <select aria-label="Filter ads by status" onchange="state.ads.status=this.value; renderMain()">
+        ${['', 'ACTIVE', 'SCHEDULED', 'PAUSED', 'EXPIRED'].map((s) =>
+          `<option value="${s}" ${a.status === s ? 'selected' : ''}>${s ? AD_STATUS_LABEL[s] : 'All ads'}</option>`).join('')}
+      </select>
+    </div>
+    ${a.flash ? `<div class="error" role="alert" style="margin-bottom:12px">${esc(a.flash)}</div>` : ''}
+    ${!a.items.length ? '<div class="empty">No ads here yet. Create one to fill a slot.</div>' : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Ad</th><th>Placement</th><th>Status</th><th>Runs</th><th>Views</th><th>Clicks</th><th></th></tr></thead>
+        <tbody>
+          ${a.items.map((ad) => `
+            <tr>
+              <td><div class="ad-cell"><img src="${esc(ad.imageUrl)}" alt="">
+                <div><strong>${esc(ad.title)}</strong><br>
+                <small>${esc(ad.advertiserName)} · ${ad.linkType === 'EXTERNAL' ? 'Opens website' : 'Overview page'}</small></div></div></td>
+              <td>${esc(PLACEMENTS[ad.placement])}</td>
+              <td><span class="pill ${ad.status}">${AD_STATUS_LABEL[ad.status]}</span></td>
+              <td>${fmtDay(ad.startsAt)} – ${fmtDay(ad.endsAt)}<br>
+                <small>${adTiming(ad)}</small></td>
+              <td>${ad.impressions}</td>
+              <td>${ad.clicks} <small>(${ad.ctr}%)</small></td>
+              <td class="row-actions">
+                <button class="btn btn-sm" onclick="openAdForm('${ad.id}')">Edit</button>
+                ${ad.status !== 'EXPIRED'
+                  ? `<button class="btn btn-sm" onclick="toggleAd('${ad.id}', ${!ad.isActive})">${ad.isActive ? 'Pause' : 'Resume'}</button>` : ''}
+                <button class="btn btn-sm btn-danger" onclick="askDeleteAd('${ad.id}')">Delete</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>`}
+    ${a.editing ? adForm(a.editing) : ''}
+    ${a.confirmDelete ? confirmDeleteAdDialog(a.items.find((x) => x.id === a.confirmDelete)) : ''}`;
+}
+
+function imageField(id, label, url, hint){
+  return `
+    <label>${label}</label>
+    <div class="cover-field">
+      <div id="${id}-preview" class="cover-preview">${url ? `<img src="${esc(url)}" alt="">` : '<span>No image yet</span>'}</div>
+      <div>
+        <input id="${id}" type="hidden" value="${esc(url)}">
+        <button class="btn btn-sm" type="button" onclick="$('#${id}-file').click()">Upload image</button>
+        <div id="${id}-status" class="hint" aria-live="polite">${hint}</div>
+        <input id="${id}-file" class="sr-only" type="file" accept="image/*" tabindex="-1" aria-label="Choose ${label.toLowerCase()}"
+               onchange="uploadAdImage([...this.files], '${id}'); this.value=''">
+      </div>
+    </div>`;
+}
+
+function adForm(ad){
+  const isNew = !ad.id;
+  const v = (k) => esc(ad[k] ?? '');
+  const link = ad.linkType || 'EXTERNAL';
+  return `
+    <div class="modal-back" onclick="if(event.target===this) closeAdForm()">
+      <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="ad-form-title">
+        <h2 id="ad-form-title" style="margin-bottom:6px">${isNew ? 'New ad' : 'Edit ad'}</h2>
+        <div class="ad-form-grid">
+          <form id="ad-form" novalidate onsubmit="saveAd(event, ${isNew ? 'null' : `'${ad.id}'`})"
+                oninput="updateAdPreview()" onchange="updateAdPreview()">
+            ${imageField('ad-image', 'Ad image', ad.imageUrl, 'Wide images work best, about 3:2')}
+            <label for="ad-title">Headline</label>
+            <input id="ad-title" maxlength="120" value="${v('title')}" aria-label="Headline"
+                   placeholder="Stay two nights, the third is free">
+            <div class="two-col">
+              <div><label for="ad-advertiser">Advertiser</label>
+                <input id="ad-advertiser" maxlength="80" value="${v('advertiserName')}"></div>
+              <div><label for="ad-tagline">Tagline <small>(optional)</small></label>
+                <input id="ad-tagline" maxlength="160" value="${v('tagline')}"></div>
+            </div>
+            <label for="ad-placement">Where it appears</label>
+            <select id="ad-placement">
+              ${Object.entries(PLACEMENTS).map(([k, l]) =>
+                `<option value="${k}" ${(ad.placement || 'BETWEEN_STORIES') === k ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <div class="two-col">
+              <div><label for="ad-start">Starts</label>
+                <input id="ad-start" type="date" value="${isoDay(ad.startsAt ? new Date(ad.startsAt) : new Date())}"></div>
+              <div><label for="ad-count">Runs for</label>
+                <div class="inline-fields">
+                  <input id="ad-count" type="number" min="1" max="52" value="${ad.durationCount ?? 1}">
+                  <select id="ad-unit" aria-label="Duration unit">
+                    ${[['DAY', 'day(s)'], ['WEEK', 'week(s)'], ['MONTH', 'month(s)']].map(([u, l]) =>
+                      `<option value="${u}" ${(ad.durationUnit || 'WEEK') === u ? 'selected' : ''}>${l}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div id="ad-ends" class="hint"></div>
+            <fieldset class="link-choice">
+              <legend>When someone taps the ad</legend>
+              <label><input type="radio" name="ad-link" value="EXTERNAL" ${link === 'EXTERNAL' ? 'checked' : ''} onchange="toggleAdLink()"
+                            aria-label="Open the advertiser's website">
+                Open the advertiser's website</label>
+              <label><input type="radio" name="ad-link" value="OVERVIEW" ${link === 'OVERVIEW' ? 'checked' : ''} onchange="toggleAdLink()"
+                            aria-label="Show an overview page inside Bato">
+                Show an overview page inside Bato</label>
+            </fieldset>
+            <div id="ad-external-fields">
+              <label for="ad-url">Website link</label>
+              <input id="ad-url" type="url" placeholder="https://" value="${v('externalUrl')}">
+            </div>
+            <div id="ad-overview-fields">
+              <label for="ad-ov-title">Overview heading</label>
+              <input id="ad-ov-title" maxlength="120" value="${v('overviewTitle')}">
+              <label for="ad-ov-body">Overview text</label>
+              <textarea id="ad-ov-body" maxlength="5000" style="min-height:120px;font-family:inherit">${v('overviewBody')}</textarea>
+              ${imageField('ad-ov-image', 'Overview image', ad.overviewImageUrl, 'Optional; the ad image is used if empty')}
+            </div>
+            <div id="ad-form-error" class="error" role="alert" hidden></div>
+            <div class="row-actions" style="margin-top:18px">
+              <button id="ad-save" class="btn btn-primary" type="submit">${isNew ? 'Create ad' : 'Save changes'}</button>
+              <button class="btn btn-ghost" type="button" onclick="closeAdForm()">Cancel</button>
+            </div>
+          </form>
+          <div class="ad-preview-col" aria-live="polite">
+            <div class="hint" style="margin:0 0 8px">How readers will see it</div>
+            <div id="ad-preview"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function adFormValues(){
+  const unit = $('#ad-unit').value;
+  const count = Math.max(1, Number($('#ad-count').value) || 1);
+  const picked = $('#ad-start').value;
+  // Today means "start now"; any other day starts at local midnight.
+  const start = !picked || picked === isoDay(new Date()) ? new Date() : new Date(`${picked}T00:00:00`);
+  const end = new Date(start);
+  if(unit === 'MONTH'){
+    // Match the server: clamp to the month's last day so 31 Jan + 1 month is 28 Feb, not 3 March.
+    const day = end.getDate();
+    end.setDate(1);
+    end.setMonth(end.getMonth() + count);
+    end.setDate(Math.min(day, new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate()));
+  }else{
+    end.setDate(end.getDate() + count * (unit === 'WEEK' ? 7 : 1));
+  }
+  const linkType = document.querySelector('input[name="ad-link"]:checked')?.value || 'EXTERNAL';
+  return { unit, count, start, end, linkType };
+}
+
+function toggleAdLink(){
+  if(!$('#ad-form')) return;
+  const external = adFormValues().linkType === 'EXTERNAL';
+  $('#ad-external-fields').hidden = !external;
+  $('#ad-overview-fields').hidden = external;
+}
+
+function updateAdPreview(){
+  const box = $('#ad-preview');
+  if(!box) return;
+  const f = adFormValues();
+  const img = $('#ad-image').value;
+  const tagline = $('#ad-tagline').value.trim();
+  box.innerHTML = `
+    <div class="adp ${$('#ad-placement').value === 'TOP_BANNER' ? 'adp-banner' : ''}">
+      <div class="adp-rule"><span>Sponsored</span></div>
+      <div class="adp-body">
+        ${img ? `<img src="${esc(img)}" alt="">` : '<div class="adp-noimg">Ad image</div>'}
+        <div class="adp-copy">
+          <div class="adp-from">${esc($('#ad-advertiser').value.trim() || 'Advertiser')}</div>
+          <h3>${esc($('#ad-title').value.trim() || 'Your headline')}</h3>
+          ${tagline ? `<p>${esc(tagline)}</p>` : ''}
+          <span class="adp-cta">${f.linkType === 'EXTERNAL' ? 'Visit website' : 'See the offer'} →</span>
+        </div>
+      </div>
+    </div>`;
+  $('#ad-ends').textContent = `Runs ${fmtDay(f.start)} to ${fmtDay(f.end)}`;
+}
+
+async function uploadAdImage(files, fieldId){
+  if(!files.length) return;
+  const status = $(`#${fieldId}-status`);
+  status.textContent = 'Uploading…';
+  try{
+    const { files: saved } = await uploadImages(files.slice(0, 1));
+    $(`#${fieldId}`).value = saved[0].url;
+    $(`#${fieldId}-preview`).innerHTML = `<img src="${esc(saved[0].url)}" alt="">`;
+    status.textContent = 'Uploaded.';
+    updateAdPreview();
+  }catch(err){
+    status.textContent = err.message;
+  }
+}
+
+function showAdError(message){
+  const box = $('#ad-form-error');
+  box.textContent = message;
+  box.hidden = false;
+  box.scrollIntoView({ block: 'nearest' });
+}
+
+/** Errors are shown in place, never by re-rendering, so nothing the admin typed is lost. */
+async function saveAd(e, id){
+  e.preventDefault();
+  $('#ad-form-error').hidden = true;
+  const f = adFormValues();
+  const dto = {
+    title: $('#ad-title').value.trim(),
+    advertiserName: $('#ad-advertiser').value.trim(),
+    tagline: $('#ad-tagline').value.trim() || undefined,
+    imageUrl: $('#ad-image').value,
+    placement: $('#ad-placement').value,
+    durationUnit: f.unit,
+    durationCount: f.count,
+    startsAt: f.start.toISOString(),
+    linkType: f.linkType,
+    externalUrl: f.linkType === 'EXTERNAL' ? $('#ad-url').value.trim() : undefined,
+    overviewTitle: f.linkType === 'OVERVIEW' ? $('#ad-ov-title').value.trim() : undefined,
+    overviewBody: f.linkType === 'OVERVIEW' ? ($('#ad-ov-body').value.trim() || undefined) : undefined,
+    overviewImageUrl: f.linkType === 'OVERVIEW' ? ($('#ad-ov-image').value || undefined) : undefined,
+  };
+  if(!dto.imageUrl){ showAdError('Upload an image for the ad first.'); return; }
+
+  const btn = $('#ad-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    if(id) await api(`/ads/admin/${id}`, { method: 'PATCH', body: dto });
+    else await api('/ads/admin', { method: 'POST', body: dto });
+    state.ads.editing = null;
+    state.ads.flash = '';
+    renderMain();
+  }catch(err){
+    showAdError(err.message);
+    btn.disabled = false; btn.textContent = id ? 'Save changes' : 'Create ad';
+  }
+}
+
+function openAdForm(id){
+  state.ads.editing = id ? state.ads.items.find((x) => x.id === id) : {};
+  state.ads.flash = '';
+  renderMain();
+}
+function closeAdForm(){ state.ads.editing = null; renderMain(); }
+
+async function toggleAd(id, isActive){
+  try{
+    await api(`/ads/admin/${id}/active`, { method: 'PATCH', body: { isActive } });
+    state.ads.flash = '';
+  }catch(err){
+    state.ads.flash = err.message;
+  }
+  renderMain();
+}
+
+function askDeleteAd(id){ state.ads.confirmDelete = id; renderMain(); }
+
+function confirmDeleteAdDialog(ad){
+  if(!ad) return '';
+  return `
+    <div class="modal-back" onclick="if(event.target===this){ state.ads.confirmDelete = null; renderMain(); }">
+      <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="del-ad-title" style="max-width:460px">
+        <h2 id="del-ad-title" style="margin-bottom:8px">Delete this ad?</h2>
+        <p style="margin:0">"${esc(ad.title)}" from ${esc(ad.advertiserName)} stops showing straight away, and its view and
+          click counts are lost. Pausing keeps them.</p>
+        <div class="row-actions" style="margin-top:18px">
+          <button class="btn btn-danger" onclick="deleteAd('${ad.id}')">Delete ad</button>
+          <button class="btn btn-ghost" onclick="state.ads.confirmDelete = null; renderMain()">Keep it</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function deleteAd(id){
+  try{
+    await api(`/ads/admin/${id}`, { method: 'DELETE' });
+    state.ads.flash = '';
+  }catch(err){
+    state.ads.flash = err.message;
+  }
+  state.ads.confirmDelete = null;
+  renderMain();
+}
+
 const SCREENS = {
-  overview: screenOverview, articles: screenArticles, issues: screenIssues,
+  overview: screenOverview, ads: screenAds, articles: screenArticles, issues: screenIssues,
   moderation: screenModeration, users: screenUsers,
 };
 

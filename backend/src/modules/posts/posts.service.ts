@@ -5,6 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { fuzzCoords } from '../../common/utils/geo.util';
 import { needsReview } from '../../common/utils/content-filter';
+import { isOwnMediaUrl } from '../../common/utils/media.util';
 import { CreatePostDto, PostQueryDto, UpdatePostDto } from './dto/post.dto';
 
 const POST_CARD = {
@@ -19,18 +20,11 @@ const POST_CARD = {
 export class PostsService {
   constructor(private prisma: PrismaService, private config: ConfigService) {}
 
-  /**
-   * A traveller post may only show images that were uploaded through
-   * /media/upload. Otherwise any URL — a tracking pixel, or a GET against
-   * another API route — would be loaded by every reader's browser.
-   */
+  /** A traveller post may only show images that were uploaded through /media/upload. */
   private assertOwnMedia(dto: CreatePostDto | UpdatePostDto) {
-    const base = (this.config.get<string>('MEDIA_BASE_URL') ?? '').replace(/\/$/, '');
-    const pattern = new RegExp(
-      `^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[0-9a-f-]{36}\\.(jpg|jpeg|png|webp|avif)$`,
-    );
+    const base = this.config.get<string>('MEDIA_BASE_URL') ?? '';
     const urls = [dto.coverImageUrl, ...(dto.photos ?? []).map((p) => p.url)].filter(Boolean);
-    if (urls.some((u) => !pattern.test(u))) {
+    if (urls.some((u) => !isOwnMediaUrl(u, base))) {
       throw new BadRequestException('Photos must be uploaded through Bato.');
     }
   }

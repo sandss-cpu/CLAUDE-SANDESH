@@ -51,6 +51,7 @@ enum TargetType {
   BUSINESS
   REVIEW
   USER
+  AD
 }
 
 enum ReactionType {
@@ -155,6 +156,10 @@ enum ModerationAct {
   UNSUSPEND_USER
   CHANGE_ROLE
   RESET_MFA
+  CREATE
+  UPDATE
+  PAUSE
+  RESUME
 }
 
 // ------------------------- IDENTITY -------------------------
@@ -198,6 +203,7 @@ model User {
   refreshTokens     RefreshToken[]
   emailTokens       EmailToken[]
   ownedBusinesses   Business[]        @relation("BusinessOwner")
+  adsCreated        Advertisement[]   @relation("AdCreator")
   reportsMade       Report[]          @relation("Reporter")
   moderationActions ModerationEntry[] @relation("Moderator")
   emergencyContacts EmergencyContact[]
@@ -762,6 +768,7 @@ model Business {
   sponsoredArticles Article[]
   itineraryStops    ItineraryStop[]
   subscriptionEvents SubscriptionEvent[]
+  advertisements     Advertisement[]
 
   @@index([category, tier])
   @@map("businesses")
@@ -878,6 +885,60 @@ model SubscriptionEvent {
 
   @@index([businessId, createdAt])
   @@map("subscription_events")
+}
+
+// ------------------------- MARKETING SLOTS -------------------------
+
+enum AdPlacement {
+  TOP_BANNER
+  BETWEEN_STORIES
+  ARTICLE_TOP
+  ARTICLE_BOTTOM
+}
+
+enum AdDurationUnit {
+  DAY
+  WEEK
+  MONTH
+}
+
+enum AdLinkType {
+  EXTERNAL
+  OVERVIEW
+}
+
+/// Newspaper-style paid placement. Status is derived, never stored:
+/// paused (isActive false), scheduled (before startsAt), expired (after
+/// endsAt), otherwise active — so an expired ad cannot show even if no job ran.
+model Advertisement {
+  id               String         @id @default(uuid())
+  title            String
+  advertiserName   String
+  tagline          String?
+  imageUrl         String
+  placement        AdPlacement
+  durationUnit     AdDurationUnit
+  durationCount    Int
+  startsAt         DateTime
+  endsAt           DateTime
+  linkType         AdLinkType
+  externalUrl      String?
+  overviewTitle    String?
+  overviewBody     String?
+  overviewImageUrl String?
+  businessId       String?
+  isActive         Boolean        @default(true)
+  impressions      Int            @default(0)
+  clicks           Int            @default(0)
+  createdById      String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  business  Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("AdCreator", fields: [createdById], references: [id])
+
+  @@index([placement, isActive, startsAt, endsAt])
+  @@map("advertisements")
 }
 
 // ------------------------- OPERATOR FEEDBACK -------------------------
