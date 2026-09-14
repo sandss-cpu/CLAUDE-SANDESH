@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
@@ -13,6 +14,19 @@ async function bootstrap() {
   const isProd = config.get('NODE_ENV') === 'production';
 
   app.setGlobalPrefix(prefix, { exclude: ['health'] });
+
+  /**
+   * Behind a hosting proxy (Render) every request arrives from the proxy's
+   * address. Without this, rate limits are shared by all visitors and every
+   * anonymous report counts as the same person. It is a hop count rather than
+   * `true`, because trusting X-Forwarded-For with no proxy in front would let
+   * any client choose its own IP.
+   */
+  const proxyHops = Number(config.get('TRUST_PROXY') ?? 0);
+  if (proxyHops > 0) {
+    app.set('trust proxy', proxyHops);
+    logger.log(`Client IPs taken from ${proxyHops} trusted proxy hop(s)`);
+  }
 
   app.use(
     helmet({
@@ -55,8 +69,6 @@ async function bootstrap() {
       transform: true,
       forbidNonWhitelisted: false,
       transformOptions: { enableImplicitConversion: true },
-      // Do not leak validation internals to the client in production.
-      disableErrorMessages: isProd === true && false,
     }),
   );
 

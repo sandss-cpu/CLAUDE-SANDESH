@@ -5,16 +5,20 @@ Context for AI assistants working in this repository. Read this before changing 
 ## What this is
 
 **Bato** — a Nepali travel magazine reached by scanning a QR code stuck to a bus
-seat-back, plus a traveller blog, offline maps, an itinerary builder, and a paid
-listing platform for tourism businesses.
+seat-back, plus a traveller vlog feed with voting, offline maps, an itinerary builder,
+newspaper-style ad slots, and a paid listing platform for tourism businesses.
 
 The full product specification lives in `QR_Travel_Magazine_Feature_Spec.md` at the
 repository root. When a decision here seems arbitrary, the spec usually explains it.
 
 | Path | What it is |
 |---|---|
-| `backend/` | NestJS 10 + Prisma 5 + PostgreSQL. 74 TypeScript files, 15 modules, 42 models |
-| `web/` | Single-file installable PWA. Offline-first |
+| `backend/` | NestJS 10 + Prisma 5 + PostgreSQL |
+| `web/index.html` | Single-file installable reader PWA. Offline-first |
+| `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
+| `web/admin.html` | Control panel: articles, issues, ads, moderation, users, overview |
+| `web/config.js` | API address; overwritten by the Render static-site build |
+| `render.yaml` | Deployment blueprint (Postgres, API with uploads disk, static site) |
 
 ## Commands
 
@@ -25,10 +29,15 @@ docker compose up -d db        # from the repo root
 npm install
 npx prisma generate            # required after any schema change
 npx prisma migrate dev --name <change>
-npm run seed
+npm run seed                   # demo accounts; email password BatoDemo#2026
+npm run seed:prod              # production: categories + first admin from ADMIN_* env vars
 npm run start:dev              # http://localhost:3000/api/v1
-npm run build
+npm run build                  # uses tsconfig.build.json → dist/main.js
 ```
+
+Never run `npm audit fix --omit=dev`: it prunes dev dependencies from `node_modules`,
+and `npx tsc` then silently downloads an unrelated package named `tsc`. Run
+`npm install` to restore them, and prefer `./node_modules/.bin/tsc`.
 
 Health check is at `/health`, deliberately outside the `api/v1` prefix.
 
@@ -42,10 +51,17 @@ on an unsafe configuration. This is intentional — the two worst misconfigurati
 this system used to be silent.
 
 - `JWT_SECRET` must be 32+ chars and not the example placeholder
-- In production: `SMS_GATEWAY_URL`, `SMS_GATEWAY_TOKEN`, `CORS_ORIGINS` (no wildcard),
-  `PUBLIC_WEB_URL` and `API_PUBLIC_URL` are all mandatory and must be HTTPS
-- With no SMS gateway in development, the login OTP is returned in the response as
-  `devCode`. Production cannot reach that state because it refuses to boot
+- In production: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `CORS_ORIGINS`
+  (no wildcard), and HTTPS `PUBLIC_WEB_URL` and `API_PUBLIC_URL` are mandatory
+- `PHONE_LOGIN_ENABLED` defaults on in development and off in production. When on in
+  production, `SMS_GATEWAY_URL` and `SMS_GATEWAY_TOKEN` become mandatory
+- With no gateway in development, the OTP comes back as `devCode` and email links as
+  `devLink`. Production cannot reach that state because it refuses to boot
+- `TRUST_PROXY` is a hop count (0 locally, 1 on Render). At 0 behind a proxy, every
+  visitor shares one IP for rate limits and report counting. Never set it to `true`:
+  with no proxy in front, clients could choose their own IP
+- `MEDIA_BASE_URL` must match where uploads are served. Posts and ads only accept
+  image URLs of the form `MEDIA_BASE_URL/<uuid>.<ext>`
 
 **`API_PUBLIC_URL` matters more than it looks.** Offline packs are cached from it.
 Set it wrong and offline reading fails silently while still reporting success — see
@@ -69,7 +85,17 @@ when a signed-in user should be recognised but anonymous access is still allowed
 ### Modules
 
 `auth` `users` `qr` `magazine` `posts` `engagement` `places` `itineraries`
-`businesses` `operators` `moderation` `safety` `media` `admin` `health`
+`businesses` `operators` `moderation` `safety` `media` `admin` `ads` `health`
+
+- **auth**: every sign-in method ends in `completeSignIn()`, which blocks suspended
+  accounts and sends privileged roles to the authenticator step. Add new methods
+  through it, never around it
+- **posts**: publish-first. A post goes live immediately unless `needsReview()`
+  (`common/utils/content-filter.ts`) flags it; votes live in `PostVote`, separate from `Reaction`
+- **ads**: status (active / scheduled / paused / expired) is derived from dates plus
+  `isActive`, never stored. MONTH runs clamp to the month's last day
+- **moderation**: reports de-duplicate per person; three distinct people auto-hide a live
+  post or comment. People are counted by account, or for anonymous reports by `ipHash`
 
 `qr.resolve()` is the centre of the product. One unauthenticated call returns the
 operator, route, corridor-specific articles, corridor-targeted businesses, the
@@ -126,6 +152,28 @@ cannot be bypassed by calling the API with the challenge directly.
 `moderationNote`, where a moderator writing a note destroyed the idempotency key and
 a replayed offline draft duplicated.
 
+**The service worker serves pages network-first** (3-second fallback to cache). It was
+cache-first, so a deploy never reached anyone who had visited before. Pages,
+`sw.js` and `config.js` are also served `no-cache` by `render.yaml`.
+
+**Refresh tokens are single-use, so refresh one at a time.** The web apps serialise
+refreshes with `navigator.locks` across tabs. Two tabs refreshing with the same token
+look like token theft, and the server ends the whole session.
+
+**Moderation `act()` uses `updateMany` / `deleteMany`.** A plain `update` on content
+that was already deleted threw, rolled back the transaction, and left its reports
+stuck open. Keeping a reported post preserves its `publishedAt`, so it doesn't jump to
+the top of the feed. Dismissing a report never publishes a draft article or switches a
+business back on.
+
+**Never put user text straight into an inline `onclick`.** `JSON.stringify(title)`
+inside a double-quoted attribute ends the attribute at the first quote; that button
+never worked. Pass an id and look the text up.
+
+**After a backend change, check which process holds port 3000.** `nest start --watch`
+restarts can hit EADDRINUSE and leave the old process serving stale code. Restart
+by killing whatever `lsof -ti :3000` returns.
+
 ## Domain rules that look like bugs but are not
 
 - **Ride feedback is anonymous.** A passenger will not rate a driver honestly with
@@ -170,26 +218,27 @@ unreachable, so the whole flow demos with no backend running.
 
 Real, and worth knowing before you plan work:
 
-1. **The PWA never authenticates.** No login screen, no token storage, no
-   `Authorization` header. Publish, claim coupon, rate ride and SOS only show toasts.
-   This blocks real use
-2. **No PWA icons.** `manifest.json` points at `/icons/icon-192.png` and
-   `icon-512.png`, which do not exist, so Android installation fails
-3. **No admin UI.** Admin capability is API-only
-4. **Articles cannot link translations.** `Language` is a field on `Article`, not a
+1. **Some PWA actions are still toasts only.** Claim coupon, rate ride and SOS don't
+   call the API yet; sign-in, publishing, photos, voting and reporting do
+2. **Articles cannot link translations.** `Language` is a field on `Article`, not a
    relationship between versions, so a language toggle needs a schema change
-5. **No payment integration.** No eSewa, no Khalti. Tiers are set by hand
-6. **No Bikram Sambat dates** anywhere
-7. **No tests**, and `strictNullChecks` is off
+3. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
+4. **No Bikram Sambat dates** anywhere
+5. **No tests**, and `strictNullChecks` is off
+6. **Outstanding `npm audit` advisories** need NestJS 12 and nodemailer 10, both major upgrades
+7. **No Content-Security-Policy on the web app.** The pages use inline scripts
 
 ## Seeded accounts
 
 Demo QR short code: **`DEMO2024`** (Kathmandu–Pokhara, seat 12, Ganapati Deluxe).
 
-| Phone | Role | Sign-in |
+Every email account's password is `BatoDemo#2026`. Privileged roles also enrol an
+authenticator on first sign-in.
+
+| Email | Phone | Role |
 |---|---|---|
-| 9800000001 | Admin | OTP + authenticator |
-| 9800000002 | Editor | OTP + authenticator |
-| 9800000003 | Moderator | OTP + authenticator |
-| 9800000004 | Business owner | OTP only |
-| 9800000005 | Contributor | OTP only |
+| admin@demo.bato.travel | 9800000001 | Admin |
+| editor@demo.bato.travel | 9800000002 | Editor |
+| moderator@demo.bato.travel | 9800000003 | Moderator |
+| business-owner@demo.bato.travel | 9800000004 | Business owner |
+| contributor@demo.bato.travel | 9800000005 | Contributor |

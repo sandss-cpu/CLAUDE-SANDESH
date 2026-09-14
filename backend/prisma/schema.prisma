@@ -1019,6 +1019,11 @@ model SosEvent {
 model Report {
   id         String       @id @default(uuid())
   reporterId String?
+  /// Anonymous reporters are told apart by device session for de-duplication,
+  /// and counted towards auto-hide by a salted hash of their network address,
+  /// so one person with many browser sessions still counts once.
+  sessionId  String?
+  ipHash     String?
   targetType TargetType
   targetId   String
   reason     ReportReason
@@ -1029,6 +1034,7 @@ model Report {
   reporter User? @relation("Reporter", fields: [reporterId], references: [id])
 
   @@index([status, createdAt])
+  @@index([targetType, targetId, status])
   @@map("reports")
 }
 

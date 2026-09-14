@@ -1,0 +1,123 @@
+# Render Blueprint for Bato: managed Postgres, the NestJS API, and the static web app.
+#
+# Deploy: Render dashboard → New → Blueprint → pick this repository.
+# Entries marked `sync: false` are filled in on the dashboard. The API refuses to
+# start until they are, by design (see backend/src/config/env.validation.ts).
+
+databases:
+  - name: bato-db
+    databaseName: bato
+    user: bato
+    region: singapore        # closest Render region to Nepal
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: bato-api
+    runtime: node
+    region: singapore
+    plan: starter            # a persistent disk needs a paid instance; free instances lose uploads on every deploy
+    rootDir: backend
+    # --include=dev: the Nest CLI and Prisma CLI are dev dependencies, and Render
+    # skips those when NODE_ENV=production, which would break both build and migrate.
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    preDeployCommand: npx prisma migrate deploy
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    disk:
+      name: uploads
+      mountPath: /var/data/uploads
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bato-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: REFRESH_EXPIRES_DAYS
+        value: "60"
+      # One proxy (Render's) sits in front of the API; without this every visitor
+      # shares one address for rate limiting and report counting.
+      - key: TRUST_PROXY
+        value: "1"
+      # Email is the sign-in method. Turning phone sign-in on also requires an SMS gateway.
+      - key: PHONE_LOGIN_ENABLED
+        value: "false"
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: MAX_UPLOAD_MB
+        value: "8"
+      # https://<your bato-web address>, e.g. https://bato-web.onrender.com
+      - key: PUBLIC_WEB_URL
+        sync: false
+      # Same value as PUBLIC_WEB_URL (comma-separate if you add a custom domain)
+      - key: CORS_ORIGINS
+        sync: false
+      # https://<your bato-api address>
+      - key: API_PUBLIC_URL
+        sync: false
+      # https://<your bato-api address>/static
+      - key: MEDIA_BASE_URL
+        sync: false
+      # Any SMTP provider: Resend, Brevo, Mailgun, Amazon SES…
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      # e.g. "Bato <no-reply@yourdomain.com>" on a domain verified with the provider
+      - key: MAIL_FROM
+        sync: false
+
+  - type: web
+    name: bato-web
+    runtime: static
+    rootDir: web
+    # Writes the API address the pages call; the committed config.js points at localhost.
+    buildCommand: >-
+      printf 'window.BATO_CONFIG = { api: "%s/api/v1" };\n' "$BATO_API_URL" > config.js
+    staticPublishPath: .
+    envVars:
+      # https://<your bato-api address>, without a trailing slash
+      - key: BATO_API_URL
+        sync: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(self), geolocation=(self), microphone=()
+      # Pages, the service worker and config must be revalidated on every visit,
+      # or readers keep running an old build after a deploy.
+      - path: /
+        name: Cache-Control
+        value: no-cache
+      - path: /*.html
+        name: Cache-Control
+        value: no-cache
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /config.js
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.json
+        name: Cache-Control
+        value: no-cache

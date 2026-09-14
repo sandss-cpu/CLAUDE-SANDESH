@@ -23,6 +23,11 @@ export function validateEnv(config: Record<string, unknown>) {
   // ---- always required ----
   if (!str('DATABASE_URL')) errors.push('DATABASE_URL is required');
 
+  const trustProxy = str('TRUST_PROXY');
+  if (trustProxy && !/^[0-5]$/.test(trustProxy)) {
+    errors.push('TRUST_PROXY must be the number of proxies in front of the API (0–5); Render needs 1');
+  }
+
   const secret = str('JWT_SECRET');
   if (!secret) {
     errors.push('JWT_SECRET is required');

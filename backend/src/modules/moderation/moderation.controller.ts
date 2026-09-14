@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Post, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Role, TargetType } from '@prisma/client';
 import { ModerationService } from './moderation.service';
 import { CreateReportDto, ModerateDto } from './dto/moderation.dto';
@@ -11,9 +12,11 @@ export class ModerationController {
   constructor(private moderation: ModerationService) {}
 
   /** Anyone can report, signed in or not. Required by Apple Guideline 1.2. */
-  @OptionalAuth() @Post('report')
-  report(@Body() dto: CreateReportDto, @CurrentUser() u?: AuthUser) {
-    return this.moderation.report(dto, u?.id);
+  @OptionalAuth()
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  @Post('report')
+  report(@Body() dto: CreateReportDto, @Ip() ip: string, @CurrentUser() u?: AuthUser) {
+    return this.moderation.report(dto, u?.id, ip);
   }
 
   @Roles(Role.MODERATOR, Role.ADMIN) @Get('queue')

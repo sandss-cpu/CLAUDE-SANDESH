@@ -68,6 +68,18 @@ label{display:block;font-size:12.5px;font-weight:700;color:var(--text-dim);margi
 #shell{display:none;min-height:100vh}
 #shell.on{display:flex}
 aside{width:210px;flex:none;background:var(--ink);color:#fff;padding:20px 14px;min-height:100vh}
+/* Phones and small tablets: the sidebar becomes a scrollable top bar. */
+@media (max-width:800px){
+  #shell.on{flex-direction:column}
+  aside{width:auto;min-height:0;padding:12px 14px;position:sticky;top:0;z-index:5}
+  aside h1{font-size:16px}
+  aside .who{margin-bottom:8px}
+  aside nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px}
+  aside nav button{white-space:nowrap;width:auto;margin:0}
+  aside .signout{margin-top:6px}
+  main{padding:18px 16px}
+  .two-col{grid-template-columns:1fr}
+}
 aside h1{color:#fff;font-size:18px;margin-bottom:2px}
 aside .who{font-size:12px;color:#B7AEDC;margin-bottom:18px}
 aside nav button{
@@ -144,6 +156,35 @@ tr:last-child td{border-bottom:none}
 .adp-banner .adp-body{flex-direction:column;gap:0}
 .adp-banner .adp-body img,.adp-banner .adp-noimg{width:100%;height:130px;min-height:0}
 .adp-banner .adp-copy{padding:10px 14px 12px}
+
+/* ---------- dialogs, notices, moderation ---------- */
+.dialog-back{z-index:30;align-items:center}
+.dialog{max-width:460px}
+.dialog h2{font-size:21px;margin-bottom:6px}
+.dialog-msg{margin:0;color:var(--text-dim);font-size:14.5px}
+.notice{position:fixed;right:20px;bottom:20px;z-index:40;max-width:380px;padding:12px 16px;border-radius:var(--r);
+  background:var(--ink);color:#fff;font-weight:600;font-size:14px;box-shadow:var(--shadow)}
+.notice.error{background:#9C1C36}
+.nav-badge{display:inline-block;min-width:20px;padding:0 6px;margin-left:8px;border-radius:999px;background:var(--rhodo);
+  color:#fff;font-size:11.5px;font-weight:700;line-height:20px;text-align:center}
+.report-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:16px 18px;margin-bottom:14px}
+.report-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;font-size:13.5px;margin-bottom:10px}
+.report-reasons{display:flex;gap:6px;flex-wrap:wrap}
+.pill.REPORT{background:#FCE9EC;color:#9C1C36}
+.report-body{display:flex;gap:14px;align-items:flex-start}
+.report-body img{width:120px;height:84px;object-fit:cover;border-radius:8px;flex:none;background:var(--surface-2)}
+.report-content{min-width:0}
+.report-content h3{font-size:17px;margin:2px 0 4px}
+.report-content p{margin:0;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.report-kind{font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em}
+.vis{text-transform:none;letter-spacing:0}
+.vis.live{color:var(--green)}
+.report-details{margin-top:10px;font-size:13.5px}
+.report-details summary{cursor:pointer;font-weight:600;color:var(--brand)}
+.report-details ul{margin:8px 0 0;padding-left:18px}
+.report-details li{margin-bottom:4px;overflow-wrap:anywhere}
+@media (max-width:640px){.report-body{flex-direction:column}.report-body img{width:100%;height:160px}}
 </style>
 </head>
 <body>
@@ -169,7 +210,7 @@ const state = {
   articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
   categories: [], issues: [],
   elevate: { items: [] },
-  moderation: { tab: 'posts', posts: [], comments: [], reviews: [], reports: [], queue: null },
+  moderation: { tab: 'reports', posts: [], comments: [], reviews: [], reports: [], queue: null, badge: 0 },
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
   ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
@@ -464,6 +505,83 @@ function onSignedIn(data){
   renderRoot();
 }
 
+/* =========================== dialogs & notices =========================== */
+
+/**
+ * In-page replacement for prompt(), confirm() and alert(): styled, keyboard
+ * accessible, and reachable by assistive technology. Resolves to the entered
+ * value (or true when there is no field), or null when cancelled.
+ */
+function askDialog({ title, message = '', confirmLabel = 'Confirm', danger = false, field = null }){
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'modal-back dialog-back';
+    const control = !field ? ''
+      : field.type === 'select'
+        ? `<select id="dlg-field" aria-label="${esc(field.label)}">${field.options.map(([value, text]) =>
+            `<option value="${esc(value)}" ${value === field.value ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>`
+        : field.type === 'textarea'
+          ? `<textarea id="dlg-field" aria-label="${esc(field.label)}" maxlength="1000" style="min-height:90px;font-family:inherit"
+               placeholder="${esc(field.placeholder || '')}"></textarea>`
+          : `<input id="dlg-field" aria-label="${esc(field.label)}" type="${field.type || 'text'}" autocomplete="off"
+               ${field.min != null ? `min="${field.min}"` : ''} ${field.max != null ? `max="${field.max}"` : ''}
+               placeholder="${esc(field.placeholder || '')}" value="${esc(field.value ?? '')}">`;
+    back.innerHTML = `
+      <form class="modal dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title"
+            ${message ? 'aria-describedby="dlg-msg"' : ''} novalidate>
+        <h2 id="dlg-title">${esc(title)}</h2>
+        ${message ? `<p id="dlg-msg" class="dialog-msg">${esc(message)}</p>` : ''}
+        ${field ? `<label for="dlg-field">${esc(field.label)}</label>${control}` : ''}
+        <div id="dlg-error" class="error" role="alert" hidden></div>
+        <div class="row-actions" style="margin-top:18px">
+          <button type="submit" class="btn ${danger ? 'btn-danger' : 'btn-primary'}">${esc(confirmLabel)}</button>
+          <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
+        </div>
+      </form>`;
+
+    const returnFocus = document.activeElement;
+    const close = (value) => { back.remove(); returnFocus?.focus?.(); resolve(value); };
+    back.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if(!field) return close(true);
+      const input = back.querySelector('#dlg-field');
+      const value = input.value.trim();
+      const problem = field.validate ? field.validate(value) : '';
+      if(problem){
+        const box = back.querySelector('#dlg-error');
+        box.textContent = problem;
+        box.hidden = false;
+        input.focus();
+        return;
+      }
+      close(value);
+    });
+    back.querySelector('[data-cancel]').addEventListener('click', () => close(null));
+    back.addEventListener('click', (e) => { if(e.target === back) close(null); });
+    back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(null); });
+    document.body.appendChild(back);
+    (back.querySelector('#dlg-field') || back.querySelector('button[type="submit"]')).focus();
+  });
+}
+
+let noticeTimer = null;
+/** A short status message in the corner, announced to screen readers. */
+function notify(message, kind = 'ok'){
+  let box = document.getElementById('notice');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'notice';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    document.body.appendChild(box);
+  }
+  box.className = `notice ${kind}`;
+  box.textContent = message;
+  box.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { box.hidden = true; }, kind === 'error' ? 6000 : 3500);
+}
+
 /* =========================== shell =========================== */
 
 const SECTIONS = [
@@ -486,9 +604,11 @@ function renderSidebar(){
     <h1>Bato</h1>
     <div class="who">${esc(state.auth?.user?.name || '')} · ${esc(role || '')}</div>
     <nav>
-      ${visibleSections().map(([key, label]) =>
-        `<button class="${state.screen===key?'active':''}" onclick="goSection('${key}')">${label}</button>`
-      ).join('')}
+      ${visibleSections().map(([key, label]) => {
+        const badge = key === 'moderation' && state.moderation.badge
+          ? `<span class="nav-badge" aria-label="${state.moderation.badge} waiting">${state.moderation.badge}</span>` : '';
+        return `<button class="${state.screen===key?'active':''}" onclick="goSection('${key}')">${label}${badge}</button>`;
+      }).join('')}
     </nav>
     <div class="signout"><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
 }
@@ -501,6 +621,7 @@ function renderRoot(){
     $('#shell').classList.add('on');
     renderSidebar();
     renderMain();
+    refreshModerationBadge();
   } else {
     $('#shell').classList.remove('on');
     $('#login-view').style.display = 'block';
@@ -675,10 +796,25 @@ async function archiveArticle(id){
   await api(`/magazine/articles/${id}`, { method: 'PATCH', body: { status: 'ARCHIVED' } });
   await loadArticles(); renderMain();
 }
-async function deleteArticleForever(id, title){
-  const typed = prompt(`This permanently deletes "${title}". Type DELETE to confirm.`);
-  if(typed !== 'DELETE') return;
-  await api(`/magazine/articles/${id}`, { method: 'DELETE' });
+async function deleteArticleForever(id){
+  const title = state.articles.items.find((x) => x.id === id)?.title || 'this article';
+  const typed = await askDialog({
+    title: 'Delete this article permanently?',
+    message: `“${title}” is removed for good, with its route and destination links. This can’t be undone; archiving hides it instead and can be reversed.`,
+    confirmLabel: 'Delete permanently',
+    danger: true,
+    field: {
+      label: 'Type DELETE to confirm', placeholder: 'DELETE',
+      validate: (v) => (v === 'DELETE' ? '' : 'Type DELETE in capital letters to confirm.'),
+    },
+  });
+  if(typed === null) return;
+  try{
+    await api(`/magazine/articles/${id}`, { method: 'DELETE' });
+    notify('Article deleted.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
   await loadArticles(); renderMain();
 }
 function filterArticles(patch){ Object.assign(state.articles, patch); loadArticles().then(renderMain); }
@@ -713,7 +849,7 @@ async function screenArticles(){
               <button class="btn btn-sm" onclick='editArticle("${x.id}")'>Edit</button>
               ${x.status !== 'PUBLISHED' ? `<button class="btn btn-sm btn-brand" onclick="publishArticle('${x.id}')">Publish</button>` : ''}
               ${x.status !== 'ARCHIVED' ? `<button class="btn btn-sm" onclick="archiveArticle('${x.id}')">Archive</button>` : ''}
-              ${role === 'ADMIN' ? `<button class="btn btn-sm btn-danger" onclick="deleteArticleForever('${x.id}', ${JSON.stringify(x.title)})">Delete forever</button>` : ''}
+              ${role === 'ADMIN' ? `<button class="btn btn-sm btn-danger" onclick="deleteArticleForever('${x.id}')">Delete forever</button>` : ''}
             </td>
           </tr>`).join('')}
       </tbody></table>`}
@@ -748,8 +884,11 @@ async function screenElevate(){
 async function elevatePost(postId){
   try{
     await api('/magazine/elevate', { method: 'POST', body: { postId } });
+    notify('Added to the magazine with the traveller’s byline.');
     await loadArticles(); renderMain();
-  }catch(err){ alert(err.message); }
+  }catch(err){
+    notify(err.message, 'error');
+  }
 }
 
 /* =========================== issues =========================== */
@@ -787,8 +926,11 @@ async function createIssue(e){
   };
   try{
     await api('/magazine/issues', { method: 'POST', body: dto });
+    notify(`Issue ${dto.number} created.`);
     state.issues = []; await loadReferenceData(); renderMain();
-  }catch(err){ alert(err.message); }
+  }catch(err){
+    notify(err.message, 'error');
+  }
 }
 async function publishIssue(id){
   await api(`/magazine/issues/${id}/publish`, { method: 'PATCH' });
@@ -796,6 +938,13 @@ async function publishIssue(id){
 }
 
 /* =========================== moderation =========================== */
+
+const REASON_LABEL = {
+  SPAM: 'Spam', HARASSMENT: 'Harassment', MISINFORMATION: 'Misinformation', ILLEGAL: 'Illegal or dangerous',
+  SEXUAL_CONTENT: 'Sexual content', COPYRIGHT: 'Copyright', UNSAFE_BUSINESS: 'Unsafe business', OTHER: 'Other',
+};
+
+const queueTotal = (q) => q.reportedItems + q.pendingPosts + q.pendingComments + q.pendingReviews;
 
 async function loadModeration(){
   const m = state.moderation;
@@ -805,12 +954,29 @@ async function loadModeration(){
     api('/moderation/reviews'), api('/moderation/reports'),
   ]);
   m.queue = queue; m.posts = posts; m.comments = comments; m.reviews = reviews; m.reports = reports;
+  m.badge = queueTotal(queue);
+}
+
+/** Keeps the Moderation badge current from any screen. */
+async function refreshModerationBadge(){
+  if(!['MODERATOR', 'ADMIN'].includes(state.auth?.user?.role)) return;
+  try{
+    state.moderation.badge = queueTotal(await api('/moderation/queue'));
+    renderSidebar();
+  }catch(_){}
+}
+
+function removeLabel(type){
+  return {
+    POST: 'Remove vlog', COMMENT: 'Remove comment', REVIEW: 'Reject review',
+    ARTICLE: 'Archive article', BUSINESS: 'Switch off listing', USER: 'Suspend account',
+  }[type] || 'Remove';
 }
 
 function modTable(items, targetType, columns){
-  if(!items.length) return '<div class="empty">Nothing pending.</div>';
+  if(!items.length) return '<div class="empty">Nothing waiting for review.</div>';
   return `
-    <table><thead><tr>${columns.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
+    <div class="table-wrap"><table><thead><tr>${columns.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
     <tbody>
       ${items.map(x => `
         <tr>
@@ -821,38 +987,133 @@ function modTable(items, targetType, columns){
             <button class="btn btn-sm btn-danger" onclick="moderate('${targetType}','${x.id}','DELETE')">Delete</button>
           </td>
         </tr>`).join('')}
-    </tbody></table>`;
+    </tbody></table></div>`;
+}
+
+/** Only irreversible removal asks for confirmation; keeping, rejecting and hiding act straight away. */
+async function confirmRemoval(targetType, what){
+  return askDialog({
+    title: `${removeLabel(targetType)}?`,
+    message: ['POST', 'COMMENT'].includes(targetType)
+      ? `${what} is deleted for good. The author can’t restore it, and every open report on it is closed.`
+      : `${what} stops being visible to readers, and every open report on it is closed.`,
+    confirmLabel: removeLabel(targetType),
+    danger: true,
+    field: { type: 'textarea', label: 'Note for the audit log (optional)', placeholder: 'e.g. Harassment of another traveller' },
+  });
 }
 
 async function moderate(targetType, targetId, action){
-  const note = (action === 'REJECT' || action === 'DELETE') ? (prompt('Optional note for the audit log:') || undefined) : undefined;
-  await api('/moderation/act', { method: 'POST', body: { targetType, targetId, action, note } });
-  await loadModeration(); renderMain();
+  let note;
+  if(action === 'DELETE'){
+    note = await confirmRemoval(targetType, 'This item');
+    if(note === null) return;
+  }
+  try{
+    await api('/moderation/act', { method: 'POST', body: { targetType, targetId, action, note: note || undefined } });
+    notify(action === 'APPROVE' ? 'Approved.' : action === 'REJECT' ? 'Rejected.' : 'Removed.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
+  renderMain();
+}
+
+async function decideReport(key, action){
+  const [targetType, targetId] = key.split(':');
+  const group = state.moderation.reports.find((g) => g.targetType === targetType && g.targetId === targetId);
+  const preview = group?.preview;
+  let note;
+  if(action === 'DELETE'){
+    const what = preview?.title ? `“${preview.title}”` : `This ${(preview?.kind || 'item').toLowerCase()}`;
+    note = await confirmRemoval(targetType, what);
+    if(note === null) return;
+  }
+  try{
+    await api('/moderation/act', { method: 'POST', body: { targetType, targetId, action, note: note || undefined } });
+    notify(action === 'APPROVE' ? 'Kept. Its reports are closed.'
+      : action === 'HIDE' ? 'Hidden from readers. Its reports are closed.'
+      : 'Done. Its reports are closed.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
+  renderMain();
+}
+
+function reportCard(g){
+  const p = g.preview;
+  const key = `${g.targetType}:${g.targetId}`;
+  const author = p?.author;
+  const reasons = Object.entries(g.reasons)
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `<span class="pill REPORT">${esc(REASON_LABEL[reason] || reason)}${n > 1 ? ` × ${n}` : ''}</span>`)
+    .join('');
+  return `
+    <article class="report-card" aria-label="${g.count} report${g.count === 1 ? '' : 's'} on ${esc(p?.title || p?.kind || 'removed content')}">
+      <div class="report-head">
+        <div><strong>${g.count} report${g.count === 1 ? '' : 's'}</strong>
+          <span class="hint">· first ${fmtDate(g.firstReportedAt)}</span></div>
+        <div class="report-reasons">${reasons}</div>
+      </div>
+      ${p ? `
+        <div class="report-body">
+          ${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="">` : ''}
+          <div class="report-content">
+            <div class="report-kind">${esc(p.kind)} · <span class="vis ${p.visibility === 'Live' ? 'live' : ''}">${esc(p.visibility)}</span></div>
+            ${p.title ? `<h3>${esc(p.title)}</h3>` : ''}
+            ${p.text ? `<p>${esc(p.text)}</p>` : ''}
+            ${author && g.targetType !== 'USER' ? `<div class="hint">By ${esc(author.name)}${author.isSuspended ? ' · suspended' : ''}</div>` : ''}
+            ${p.note ? `<div class="hint">${esc(p.note)}</div>` : ''}
+          </div>
+        </div>` : `
+        <div class="empty" style="padding:6px 0">This content has already been removed. Close the reports to clear it from the queue.</div>`}
+      ${g.details.length ? `
+        <details class="report-details">
+          <summary>What reporters said (${g.details.length})</summary>
+          <ul>${g.details.map((d) => `
+            <li><b>${esc(REASON_LABEL[d.reason] || d.reason)}:</b> ${esc(d.detail)}
+              <span class="hint">· ${esc(d.reporter)}, ${fmtDate(d.at)}</span></li>`).join('')}</ul>
+        </details>` : ''}
+      <div class="row-actions" style="margin-top:12px">
+        ${p ? `
+          <button class="btn btn-sm" onclick="decideReport('${key}', 'APPROVE')">Keep it</button>
+          ${['POST', 'COMMENT'].includes(g.targetType) ? `<button class="btn btn-sm" onclick="decideReport('${key}', 'HIDE')">Hide</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="decideReport('${key}', 'DELETE')">${removeLabel(g.targetType)}</button>
+          ${author && !author.isSuspended && g.targetType !== 'USER'
+            ? `<button class="btn btn-sm btn-ghost" onclick="suspendUser('${author.id}')">Suspend ${esc(author.name)}</button>` : ''}
+        ` : `<button class="btn btn-sm" onclick="decideReport('${key}', 'APPROVE')">Close reports</button>`}
+      </div>
+    </article>`;
 }
 
 async function screenModeration(){
   await loadModeration();
+  renderSidebar();
   const m = state.moderation;
+  const q = m.queue;
   const tabs = [
+    ['reports', `Reports (${q.reportedItems})`],
     ['posts', `Posts (${m.posts.length})`],
     ['comments', `Comments (${m.comments.length})`],
     ['reviews', `Reviews (${m.reviews.length})`],
-    ['reports', `Reports (${m.reports.length})`],
   ];
-  const q = m.queue;
   return `
     <div class="top-row"><h2>Moderation</h2></div>
     <div class="stat-grid">
-      <div class="stat"><b>${q.pendingPosts}</b><span>Pending posts</span></div>
-      <div class="stat"><b>${q.pendingComments}</b><span>Pending comments</span></div>
-      <div class="stat"><b>${q.pendingReviews}</b><span>Pending reviews</span></div>
-      <div class="stat"><b>${q.openReports}</b><span>Open reports${q.slaBreached ? ' — SLA breached' : ''}</span></div>
+      <div class="stat"><b>${q.reportedItems}</b><span>Reported items${q.slaBreached ? ' · oldest over 24 h' : ''}</span></div>
+      <div class="stat"><b>${q.pendingPosts}</b><span>Posts awaiting review</span></div>
+      <div class="stat"><b>${q.pendingComments}</b><span>Comments awaiting review</span></div>
+      <div class="stat"><b>${q.pendingReviews}</b><span>Reviews awaiting review</span></div>
     </div>
-    <div class="filters">
-      ${tabs.map(([k,l]) => `<button class="btn ${m.tab===k?'btn-brand':''}" onclick="state.moderation.tab='${k}';renderMain()">${l}</button>`).join('')}
+    <div class="filters" role="tablist" aria-label="Moderation queues">
+      ${tabs.map(([k, l]) => `<button role="tab" aria-selected="${m.tab === k}" class="btn ${m.tab === k ? 'btn-brand' : ''}"
+        onclick="state.moderation.tab='${k}'; renderMain()">${l}</button>`).join('')}
     </div>
+    ${m.tab === 'reports' ? (m.reports.length
+      ? m.reports.map(reportCard).join('')
+      : '<div class="empty">No open reports. Everything readers flagged has been dealt with.</div>') : ''}
     ${m.tab === 'posts' ? modTable(m.posts, 'POST', [
         {label:'Title', render:(p)=>p.title}, {label:'Author', render:(p)=>p.author?.name || '—'},
+        {label:'Why', render:(p)=>p.moderationNote || 'Held by the word filter'},
       ]) : ''}
     ${m.tab === 'comments' ? modTable(m.comments, 'COMMENT', [
         {label:'Comment', render:(c)=>c.body?.slice(0,120)}, {label:'By', render:(c)=>c.user?.name || '—'},
@@ -860,21 +1121,7 @@ async function screenModeration(){
     ${m.tab === 'reviews' ? modTable(m.reviews, 'REVIEW', [
         {label:'Business', render:(r)=>r.business?.name || '—'}, {label:'Rating', render:(r)=>r.rating},
         {label:'By', render:(r)=>r.user?.name || '—'},
-      ]) : ''}
-    ${m.tab === 'reports' ? `
-      ${!m.reports.length ? '<div class="empty">No open reports.</div>' : `
-        <table><thead><tr><th>Target</th><th>Reason</th><th>Detail</th><th>Reported</th><th></th></tr></thead>
-        <tbody>
-          ${m.reports.map(r => `
-            <tr>
-              <td>${r.targetType} · ${r.targetId.slice(0,8)}…</td>
-              <td>${r.reason}</td><td>${esc(r.detail || '—')}</td><td>${fmtDate(r.createdAt)}</td>
-              <td class="row-actions">
-                <button class="btn btn-sm btn-brand" onclick="moderate('${r.targetType}','${r.targetId}','APPROVE')">Dismiss (approve target)</button>
-                <button class="btn btn-sm btn-danger" onclick="moderate('${r.targetType}','${r.targetId}','HIDE')">Act (hide target)</button>
-              </td>
-            </tr>`).join('')}
-        </tbody></table>`}` : ''}`;
+      ]) : ''}`;
 }
 
 /* =========================== users =========================== */
@@ -888,29 +1135,82 @@ async function loadUsers(){
   u.items = data.items || data;
 }
 
+const ROLE_LABEL = {
+  READER: 'Reader', CONTRIBUTOR: 'Contributor', BUSINESS_OWNER: 'Business owner',
+  OPERATOR_ADMIN: 'Bus operator admin', MODERATOR: 'Moderator', EDITOR: 'Editor', ADMIN: 'Admin',
+};
+
+/** A name for dialogs, whether the person was opened from Users or from a report card. */
+function personName(id){
+  return state.users.items.find((x) => x.id === id)?.name
+    || state.moderation.reports.map((g) => g.preview?.author).find((a) => a?.id === id)?.name
+    || 'this account';
+}
+
 async function suspendUser(id){
-  const days = prompt('Suspend for how many days? (blank = indefinite)');
+  const days = await askDialog({
+    title: `Suspend ${personName(id)}?`,
+    message: 'They lose access straight away and cannot sign in until the suspension ends.',
+    confirmLabel: 'Suspend',
+    danger: true,
+    field: {
+      type: 'number', label: 'Days (leave empty to suspend until you lift it)', min: 1, max: 3650,
+      validate: (v) => (!v || (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 3650)
+        ? '' : 'Enter a whole number of days between 1 and 3650, or leave it empty.'),
+    },
+  });
   if(days === null) return;
-  await api(`/users/${id}/suspend`, { method: 'PATCH', body: { days: days ? Number(days) : null } });
-  await loadUsers(); renderMain();
+  try{
+    await api(`/users/${id}/suspend`, { method: 'PATCH', body: { days: days ? Number(days) : null } });
+    notify(days ? `Suspended for ${days} day${days === '1' ? '' : 's'}.` : 'Suspended until lifted.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
+  if(state.screen === 'users') await loadUsers();
+  renderMain();
 }
+
 async function unsuspendUser(id){
-  await api(`/users/${id}/unsuspend`, { method: 'PATCH' });
+  try{
+    await api(`/users/${id}/unsuspend`, { method: 'PATCH' });
+    notify('Suspension lifted.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
   await loadUsers(); renderMain();
 }
+
 async function changeRole(id, current){
-  const roles = ['READER','CONTRIBUTOR','BUSINESS_OWNER','OPERATOR_ADMIN','MODERATOR','EDITOR','ADMIN'];
-  const role = prompt(`New role (${roles.join(', ')}):`, current);
-  if(!role || !roles.includes(role)) return;
+  const role = await askDialog({
+    title: `Change ${personName(id)}’s role`,
+    message: 'Changing a role signs the person out. Editors, moderators, operator admins and admins set up an authenticator app at their next sign-in.',
+    confirmLabel: 'Change role',
+    field: { type: 'select', label: 'Role', value: current, options: Object.entries(ROLE_LABEL) },
+  });
+  if(role === null || role === current) return;
   try{
     await api(`/users/${id}/role`, { method: 'PATCH', body: { role } });
-    await loadUsers(); renderMain();
-  }catch(err){ alert(err.message); }
+    notify(`Role changed to ${ROLE_LABEL[role]}.`);
+  }catch(err){
+    notify(err.message, 'error');
+  }
+  await loadUsers(); renderMain();
 }
+
 async function resetMfaFor(id){
-  if(!confirm("Reset this account's authenticator? They will need to enrol again.")) return;
-  await api(`/users/${id}/reset-mfa`, { method: 'PATCH' });
-  alert('Authenticator reset.');
+  const ok = await askDialog({
+    title: `Reset ${personName(id)}’s authenticator?`,
+    message: 'Use this when someone has lost their phone. They set up a new authenticator at their next sign-in, and the reset is recorded in the audit log.',
+    confirmLabel: 'Reset authenticator',
+    danger: true,
+  });
+  if(!ok) return;
+  try{
+    await api(`/users/${id}/reset-mfa`, { method: 'PATCH' });
+    notify('Authenticator reset.');
+  }catch(err){
+    notify(err.message, 'error');
+  }
 }
 
 async function screenUsers(){

@@ -266,6 +266,27 @@ html[data-theme="night"] .vote.down[aria-pressed="true"]{background:#3A1420;colo
 .ad-tag{background:var(--ink);color:#fff}
 html[data-theme="night"] .ad-tag{background:var(--surface-2);color:var(--text)}
 .ad-hero{width:100%;max-height:340px;object-fit:cover;border-radius:14px;margin:12px 0;background:var(--surface-2)}
+
+/* ---------- reporting ---------- */
+.vlog-foot-right{display:flex;align-items:center;gap:6px}
+.report-btn{min-height:44px;padding:0 12px;border-radius:999px;font:inherit;font-size:13px;font-weight:600;
+  color:var(--text-dim);background:none;border:1.5px solid transparent;cursor:pointer}
+.report-btn:hover:not(:disabled),.report-btn:focus-visible{border-color:var(--line);color:var(--text)}
+.report-btn:disabled{cursor:default;opacity:.75}
+.sheet-back{position:fixed;inset:0;z-index:60;background:rgba(20,16,36,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);color:var(--text);
+  border-radius:22px 22px 0 0;padding:20px var(--pad) calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+.sheet h2{font-size:21px;margin-bottom:2px}
+.sheet-sub{margin:0 0 12px;color:var(--text-dim);font-size:14px}
+.reasons{border:0;margin:0;padding:0;display:grid;gap:6px}
+.reason{display:flex;gap:10px;align-items:center;min-height:48px;margin:0;padding:0 12px;border:1.5px solid var(--line);
+  border-radius:var(--r);font-size:15px;font-weight:600;color:var(--text);cursor:pointer}
+.reason input{width:20px;height:20px;min-height:0;margin:0;flex:none;accent-color:var(--brand)}
+.reason:has(input:checked){border-color:var(--brand);background:var(--surface-2)}
+.report-error{background:#FCE9EC;color:#9C1C36;border-radius:var(--r);padding:10px 14px;font-size:14px;margin-top:12px}
+html[data-theme="night"] .report-error{background:#3A1420;color:#F4B4C1}
+.sheet-note{font-size:12.5px;color:var(--text-dim);margin:2px 0 0}
+@media (min-width:640px){.sheet-back{align-items:center}.sheet{border-radius:22px}}
 .chip{
   border:1.5px solid var(--line);background:var(--surface);border-radius:999px;
   padding:9px 14px;font-size:13.5px;font-weight:600;min-height:40px
@@ -599,7 +620,7 @@ async function resolveScan(){
     state.seat = data.scan?.seatNo;
     if(data.routeArticles?.length){
       DEMO.articles = data.routeArticles.map(a => ({
-        slug:a.slug, title:a.title, subtitle:a.subtitle,
+        id:a.id, slug:a.slug, title:a.title, subtitle:a.subtitle,
         cat:a.category?.slug || 'road', catName:a.category?.name || 'On the Road',
         readMinutes:a.readMinutes, audio:!!a.audioUrl, body:'',
       }));
@@ -723,6 +744,7 @@ const SCREENS = {
           <button class="btn btn-ghost" onclick="save()">☆ Save offline</button>
           <button class="btn btn-primary" onclick="tripFromArticle()">Make this my trip</button>
         </div>
+        ${a.id ? `<div style="text-align:center;margin:-4px 0 14px">${reportButton('ARTICLE', a.id)}</div>` : ''}
       </div>`;
   },
 
@@ -777,7 +799,7 @@ const SCREENS = {
         <div class="article-body">
           ${p.partial ? `<p>${esc(p.body)}</p><p class="vlog-by">Loading the full story…</p>` : md(p.body || '')}
         </div>
-        <div class="vlog-foot">${voteBar(p)}</div>
+        <div class="vlog-foot">${voteBar(p)}${reportButton('POST', p.id)}</div>
         ${slotAd('ARTICLE_BOTTOM')}
       </article>`;
   },
@@ -1187,6 +1209,120 @@ async function openAdOverview(id){
   if(state.screen === 'adOverview') render();
 }
 
+/* ---------- reporting ---------- */
+const REPORT_REASONS = [
+  ['SPAM', 'Spam or advertising'],
+  ['HARASSMENT', 'Harassment or hate'],
+  ['MISINFORMATION', 'False or misleading information'],
+  ['SEXUAL_CONTENT', 'Sexual or explicit content'],
+  ['ILLEGAL', 'Illegal or dangerous'],
+  ['COPYRIGHT', 'Uses someone else’s photos or writing'],
+  ['UNSAFE_BUSINESS', 'Unsafe or fraudulent business'],
+  ['OTHER', 'Something else'],
+];
+
+function reportedSet(){
+  try{ return new Set(JSON.parse(localStorage.getItem('bato.reported') || '[]')); }
+  catch(_){ return new Set(); }
+}
+function rememberReported(key){
+  const set = reportedSet();
+  set.add(key);
+  try{ localStorage.setItem('bato.reported', JSON.stringify([...set].slice(-300))); }catch(_){}
+}
+
+function reportButton(targetType, id){
+  if(!id) return '';
+  const done = reportedSet().has(`${targetType}:${id}`);
+  return `<button class="report-btn" ${done ? 'disabled aria-label="You reported this"' : 'aria-label="Report this"'}
+            onclick="openReport('${targetType}', '${esc(id)}')">${done ? 'Reported' : '⚑ Report'}</button>`;
+}
+
+function labelFor(targetType, id){
+  if(targetType === 'ARTICLE') return state.article?.title || 'this article';
+  const p = [state.post, ...state.vlogs.items].find((x) => x && x.id === id);
+  return p ? `“${p.title}” by ${p.author?.name || 'a traveller'}` : 'this story';
+}
+
+function openReport(targetType, targetId){
+  if(!state.liveApi || String(targetId).startsWith('demo-')){ toast('Reporting needs the live server'); return; }
+  closeReport();
+  state.reportReturnFocus = document.activeElement;
+  const noun = targetType === 'ARTICLE' ? 'article' : targetType === 'COMMENT' ? 'comment' : 'story';
+  const sheet = document.createElement('div');
+  sheet.id = 'reportSheet';
+  sheet.className = 'sheet-back';
+  sheet.innerHTML = `
+    <form class="sheet" role="dialog" aria-modal="true" aria-labelledby="reportTitle" novalidate
+          onsubmit="sendReport(event, '${targetType}', '${esc(targetId)}')">
+      <h2 id="reportTitle">Report this ${noun}</h2>
+      <p class="sheet-sub">${esc(labelFor(targetType, targetId))}</p>
+      <fieldset class="reasons">
+        <legend class="sr-only">Why are you reporting it?</legend>
+        ${REPORT_REASONS.map(([value, text]) => `
+          <label class="reason"><input type="radio" name="reason" value="${value}" aria-label="${text}"><span>${text}</span></label>`).join('')}
+      </fieldset>
+      <label for="reportDetail">Anything a moderator should know? <span class="label-note">Optional</span></label>
+      <textarea id="reportDetail" maxlength="1000" rows="3" style="min-height:84px"></textarea>
+      <div id="reportError" class="report-error" role="alert" hidden></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-ghost" onclick="closeReport()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="reportSend">Send report</button>
+      </div>
+      <p class="sheet-note">The person you report is never told who reported them.</p>
+    </form>`;
+  sheet.addEventListener('click', (e) => { if(e.target === sheet) closeReport(); });
+  sheet.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeReport(); });
+  document.body.appendChild(sheet);
+  sheet.querySelector('input[name="reason"]').focus();
+}
+
+function closeReport(){
+  const sheet = document.getElementById('reportSheet');
+  if(!sheet) return;
+  sheet.remove();
+  state.reportReturnFocus?.focus?.();
+}
+
+async function sendReport(e, targetType, targetId){
+  e.preventDefault();
+  const form = e.target;
+  const errorBox = form.querySelector('#reportError');
+  const reason = form.querySelector('input[name="reason"]:checked')?.value;
+  if(!reason){
+    errorBox.textContent = 'Choose the reason that fits best.';
+    errorBox.hidden = false;
+    form.querySelector('input[name="reason"]').focus();
+    return;
+  }
+  const btn = form.querySelector('#reportSend');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try{
+    const res = await authed(`${API}/moderation/report`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetType, targetId, reason, sessionId: state.session,
+        detail: form.querySelector('#reportDetail').value.trim() || undefined,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'Your report didn’t go through. Please try again.');
+    rememberReported(`${targetType}:${targetId}`);
+    closeReport();
+    toast(json.data?.hidden ? 'Thanks. It’s hidden while a moderator reviews it.' : 'Thanks. A moderator will review it.');
+    if(json.data?.hidden){
+      state.vlogs.loaded = false;
+      if(state.screen === 'post') go('read'); else render();
+    }else{
+      render();
+    }
+  }catch(err){
+    btn.disabled = false; btn.textContent = 'Send report';
+    errorBox.textContent = err.message;
+    errorBox.hidden = false;
+  }
+}
+
 /* ---------- traveller vlogs ---------- */
 const DEMO_VLOGS = [
   { id:'demo-1', title:'Two hours in Bandipur on the way to Pokhara',
@@ -1341,7 +1477,10 @@ function vlogCard(p){
       </button>
       <div class="vlog-foot">
         ${voteBar(p)}
-        ${p._count?.photos > 1 ? `<span class="vlog-photos">📷 ${p._count.photos} photos</span>` : ''}
+        <span class="vlog-foot-right">
+          ${p._count?.photos > 1 ? `<span class="vlog-photos">📷 ${p._count.photos} photos</span>` : ''}
+          ${reportButton('POST', p.id)}
+        </span>
       </div>
     </article>`;
 }
