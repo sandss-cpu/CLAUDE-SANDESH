@@ -213,7 +213,8 @@ const state = {
   articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
   categories: [], issues: [],
   elevate: { items: [] },
-  moderation: { tab: 'reports', posts: [], comments: [], reviews: [], reports: [], queue: null, badge: 0 },
+  moderation: { tab: 'reports', posts: [], comments: [], reviews: [], reports: [], busReviews: [], queue: null, badge: 0 },
+  fleet: { stats: null, items: [], status: '', q: '' },
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
   ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
@@ -589,6 +590,7 @@ function notify(message, kind = 'ok'){
 
 const SECTIONS = [
   ['overview', 'Overview', ['ADMIN']],
+  ['fleet', 'Bus companies', ['ADMIN']],
   ['ads', 'Ads', ['ADMIN']],
   ['articles', 'Articles', ['EDITOR', 'ADMIN']],
   ['issues', 'Issues', ['EDITOR', 'ADMIN']],
@@ -947,16 +949,16 @@ const REASON_LABEL = {
   SEXUAL_CONTENT: 'Sexual content', COPYRIGHT: 'Copyright', UNSAFE_BUSINESS: 'Unsafe business', OTHER: 'Other',
 };
 
-const queueTotal = (q) => q.reportedItems + q.pendingPosts + q.pendingComments + q.pendingReviews;
+const queueTotal = (q) => q.reportedItems + q.pendingPosts + q.pendingComments + q.pendingReviews + (q.pendingBusReviews || 0);
 
 async function loadModeration(){
   const m = state.moderation;
-  const [queue, posts, comments, reviews, reports] = await Promise.all([
+  const [queue, posts, comments, reviews, reports, busReviews] = await Promise.all([
     api('/moderation/queue'),
     api('/moderation/posts'), api('/moderation/comments'),
-    api('/moderation/reviews'), api('/moderation/reports'),
+    api('/moderation/reviews'), api('/moderation/reports'), api('/moderation/bus-reviews'),
   ]);
-  m.queue = queue; m.posts = posts; m.comments = comments; m.reviews = reviews; m.reports = reports;
+  m.queue = queue; m.posts = posts; m.comments = comments; m.reviews = reviews; m.reports = reports; m.busReviews = busReviews;
   m.badge = queueTotal(queue);
 }
 
@@ -971,7 +973,7 @@ async function refreshModerationBadge(){
 
 function removeLabel(type){
   return {
-    POST: 'Remove vlog', COMMENT: 'Remove comment', REVIEW: 'Reject review',
+    POST: 'Remove vlog', COMMENT: 'Remove comment', REVIEW: 'Reject review', BUS_REVIEW: 'Remove bus review',
     ARTICLE: 'Archive article', BUSINESS: 'Switch off listing', USER: 'Suspend account',
   }[type] || 'Remove';
 }
@@ -997,7 +999,7 @@ function modTable(items, targetType, columns){
 async function confirmRemoval(targetType, what){
   return askDialog({
     title: `${removeLabel(targetType)}?`,
-    message: ['POST', 'COMMENT'].includes(targetType)
+    message: ['POST', 'COMMENT', 'BUS_REVIEW'].includes(targetType)
       ? `${what} is deleted for good. The author can’t restore it, and every open report on it is closed.`
       : `${what} stops being visible to readers, and every open report on it is closed.`,
     confirmLabel: removeLabel(targetType),
@@ -1079,7 +1081,7 @@ function reportCard(g){
       <div class="row-actions" style="margin-top:12px">
         ${p ? `
           <button class="btn btn-sm" onclick="decideReport('${key}', 'APPROVE')">Keep it</button>
-          ${['POST', 'COMMENT'].includes(g.targetType) ? `<button class="btn btn-sm" onclick="decideReport('${key}', 'HIDE')">Hide</button>` : ''}
+          ${['POST', 'COMMENT', 'BUS_REVIEW'].includes(g.targetType) ? `<button class="btn btn-sm" onclick="decideReport('${key}', 'HIDE')">Hide</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="decideReport('${key}', 'DELETE')">${removeLabel(g.targetType)}</button>
           ${author && !author.isSuspended && g.targetType !== 'USER'
             ? `<button class="btn btn-sm btn-ghost" onclick="suspendUser('${author.id}')">Suspend ${esc(author.name)}</button>` : ''}
@@ -1098,6 +1100,7 @@ async function screenModeration(){
     ['posts', `Posts (${m.posts.length})`],
     ['comments', `Comments (${m.comments.length})`],
     ['reviews', `Reviews (${m.reviews.length})`],
+    ['busreviews', `Bus reviews (${m.busReviews.length})`],
   ];
   return `
     <div class="top-row"><h2>Moderation</h2></div>
@@ -1106,6 +1109,7 @@ async function screenModeration(){
       <div class="stat"><b>${q.pendingPosts}</b><span>Posts awaiting review</span></div>
       <div class="stat"><b>${q.pendingComments}</b><span>Comments awaiting review</span></div>
       <div class="stat"><b>${q.pendingReviews}</b><span>Reviews awaiting review</span></div>
+      <div class="stat"><b>${q.pendingBusReviews || 0}</b><span>Bus reviews held</span></div>
     </div>
     <div class="filters" role="tablist" aria-label="Moderation queues">
       ${tabs.map(([k, l]) => `<button role="tab" aria-selected="${m.tab === k}" class="btn ${m.tab === k ? 'btn-brand' : ''}"
@@ -1124,6 +1128,11 @@ async function screenModeration(){
     ${m.tab === 'reviews' ? modTable(m.reviews, 'REVIEW', [
         {label:'Business', render:(r)=>r.business?.name || '—'}, {label:'Rating', render:(r)=>r.rating},
         {label:'By', render:(r)=>r.user?.name || '—'},
+      ]) : ''}
+    ${m.tab === 'busreviews' ? modTable(m.busReviews, 'BUS_REVIEW', [
+        {label:'Bus', render:(r)=>r.vehicle?.plateNo || '—'}, {label:'Company', render:(r)=>r.vehicle?.operator?.name || '—'},
+        {label:'Rating', render:(r)=>`${r.overall}★`},
+        {label:'Review', render:(r)=>[r.comment, r.suggestion && `Suggestion: ${r.suggestion}`].filter(Boolean).join(' · ').slice(0, 160) || '—'},
       ]) : ''}`;
 }
 
@@ -1599,8 +1608,135 @@ async function deleteAd(id){
   renderMain();
 }
 
+/* =========================== bus companies (admin only) =========================== */
+
+const FLEET_STATUS = {
+  PENDING: ['Waiting for verification', 'PENDING'], VERIFIED: ['Verified', 'APPROVED'],
+  REJECTED: ['Not approved', 'REJECTED'], SUSPENDED: ['Suspended', 'REJECTED'],
+};
+const fleetPill = (s) => `<span class="pill ${FLEET_STATUS[s][1]}">${FLEET_STATUS[s][0]}</span>`;
+
+async function screenFleet(){
+  const f = state.fleet;
+  const params = new URLSearchParams();
+  if(f.status) params.set('status', f.status);
+  if(f.q) params.set('q', f.q);
+  const [stats, items] = await Promise.all([api('/fleet/admin/stats'), api(`/fleet/admin/companies?${params}`)]);
+  f.stats = stats; f.items = items;
+  return `
+    <div class="top-row"><h2>Bus companies</h2>
+      <a class="btn btn-sm" href="owner.html" target="_blank" rel="noopener">Owner portal ↗</a></div>
+    <div class="stat-grid">
+      <div class="stat"><b>${stats.buses.registered}</b><span>Buses registered with Bato · ${stats.buses.active} active</span></div>
+      <div class="stat"><b>${stats.companies.total}</b><span>Companies · ${stats.companies.verified} verified</span></div>
+      <div class="stat"><b>${stats.companies.pending}</b><span>Waiting for verification</span></div>
+      <div class="stat"><b>${stats.reviews.total}</b><span>Bus reviews${stats.reviews.average != null ? ` · ${stats.reviews.average}★ average` : ''}</span></div>
+      <div class="stat"><b>${stats.openIncidents}</b><span>Open breakdowns</span></div>
+      <div class="stat"><b>${stats.profileScansLast30Days}</b><span>Bus QR scans, last 30 days</span></div>
+    </div>
+    <form class="filters" onsubmit="event.preventDefault(); state.fleet.q = this.elements.q.value.trim(); renderMain()">
+      <select aria-label="Verification status" onchange="state.fleet.status = this.value; renderMain()">
+        <option value="">All companies</option>
+        ${Object.entries(FLEET_STATUS).map(([k, [l]]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <input name="q" type="search" placeholder="Name, PAN, phone or number plate" value="${esc(f.q)}" aria-label="Search companies">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    ${!items.length ? '<div class="empty">No companies match.</div>' : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Company</th><th>Owner</th><th>Contact</th><th>Buses</th><th>Rating</th><th>Status</th><th>Registered</th><th></th></tr></thead>
+        <tbody>${items.map((c) => `
+          <tr>
+            <td><b>${esc(c.name)}</b>${c.registrationNo ? `<div class="hint">${esc(c.registrationNo)}</div>` : ''}
+              ${c.verificationNote ? `<div class="hint">Note: ${esc(c.verificationNote)}</div>` : ''}</td>
+            <td>${c.owners.map((o) => `${esc(o.name)}<div class="hint">${esc(o.email || '')}</div>`).join('') || '—'}</td>
+            <td>${esc(c.contactPhone || '—')}${c.contactEmail ? `<div class="hint">${esc(c.contactEmail)}</div>` : ''}</td>
+            <td>${c.buses}<div class="hint">${c.crew} crew</div></td>
+            <td>${c.rating.reviews ? `${c.rating.average}★<div class="hint">${c.rating.reviews} reviews</div>` : '—'}</td>
+            <td>${fleetPill(c.verification)}</td>
+            <td><small>${fmtDate(c.createdAt)}</small></td>
+            <td class="row-actions">
+              <button class="btn btn-sm" onclick="viewCompany('${c.id}')">View</button>
+              ${c.verification !== 'VERIFIED' ? `<button class="btn btn-sm btn-brand" onclick="setCompanyStatus('${c.id}', 'VERIFIED')">Verify</button>` : ''}
+              ${c.verification === 'PENDING' ? `<button class="btn btn-sm" onclick="setCompanyStatus('${c.id}', 'REJECTED')">Reject</button>` : ''}
+              ${c.verification === 'VERIFIED' ? `<button class="btn btn-sm btn-danger" onclick="setCompanyStatus('${c.id}', 'SUSPENDED')">Suspend</button>` : ''}
+            </td>
+          </tr>`).join('')}</tbody></table></div>`}
+    <p class="hint">A company's buses and QR codes are public only while it is verified. Check the owner's details, and a bluebook or PAN
+      document where needed, before verifying: a verified badge tells passengers the company is who it says it is.</p>`;
+}
+
+async function setCompanyStatus(id, status){
+  const name = state.fleet.items.find((x) => x.id === id)?.name || 'this company';
+  const copy = {
+    VERIFIED: [`Verify ${name}?`, 'Its buses become public and their QR codes start working. The owners are notified.', 'Verify company', false],
+    REJECTED: [`Reject ${name}?`, 'The owners see your reason in their portal and can correct their details to resubmit.', 'Reject', true],
+    SUSPENDED: [`Suspend ${name}?`, 'Its buses are hidden from passengers and every QR code is paused until you verify it again.', 'Suspend', true],
+  }[status];
+  const needsReason = status !== 'VERIFIED';
+  const note = await askDialog({
+    title: copy[0], message: copy[1], confirmLabel: copy[2], danger: copy[3],
+    field: {
+      type: 'textarea', label: needsReason ? 'Reason (shown to the company)' : 'Note (optional)',
+      validate: (v) => (needsReason && !v ? 'Give the company a reason.' : ''),
+    },
+  });
+  if(note === null) return;
+  try{
+    await api(`/fleet/admin/companies/${id}/verification`, { method: 'PATCH', body: { status, note: note || undefined } });
+    notify(status === 'VERIFIED' ? `${name} is verified.` : status === 'REJECTED' ? `${name} was not approved.` : `${name} is suspended.`);
+  }catch(err){
+    notify(err.message, 'error');
+  }
+  document.querySelector('.company-modal')?.remove();
+  renderMain();
+}
+
+async function viewCompany(id){
+  let c;
+  try{ c = await api(`/fleet/admin/companies/${id}`); }catch(err){ notify(err.message, 'error'); return; }
+  const back = document.createElement('div');
+  back.className = 'modal-back company-modal';
+  back.innerHTML = `
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="cmp-title">
+      <div class="top-row" style="margin-bottom:6px"><h2 id="cmp-title">${esc(c.name)}</h2>
+        <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+      <p style="margin:0 0 10px">${fleetPill(c.verification)} ${c.verificationNote ? `<span class="hint">${esc(c.verificationNote)}</span>` : ''}</p>
+      <div class="two-col">
+        <div><label>Registration or PAN</label>${esc(c.registrationNo || '—')}</div>
+        <div><label>Phone</label>${esc(c.contactPhone || '—')}</div>
+        <div><label>Email</label>${esc(c.contactEmail || '—')}</div>
+        <div><label>Address</label>${esc(c.address || '—')}</div>
+      </div>
+      ${c.description ? `<p>${esc(c.description)}</p>` : ''}
+      <h3 style="margin:18px 0 8px">Team</h3>
+      <div class="table-wrap"><table style="min-width:0"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Since</th></tr></thead>
+        <tbody>${c.members.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.email || '—')}</td><td>${esc(m.phone || '—')}</td>
+          <td>${m.role === 'OWNER' ? 'Owner' : 'Manager'}</td><td><small>${fmtDate(m.since)}</small></td></tr>`).join('')}</tbody></table></div>
+      <h3 style="margin:18px 0 8px">Buses (${c.buses.length})</h3>
+      ${c.buses.length ? `<div class="table-wrap"><table style="min-width:0"><thead><tr><th>Registration</th><th>Name</th><th>Seats</th><th>Status</th></tr></thead>
+        <tbody>${c.buses.map((b) => `<tr><td><b>${esc(b.registrationNo)}</b></td><td>${esc(b.label || '—')}</td><td>${b.seatCount ?? '—'}</td>
+          <td>${b.isActive ? esc(b.status.replace('_', ' ').toLowerCase()) : 'archived'}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty">No buses registered yet.</div>'}
+      <h3 style="margin:18px 0 8px">Verification history</h3>
+      ${c.history.length ? `<ul style="margin:0;padding-left:18px">${c.history.map((h) => `<li>${fmtDate(h.createdAt)}: ${esc(h.action)} by ${esc(h.moderator?.name || '—')}${h.note ? `. ${esc(h.note)}` : ''}</li>`).join('')}</ul>`
+        : '<div class="empty">No decisions yet.</div>'}
+      <div class="row-actions" style="margin-top:18px">
+        ${c.verification !== 'VERIFIED' ? `<button class="btn btn-brand" onclick="setCompanyStatus('${c.id}', 'VERIFIED')">Verify</button>` : ''}
+        ${c.verification === 'PENDING' ? `<button class="btn" onclick="setCompanyStatus('${c.id}', 'REJECTED')">Reject</button>` : ''}
+        ${c.verification === 'VERIFIED' ? `<button class="btn btn-danger" onclick="setCompanyStatus('${c.id}', 'SUSPENDED')">Suspend</button>` : ''}
+      </div>
+    </div>`;
+  const returnFocus = document.activeElement;
+  const close = () => { back.remove(); returnFocus?.focus?.(); };
+  back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-close]')) close(); });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+  document.body.appendChild(back);
+  back.querySelector('[data-close]').focus();
+}
+
 const SCREENS = {
-  overview: screenOverview, ads: screenAds, articles: screenArticles, issues: screenIssues,
+  overview: screenOverview, fleet: screenFleet, ads: screenAds, articles: screenArticles, issues: screenIssues,
   moderation: screenModeration, users: screenUsers,
 };
 

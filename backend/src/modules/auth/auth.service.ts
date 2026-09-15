@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { SmsService } from './sms.service';
 import { MailService } from './mail.service';
 import { isPrivileged, MfaService } from './mfa.service';
+import type { LinkApp } from './dto/auth.dto';
 import { otpMayBeReturnedInResponse, phoneLoginEnabled } from '../../config/env.validation';
 import {
   EmailLoginDto, EmailRegisterDto, normaliseEmail, normalisePhone, PasswordResetDto,
@@ -208,16 +209,16 @@ export class AuthService {
           data: { email, name: dto.name.trim(), passwordHash, language: 'EN' },
         });
 
-    const devLink = await this.sendLink(user, EmailTokenType.VERIFY);
+    const devLink = await this.sendLink(user, EmailTokenType.VERIFY, dto.app);
     return { ...generic, devLink };
   }
 
-  async resendVerification(emailRaw: string) {
+  async resendVerification(emailRaw: string, app?: LinkApp) {
     const email = normaliseEmail(emailRaw);
     const user = await this.prisma.user.findUnique({ where: { email } });
     const generic = { sent: true, message: 'If that account needs confirming, a new link is on its way.' };
     if (!user || user.emailVerifiedAt || !user.passwordHash) return generic;
-    const devLink = await this.sendLink(user, EmailTokenType.VERIFY);
+    const devLink = await this.sendLink(user, EmailTokenType.VERIFY, app);
     return { ...generic, devLink };
   }
 
@@ -249,12 +250,12 @@ export class AuthService {
     return this.completeSignIn(user);
   }
 
-  async forgotPassword(emailRaw: string) {
+  async forgotPassword(emailRaw: string, app?: LinkApp) {
     const email = normaliseEmail(emailRaw);
     const user = await this.prisma.user.findUnique({ where: { email } });
     const generic = { sent: true, message: 'If an account uses that email, a reset link is on its way.' };
     if (!user) return generic;
-    const devLink = await this.sendLink(user, EmailTokenType.RESET);
+    const devLink = await this.sendLink(user, EmailTokenType.RESET, app);
     return { ...generic, devLink };
   }
 
@@ -282,7 +283,7 @@ export class AuthService {
   }
 
   /** Issues a link token and emails it. Returns the link only when it may be echoed (dev). */
-  private async sendLink(user: User, type: EmailTokenType): Promise<string | undefined> {
+  private async sendLink(user: User, type: EmailTokenType, app?: LinkApp): Promise<string | undefined> {
     const recent = await this.prisma.emailToken.count({
       where: { userId: user.id, type, createdAt: { gt: new Date(Date.now() - 15 * 60_000) } },
     });
@@ -299,11 +300,15 @@ export class AuthService {
     });
 
     const web = (this.config.get<string>('PUBLIC_WEB_URL') ?? 'http://localhost:5173').replace(/\/$/, '');
-    const url = `${web}/login.html?${type === EmailTokenType.VERIFY ? 'verify' : 'reset'}=${raw}`;
+    // The page is chosen from a fixed list, never from the request, so a link can't be pointed elsewhere.
+    const page = app === 'owner' ? 'owner.html' : 'login.html';
+    const url = `${web}/${page}?${type === EmailTokenType.VERIFY ? 'verify' : 'reset'}=${raw}`;
     const content = type === EmailTokenType.VERIFY
       ? this.mail.linkEmail({
           heading: 'Confirm your email',
-          intro: `Namaste ${user.name}, confirm this address to start sharing your travels on Bato.`,
+          intro: app === 'owner'
+            ? `Namaste ${user.name}, confirm this address to start managing your buses on Bato.`
+            : `Namaste ${user.name}, confirm this address to start sharing your travels on Bato.`,
           cta: 'Confirm email', url,
           footer: 'This link expires in 24 hours. If you did not sign up, ignore this email.',
         })

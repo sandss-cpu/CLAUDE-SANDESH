@@ -52,6 +52,8 @@ enum TargetType {
   REVIEW
   USER
   AD
+  BUS_REVIEW
+  OPERATOR
 }
 
 enum ReactionType {
@@ -211,6 +213,7 @@ model User {
   following         Follow[]          @relation("Follower")
   followers         Follow[]          @relation("Following")
   operatorLinks     OperatorAdmin[]
+  busReviews        RideFeedback[]
 
   @@index([role])
   @@map("users")
@@ -302,29 +305,72 @@ model Route {
   @@map("routes")
 }
 
+/// Checked by a Bato admin before the company's buses and QR codes go public, so
+/// nobody can register someone else's fleet and collect reviews against it.
+enum OperatorVerification {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum OperatorMemberRole {
+  OWNER
+  MANAGER
+}
+
+enum BusStatus {
+  ACTIVE
+  IN_MAINTENANCE
+  OFF_ROAD
+}
+
+/// SEAT stickers open the magazine; BUS and COMPANY codes open the public profile.
+enum QrKind {
+  SEAT
+  BUS
+  COMPANY
+}
+
+/// A bus company, or an individual owner with one bus.
 model Operator {
   id        String   @id @default(uuid())
   name      String
   slug      String   @unique
   logoUrl   String?
   contactPhone String?
+  contactEmail String?
+  address   String?
+  /// Company registration or PAN number, checked during verification.
+  registrationNo String?
+  description String?
   isActive  Boolean  @default(true)
+  verification     OperatorVerification @default(PENDING)
+  verifiedAt       DateTime?
+  verificationNote String?
   createdAt DateTime @default(now())
 
-  vehicles Vehicle[]
-  qrCodes  QrCode[]
-  admins   OperatorAdmin[]
+  vehicles      Vehicle[]
+  qrCodes       QrCode[]
+  admins        OperatorAdmin[]
+  drivers       Driver[]
+  notifications FleetNotification[]
 
+  @@index([verification])
   @@map("operators")
 }
 
+/// Company membership. Access to every fleet record is decided here, never by User.role.
 model OperatorAdmin {
   operatorId String
   userId     String
+  role       OperatorMemberRole @default(OWNER)
+  createdAt  DateTime @default(now())
   operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([operatorId, userId])
+  @@index([userId])
   @@map("operator_admins")
 }
 
@@ -332,19 +378,43 @@ model Vehicle {
   id         String  @id @default(uuid())
   operatorId String
   routeId    String?
+  /// Registration number as written on the plate, e.g. "BA 2 KHA 3456".
   plateNo    String
+  /// plateNo upper-cased without spaces or punctuation. Unique across Bato, so one
+  /// physical bus can only ever belong to one company.
+  plateKey   String  @unique
   label      String?
   seatCount  Int?
+  make       String?
+  model      String?
+  year       Int?
+  busType    String?
+  colour     String?
+  amenities  String[] @default([])
+  photoUrl   String?
+  status     BusStatus @default(ACTIVE)
+  odometerKm Int     @default(0)
+  serviceIntervalKm   Int @default(10000)
+  serviceIntervalDays Int @default(90)
+  /// Archived buses leave public search and their QR codes stop working.
   isActive   Boolean @default(true)
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   operator     Operator       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   route        Route?         @relation(fields: [routeId], references: [id])
   qrCodes      QrCode[]
   rideFeedback RideFeedback[]
   lostItems    LostItem[]
+  maintenance  MaintenanceRecord[]
+  incidents    BusIncident[]
+  documents    BusDocument[]
+  fuelLogs     FuelLog[]
+  assignments  DriverAssignment[]
+  notifications FleetNotification[]
 
   @@unique([operatorId, plateNo])
+  @@index([operatorId, isActive])
   @@map("vehicles")
 }
 
@@ -357,17 +427,20 @@ model QrCode {
   routeId    String?
   seatNo     String?
   placement  String? // SEAT_BACK, WINDOW, POSTER
+  kind       QrKind  @default(SEAT)
   isActive   Boolean @default(true)
   printedAt  DateTime?
   replacedAt DateTime?
   createdAt  DateTime @default(now())
 
-  operator Operator? @relation(fields: [operatorId], references: [id])
-  vehicle  Vehicle?  @relation(fields: [vehicleId], references: [id])
+  operator Operator? @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   route    Route?    @relation(fields: [routeId], references: [id])
   scans    ScanEvent[]
+  reviews  RideFeedback[]
 
   @@index([routeId])
+  @@index([vehicleId, kind, isActive])
   @@map("qr_codes")
 }
 
@@ -943,22 +1016,38 @@ model Advertisement {
 
 // ------------------------- OPERATOR FEEDBACK -------------------------
 
+/// A passenger's review of one bus. The owner sees the words and the scores, never
+/// who wrote them: a passenger will not rate a driver honestly with their name attached.
 model RideFeedback {
   id          String   @id @default(uuid())
   vehicleId   String?
   routeId     String?
-  sessionId   String
-  cleanliness Int
-  driving     Int
-  punctuality Int
-  staff       Int
+  /// Device session for signed-out reviewers; used only to stop repeat reviews.
+  sessionId   String?
+  userId      String?
+  ipHash      String?
+  /// Set when the review came from scanning the sticker on that bus.
+  qrCodeId    String?
+  overall     Int
+  cleanliness Int?
+  driving     Int?
+  punctuality Int?
+  staff       Int?
   comment     String?
+  suggestion  String?
+  tripDate    DateTime?
+  moderation  ModerationStatus @default(APPROVED)
+  ownerReply     String?
+  ownerRepliedAt DateTime?
   createdAt   DateTime @default(now())
 
-  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   route   Route?   @relation(fields: [routeId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  qrCode  QrCode?  @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
 
   @@index([vehicleId, createdAt])
+  @@index([vehicleId, moderation, createdAt])
   @@map("ride_feedback")
 }
 
@@ -1036,6 +1125,203 @@ model Report {
   @@index([status, createdAt])
   @@index([targetType, targetId, status])
   @@map("reports")
+}
+
+// ------------------------- FLEET: MAINTENANCE, DOCUMENTS, DRIVERS, FUEL -------------------------
+
+enum MaintenanceKind {
+  ROUTINE_SERVICE
+  REPAIR
+  PARTS_REPLACEMENT
+  INSPECTION
+  TYRES
+  BODYWORK
+  OTHER
+}
+
+model MaintenanceRecord {
+  id          String          @id @default(uuid())
+  vehicleId   String
+  kind        MaintenanceKind @default(ROUTINE_SERVICE)
+  servicedAt  DateTime
+  odometerKm  Int
+  title       String
+  note        String?
+  workshop    String?
+  costNpr     Int?
+  partsReplaced String[]      @default([])
+  photos      String[]        @default([])
+  /// Optional overrides for the next service; otherwise the bus's intervals apply.
+  nextDueDate DateTime?
+  nextDueKm   Int?
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, servicedAt])
+  @@map("maintenance_records")
+}
+
+enum IncidentKind {
+  BREAKDOWN
+  ACCIDENT
+  FLAT_TYRE
+  ENGINE
+  BRAKES
+  ELECTRICAL
+  OTHER
+}
+
+enum IncidentSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  RESOLVED
+}
+
+/// Breakdowns and emergency repairs on the road.
+model BusIncident {
+  id          String           @id @default(uuid())
+  vehicleId   String
+  kind        IncidentKind     @default(BREAKDOWN)
+  severity    IncidentSeverity @default(MAJOR)
+  status      IncidentStatus   @default(OPEN)
+  occurredAt  DateTime
+  location    String?
+  odometerKm  Int?
+  description String
+  photos      String[]         @default([])
+  driverId    String?
+  resolvedAt  DateTime?
+  resolutionNote String?
+  repairCostNpr  Int?
+  reportedById String?
+  createdAt   DateTime         @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId, status])
+  @@map("bus_incidents")
+}
+
+enum BusDocumentType {
+  BLUEBOOK
+  ROUTE_PERMIT
+  INSURANCE
+  POLLUTION_CERTIFICATE
+  FITNESS_CERTIFICATE
+  TAX_CLEARANCE
+  OTHER
+}
+
+model BusDocument {
+  id        String          @id @default(uuid())
+  vehicleId String
+  type      BusDocumentType
+  number    String?
+  issuer    String?
+  issuedAt  DateTime?
+  expiresAt DateTime?
+  photoUrl  String?
+  note      String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @default(now()) @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([expiresAt])
+  @@map("bus_documents")
+}
+
+enum DriverRole {
+  DRIVER
+  CONDUCTOR
+  HELPER
+}
+
+/// Crew belong to the company, so a driver can move between its buses with their history intact.
+model Driver {
+  id               String     @id @default(uuid())
+  operatorId       String
+  name             String
+  phone            String
+  role             DriverRole @default(DRIVER)
+  licenceNumber    String?
+  licenceExpiresAt DateTime?
+  photoUrl         String?
+  note             String?
+  isActive         Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+
+  operator    Operator           @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  assignments DriverAssignment[]
+  incidents   BusIncident[]
+
+  @@index([operatorId, isActive])
+  @@map("drivers")
+}
+
+/// Who was on which bus and when, so a complaint can be matched to the crew on duty.
+model DriverAssignment {
+  id        String    @id @default(uuid())
+  driverId  String
+  vehicleId String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  driver  Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, endedAt])
+  @@index([driverId, endedAt])
+  @@map("driver_assignments")
+}
+
+model FuelLog {
+  id         String   @id @default(uuid())
+  vehicleId  String
+  filledAt   DateTime
+  odometerKm Int
+  litres     Float
+  costNpr    Int
+  /// Mileage is only measured between two full-tank fills; partial fills carry forward.
+  fullTank   Boolean  @default(true)
+  station    String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, filledAt])
+  @@map("fuel_logs")
+}
+
+/// In-app reminders and updates for a company. dedupeKey stops the nightly job
+/// from raising the same reminder twice.
+model FleetNotification {
+  id         String    @id @default(uuid())
+  operatorId String
+  vehicleId  String?
+  kind       String
+  title      String
+  body       String
+  dedupeKey  String    @unique
+  readAt     DateTime?
+  emailedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  operator Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([operatorId, readAt, createdAt])
+  @@map("fleet_notifications")
 }
 
 /// Append-only moderation audit trail.

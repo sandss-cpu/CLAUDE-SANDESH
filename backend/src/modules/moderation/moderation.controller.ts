@@ -42,6 +42,11 @@ export class ModerationController {
     return this.moderation.pendingReviews(Number(skip ?? 0));
   }
 
+  @Roles(Role.MODERATOR, Role.ADMIN) @Get('bus-reviews')
+  busReviews(@Query('skip') skip?: string) {
+    return this.moderation.pendingBusReviews(Number(skip ?? 0));
+  }
+
   @Roles(Role.MODERATOR, Role.ADMIN) @Post('act')
   act(@Body() dto: ModerateDto, @CurrentUser('id') moderatorId: string) {
     return this.moderation.act(dto, moderatorId);

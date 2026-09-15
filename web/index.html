@@ -430,6 +430,7 @@ const state = {
   promptFromSession: 2,
   route: null,
   operator: null,
+  bus: null,
   seat: null,
   session: null,
   liveApi: false,
@@ -605,6 +606,15 @@ function sessionCount(){
   return n;
 }
 
+/* ---------- bus reviews: bus.html reads this to mark a review "scanned on board" ---------- */
+function rememberScan(busId, token){
+  try{
+    const all = JSON.parse(localStorage.getItem('bato.scans') || '{}');
+    all[`bus:${busId}`] = token;
+    localStorage.setItem('bato.scans', JSON.stringify(all));
+  }catch(_){}
+}
+
 /* ---------- API with graceful demo fallback ---------- */
 async function resolveScan(){
   try{
@@ -618,6 +628,8 @@ async function resolveScan(){
     state.liveApi = true;
     state.route = data.route; state.operator = data.operator;
     state.seat = data.scan?.seatNo;
+    state.bus = data.bus || null;
+    if(data.bus?.scanToken) rememberScan(data.bus.id, data.bus.scanToken);
     if(data.routeArticles?.length){
       DEMO.articles = data.routeArticles.map(a => ({
         id:a.id, slug:a.slug, title:a.title, subtitle:a.subtitle,
@@ -991,18 +1003,21 @@ const SCREENS = {
         </a>
       `}
 
-      <div class="sec-head"><h2>Rate this ride</h2><span>Anonymous</span></div>
-      <p style="font-size:14px;color:var(--text-dim);margin-top:0">
-        ${esc(state.operator?.name || 'Your operator')} sees the averages, never who said what.
-      </p>
-      ${['Cleanliness','Driving','Punctuality','Staff'].map(k => `
-        <div class="num">
-          <strong>${k}</strong>
-          <span>${[1,2,3,4,5].map(n =>
-            `<button class="star" data-k="${k}" data-n="${n}"
-              onclick="rate(this)" style="font-size:23px;padding:5px;min-height:44px">☆</button>`).join('')}</span>
-        </div>`).join('')}
-      <button class="btn btn-primary" style="margin-top:16px" onclick="toast('Thanks — sent to the operator')">Send rating</button>
+      <div class="sec-head"><h2>Rate this bus</h2><span>Anonymous to the company</span></div>
+      ${state.bus ? `
+        <div class="num"><span><strong>${esc(state.bus.label || 'Your bus')}</strong><br>
+          <small style="color:var(--text-dim)">${esc(state.bus.registrationNo)}${state.operator ? ` · ${esc(state.operator.name)}` : ''}</small></span></div>
+        <p style="font-size:14px;color:var(--text-dim);margin:8px 0 0">
+          The company reads your review and suggestions, never who wrote them.
+        </p>
+        <a class="btn btn-primary" style="margin-top:12px" href="bus.html?id=${encodeURIComponent(state.bus.id)}#review">Rate this bus</a>
+      ` : `
+        <p style="font-size:14px;color:var(--text-dim);margin-top:0">
+          Scan the QR code inside your bus, or find the bus by its number plate.
+        </p>
+      `}
+      <a class="btn btn-ghost" style="margin-top:10px" href="bus.html">Find a bus by number plate</a>
+      <p style="font-size:13px;color:var(--text-dim);margin:10px 0 0">Run buses? <a href="owner.html">Bato for bus owners</a></p>
 
       <div class="sec-head"><h2>Emergency</h2><span>Works offline</span></div>
       <div class="sos">

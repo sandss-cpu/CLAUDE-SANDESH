@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Length } from 'class-validator';
 
 export class CreateOperatorDto {
   @IsString() @Length(2, 120) name: string;
@@ -13,18 +13,6 @@ export class CreateVehicleDto {
   @IsOptional() @IsString() routeId?: string;
   @IsOptional() @IsString() label?: string;
   @IsOptional() @Type(() => Number) @IsInt() seatCount?: number;
-}
-
-/** Per-vehicle passenger feedback — data no Nepali operator currently holds. */
-export class RideFeedbackDto {
-  @IsOptional() @IsString() vehicleId?: string;
-  @IsOptional() @IsString() routeId?: string;
-  @IsString() sessionId: string;
-  @Type(() => Number) @IsInt() @Min(1) @Max(5) cleanliness: number;
-  @Type(() => Number) @IsInt() @Min(1) @Max(5) driving: number;
-  @Type(() => Number) @IsInt() @Min(1) @Max(5) punctuality: number;
-  @Type(() => Number) @IsInt() @Min(1) @Max(5) staff: number;
-  @IsOptional() @IsString() @Length(0, 1000) comment?: string;
 }
 
 export class LostItemDto {

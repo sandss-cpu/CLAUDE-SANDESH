@@ -279,19 +279,21 @@ By late morning, air heated on the Terai plains is drawn north through the gorge
     create: {
       name: 'Ganapati Deluxe', slug: 'ganapati-deluxe',
       contactPhone: '+9779801111111',
+      verification: 'VERIFIED', verifiedAt: new Date(),
     },
   });
   await prisma.operatorAdmin.upsert({
     where: { operatorId_userId: { operatorId: operator.id, userId: admin.id } },
-    update: {}, create: { operatorId: operator.id, userId: admin.id },
+    update: {}, create: { operatorId: operator.id, userId: admin.id, role: 'OWNER' },
   });
 
   const vehicle = await prisma.vehicle.upsert({
-    where: { operatorId_plateNo: { operatorId: operator.id, plateNo: 'BA 2 KHA 3456' } },
+    where: { plateKey: 'BA2KHA3456' },
     update: {},
     create: {
-      operatorId: operator.id, plateNo: 'BA 2 KHA 3456',
+      operatorId: operator.id, plateNo: 'BA 2 KHA 3456', plateKey: 'BA2KHA3456',
       label: 'Deluxe AC 01', routeId: ktmPkr.id, seatCount: 39,
+      busType: 'TOURIST_DELUXE', amenities: ['AC', 'CHARGING', 'RECLINING_SEATS'],
     },
   });
 

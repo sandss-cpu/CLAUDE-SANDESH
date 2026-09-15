@@ -6,7 +6,9 @@ Context for AI assistants working in this repository. Read this before changing 
 
 **Bato** — a Nepali travel magazine reached by scanning a QR code stuck to a bus
 seat-back, plus a traveller vlog feed with voting, offline maps, an itinerary builder,
-newspaper-style ad slots, and a paid listing platform for tourism businesses.
+newspaper-style ad slots, a paid listing platform for tourism businesses, and a bus
+owner portal where companies register buses, keep service and document records, manage
+crew and fuel, and read passenger reviews of each bus.
 
 The full product specification lives in `QR_Travel_Magazine_Feature_Spec.md` at the
 repository root. When a decision here seems arbitrary, the spec usually explains it.
@@ -16,7 +18,9 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `backend/` | NestJS 10 + Prisma 5 + PostgreSQL |
 | `web/index.html` | Single-file installable reader PWA. Offline-first |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
-| `web/admin.html` | Control panel: articles, issues, ads, moderation, users, overview |
+| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview |
+| `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
+| `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order |
 | `web/config.js` | API address; overwritten by the Render static-site build |
 | `render.yaml` | Deployment blueprint (Postgres, API with uploads disk, static site) |
 
@@ -41,8 +45,15 @@ and `npx tsc` then silently downloads an unrelated package named `tsc`. Run
 
 Health check is at `/health`, deliberately outside the `api/v1` prefix.
 
-There is **no test suite**. Verification so far has been ad-hoc scripts run through
-`ts-node` and deleted afterwards. If you add tests, Jest is not yet configured.
+There is **no unit test suite**. `scripts/fleet_smoke.sh <accounts file>` runs 113 API
+checks against a running local API, using the accounts from `npm run accounts:test`.
+Write request bodies into a variable before `"$(call …)"`: macOS's bash 3.2 mangles
+escaped quotes written directly inside command substitution.
+
+```bash
+TEST_ACCOUNTS_FILE=../Bato_Test_Accounts.md npm run accounts:test   # test accounts + demo bus companies
+bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
+```
 
 ## Environment traps
 
@@ -85,7 +96,7 @@ when a signed-in user should be recognised but anonymous access is still allowed
 ### Modules
 
 `auth` `users` `qr` `magazine` `posts` `engagement` `places` `itineraries`
-`businesses` `operators` `moderation` `safety` `media` `admin` `ads` `health`
+`businesses` `operators` `moderation` `safety` `media` `admin` `ads` `fleet` `health`
 
 - **auth**: every sign-in method ends in `completeSignIn()`, which blocks suspended
   accounts and sends privileged roles to the authenticator step. Add new methods
@@ -95,7 +106,13 @@ when a signed-in user should be recognised but anonymous access is still allowed
 - **ads**: status (active / scheduled / paused / expired) is derived from dates plus
   `isActive`, never stored. MONTH runs clamp to the month's last day
 - **moderation**: reports de-duplicate per person; three distinct people auto-hide a live
-  post or comment. People are counted by account, or for anonymous reports by `ipHash`
+  post, comment or bus review. People are counted by account, or for anonymous reports by `ipHash`
+- **fleet**: the bus owner portal. `Operator` is a company (an individual owner is a
+  company with one bus), `Vehicle` a bus, `RideFeedback` a passenger review. Controllers:
+  `fleet` (owner portal, signed in), `buses` (public), `fleet/admin` (admin). Access is
+  decided by `OperatorAdmin` membership in `FleetAccessService`, never by `User.role`:
+  OWNER or MANAGER, and non-members get 404. Every service method calls
+  `access.company()` or `access.bus()` first; new endpoints must too
 
 `qr.resolve()` is the centre of the product. One unauthenticated call returns the
 operator, route, corridor-specific articles, corridor-targeted businesses, the
@@ -170,15 +187,37 @@ business back on.
 inside a double-quoted attribute ends the attribute at the first quote; that button
 never worked. Pass an id and look the text up.
 
+**Registration numbers are unique through `Vehicle.plateKey`.** `normalisePlate()` in
+`fleet/fleet.util.ts` upper-cases, converts Devanagari digits and strips everything but
+letters and digits. The migration backfilled existing rows with the same rule in SQL; if
+you change one, change both, or the same bus can be registered twice.
+
+**Nothing about a company is public until it is verified.** Public bus queries filter on
+`operator.verification = VERIFIED` and `isActive`; QR scans check the same. Changing a
+verified company's name or registration number resets it to PENDING.
+
+**Bus review scan tokens are scoped JWTs.** `POST /buses/scan/:code` (and a seat-sticker
+`qr.resolve()`) returns a 12-hour token with `scope: 'bus-review'` bound to one bus
+(`vid`) or one company (`oid`). A review needs that token or a signed-in account with a
+confirmed email or phone. Don't dedupe anonymous reviews by IP alone: Nepali mobile
+carriers put a whole bus behind one address.
+
+**Reminder dedupe keys include the due date and stage.** `FleetService.reminders()` builds
+keys like `svc:<bus>:<date>:<km>:OVERDUE`, so the 06:00 job notifies once per stage.
+Renewing a document or recording a routine service marks the matching reminders read.
+
 **After a backend change, check which process holds port 3000.** `nest start --watch`
 restarts can hit EADDRINUSE and leave the old process serving stale code. Restart
 by killing whatever `lsof -ti :3000` returns.
 
 ## Domain rules that look like bugs but are not
 
-- **Ride feedback is anonymous.** A passenger will not rate a driver honestly with
-  their name attached, and honest per-vehicle data is the only reason an operator
-  agrees to free seat-back placement
+- **Bus reviews are anonymous to the owner.** A passenger will not rate a driver honestly
+  with their name attached. `ownerReviewView()` never includes `userId`, `sessionId` or
+  `ipHash`, and moderators' previews don't either
+- **Owners can't delete reviews.** They reply publicly or report to Bato; otherwise the
+  ratings would only ever go up
+- **Bus company verification is manual**, for the same reason as business verification
 - **Coupons exist for attribution, not discounts.** `CouponRedemption` is the proof
   shown on the business dashboard that the platform sent a real customer. It is what
   makes a listing renewable
@@ -201,6 +240,11 @@ before expiry, then downgrades lapsed listings to FREE and withdraws route targe
 Every change is written to `SubscriptionEvent`, which is separate from
 `ModerationEntry` because the scheduler has no moderator to attribute an expiry to.
 
+`FleetRemindersTask` runs daily at 06:00 Asia/Kathmandu: due and overdue services,
+expiring documents and licences, and open breakdowns become `FleetNotification` rows, and
+each company's members get one email summary of what is new. Admins can run it at once
+with `POST /fleet/admin/reminders/run`.
+
 ## Front end
 
 `web/index.html` is deliberately a single file. It implements the spec's "Prayer
@@ -218,13 +262,14 @@ unreachable, so the whole flow demos with no backend running.
 
 Real, and worth knowing before you plan work:
 
-1. **Some PWA actions are still toasts only.** Claim coupon, rate ride and SOS don't
-   call the API yet; sign-in, publishing, photos, voting and reporting do
+1. **Some PWA actions are still toasts only.** Claim coupon and SOS don't call the API
+   yet; sign-in, publishing, photos, voting, reporting and rating a bus (via `bus.html`) do
 2. **Articles cannot link translations.** `Language` is a field on `Article`, not a
    relationship between versions, so a language toggle needs a schema change
 3. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
 4. **No Bikram Sambat dates** anywhere
-5. **No tests**, and `strictNullChecks` is off
+5. **No unit tests** (only the fleet smoke script), and `strictNullChecks` is off
+8. **Company verification has no document upload.** Admins check details by phone or email
 6. **Outstanding `npm audit` advisories** need NestJS 12 and nodemailer 10, both major upgrades
 7. **No Content-Security-Policy on the web app.** The pages use inline scripts
 

@@ -163,7 +163,8 @@ const VIEWS = {
         ${alerts()}
         <button class="btn" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
-      <button class="btn btn-ghost" type="button" onclick="go('register', {email: $('#email').value})">New here? Create an account</button>`;
+      <button class="btn btn-ghost" type="button" onclick="go('register', {email: $('#email').value})">New here? Create an account</button>
+      <p class="hint" style="text-align:center;margin-top:18px">Own or manage buses? <a href="owner.html">Sign in to Bato for bus owners</a></p>`;
   },
   register(){
     return `

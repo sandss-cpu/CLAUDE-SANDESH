@@ -52,7 +52,7 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @Post('email/resend')
   resendVerification(@Body() dto: EmailOnlyDto) {
-    return this.auth.resendVerification(dto.email);
+    return this.auth.resendVerification(dto.email, dto.app);
   }
 
   @Public()
@@ -66,7 +66,7 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @Post('password/forgot')
   forgotPassword(@Body() dto: EmailOnlyDto) {
-    return this.auth.forgotPassword(dto.email);
+    return this.auth.forgotPassword(dto.email, dto.app);
   }
 
   @Public()

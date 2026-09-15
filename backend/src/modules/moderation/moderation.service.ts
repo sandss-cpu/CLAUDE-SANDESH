@@ -66,6 +66,7 @@ export class ModerationService {
       : targetType === TargetType.REVIEW ? await this.prisma.review.findUnique({ where: { id }, select })
       : targetType === TargetType.BUSINESS ? await this.prisma.business.findUnique({ where: { id }, select })
       : targetType === TargetType.USER ? await this.prisma.user.findUnique({ where: { id }, select })
+      : targetType === TargetType.BUS_REVIEW ? await this.prisma.rideFeedback.findUnique({ where: { id }, select })
       : null;
     if (!found) throw new NotFoundException('That content is no longer available.');
   }
@@ -76,7 +77,8 @@ export class ModerationService {
    * person opening many browser sessions cannot hide a post on their own.
    */
   private async autoHideIfNeeded(targetType: TargetType, targetId: string) {
-    if (targetType !== TargetType.POST && targetType !== TargetType.COMMENT) return false;
+    const hideable: TargetType[] = [TargetType.POST, TargetType.COMMENT, TargetType.BUS_REVIEW];
+    if (!hideable.includes(targetType)) return false;
     const open = await this.prisma.report.findMany({
       where: { targetType, targetId, status: ReportStatus.OPEN },
       select: { reporterId: true, ipHash: true, sessionId: true },
@@ -92,10 +94,15 @@ export class ModerationService {
             moderationNote: `Hidden automatically after reports from ${people.size} people`,
           },
         })
-      : await this.prisma.comment.updateMany({
-          where: { id: targetId, moderation: ModerationStatus.APPROVED },
-          data: { moderation: ModerationStatus.PENDING },
-        });
+      : targetType === TargetType.COMMENT
+        ? await this.prisma.comment.updateMany({
+            where: { id: targetId, moderation: ModerationStatus.APPROVED },
+            data: { moderation: ModerationStatus.PENDING },
+          })
+        : await this.prisma.rideFeedback.updateMany({
+            where: { id: targetId, moderation: ModerationStatus.APPROVED },
+            data: { moderation: ModerationStatus.PENDING },
+          });
     return count > 0;
   }
 
@@ -138,7 +145,7 @@ export class ModerationService {
     const ids = (type: TargetType) => ordered.filter((g) => g.targetType === type).map((g) => g.targetId);
     const person = { select: { id: true, name: true, isSuspended: true } } as const;
 
-    const [posts, comments, articles, reviews, businesses, users] = await Promise.all([
+    const [posts, comments, articles, reviews, businesses, users, busReviews] = await Promise.all([
       this.prisma.post.findMany({
         where: { id: { in: ids(TargetType.POST) } },
         select: { id: true, title: true, body: true, coverImageUrl: true, status: true, moderation: true, moderationNote: true, author: person },
@@ -162,6 +169,14 @@ export class ModerationService {
       this.prisma.user.findMany({
         where: { id: { in: ids(TargetType.USER) } },
         select: { id: true, name: true, bio: true, isSuspended: true },
+      }),
+      // The reviewer is deliberately not selected: bus reviews stay anonymous even to moderators' previews.
+      this.prisma.rideFeedback.findMany({
+        where: { id: { in: ids(TargetType.BUS_REVIEW) } },
+        select: {
+          id: true, overall: true, comment: true, suggestion: true, moderation: true, ownerReply: true,
+          vehicle: { select: { plateNo: true, operator: { select: { name: true } } } },
+        },
       }),
     ]);
 
@@ -206,6 +221,18 @@ export class ModerationService {
           if (u) preview = { kind: 'Traveller profile', title: u.name, text: excerpt(u.bio), author: u, visibility: u.isSuspended ? 'Suspended' : 'Active' };
           break;
         }
+        case TargetType.BUS_REVIEW: {
+          const r = find(busReviews);
+          if (r) {
+            preview = {
+              kind: `Review of bus ${r.vehicle?.plateNo ?? ''} (${r.vehicle?.operator.name ?? 'unknown company'})`,
+              title: `${r.overall}★`,
+              text: excerpt([r.comment, r.suggestion && `Suggestion: ${r.suggestion}`, r.ownerReply && `Owner replied: ${r.ownerReply}`].filter(Boolean).join('\n')),
+              visibility: r.moderation === ModerationStatus.APPROVED ? 'Live' : 'Hidden until reviewed',
+            };
+          }
+          break;
+        }
       }
       return { ...g, preview };
     });
@@ -242,6 +269,19 @@ export class ModerationService {
       include: {
         user: { select: { id: true, name: true } },
         business: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      skip, take,
+    });
+  }
+
+  /** Bus reviews held by the word filter or hidden by reports. Reviewer identity is never included. */
+  pendingBusReviews(skip = 0, take = 50) {
+    return this.prisma.rideFeedback.findMany({
+      where: { moderation: ModerationStatus.PENDING },
+      select: {
+        id: true, overall: true, comment: true, suggestion: true, createdAt: true,
+        vehicle: { select: { plateNo: true, operator: { select: { name: true } } } },
       },
       orderBy: { createdAt: 'asc' },
       skip, take,
@@ -285,6 +325,17 @@ export class ModerationService {
             break;
           }
           await tx.comment.updateMany({
+            where: { id: dto.targetId },
+            data: { moderation: approved ? ModerationStatus.APPROVED : ModerationStatus.REJECTED },
+          });
+          break;
+        }
+        case TargetType.BUS_REVIEW: {
+          if (dto.action === ModerationAct.DELETE) {
+            await tx.rideFeedback.deleteMany({ where: { id: dto.targetId } });
+            break;
+          }
+          await tx.rideFeedback.updateMany({
             where: { id: dto.targetId },
             data: { moderation: approved ? ModerationStatus.APPROVED : ModerationStatus.REJECTED },
           });
@@ -352,10 +403,11 @@ export class ModerationService {
 
   /** Queue health: the number the moderation SLA is measured against. */
   async queueStats() {
-    const [posts, comments, reviews, reports, reportedItems, oldest] = await Promise.all([
+    const [posts, comments, reviews, busReviews, reports, reportedItems, oldest] = await Promise.all([
       this.prisma.post.count({ where: { moderation: ModerationStatus.PENDING } }),
       this.prisma.comment.count({ where: { moderation: ModerationStatus.PENDING } }),
       this.prisma.review.count({ where: { moderation: ModerationStatus.PENDING } }),
+      this.prisma.rideFeedback.count({ where: { moderation: ModerationStatus.PENDING } }),
       this.prisma.report.count({ where: { status: ReportStatus.OPEN } }),
       this.prisma.report.groupBy({ by: ['targetType', 'targetId'], where: { status: ReportStatus.OPEN } }),
       this.prisma.report.findFirst({
@@ -373,6 +425,7 @@ export class ModerationService {
       pendingPosts: posts,
       pendingComments: comments,
       pendingReviews: reviews,
+      pendingBusReviews: busReviews,
       openReports: reports,
       reportedItems: reportedItems.length,
       oldestOpenReportHours: oldestHours,

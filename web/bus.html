@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rate your bus — Bato</title>
+<meta name="description" content="Find a bus by its registration number, see what passengers say, and leave your own review.">
+<meta name="theme-color" content="#5B3FA8">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+<style>
+/* "Prayer Flag" tokens, shared with index.html. Big targets and high contrast: this page is opened from a seat on a moving bus. */
+:root{
+  --saffron:#F4A024; --dusk:#5B3FA8; --rhodo:#E8455F; --ink:#1C1A2E; --paper:#FDFAF3; --green:#3E9B4F; --amber:#E5892E;
+  --bg:var(--paper); --surface:#fff; --surface-2:#F6F1E6; --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --brand:var(--dusk); --accent:var(--saffron); --star:#E59A12;
+  --r:14px; --r-lg:20px; --tap:48px; --pad:18px;
+  --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+html[data-theme="night"]{
+  --bg:#141024; --surface:#1E1834; --surface-2:#271F42; --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  --brand:#8B6FD4; --accent:#E8A33F; --star:#E8A33F; --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+html[data-theme="sun"]{
+  --bg:#fff; --surface:#fff; --surface-2:#F0EDE4; --text:#000; --text-dim:#2A2A2A; --line:#000;
+  --brand:#3A2270; --accent:#B96A00; --star:#8A5300; --shadow:none;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:17px;line-height:1.6;
+  padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.2;margin:0}
+a{color:var(--brand)}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+.top{background:linear-gradient(135deg,var(--dusk) 0%,#7A4FC4 60%,var(--rhodo) 150%);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 0 0}
+html[data-theme="sun"] .top{background:#3A2270}
+.top-in{max-width:680px;margin:0 auto;padding:0 var(--pad) 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-family:var(--font-display);font-size:22px;font-weight:700;color:#fff;text-decoration:none}
+.top nav{display:flex;gap:4px;flex-wrap:wrap}
+.top nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 10px;border-radius:999px;opacity:.9}
+.top nav a:hover{background:rgba(255,255,255,.14);opacity:1}
+.flags{display:flex;height:5px}.flags i{flex:1}
+
+.wrap{max-width:680px;margin:0 auto;padding:0 var(--pad)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);
+  padding:var(--pad);margin-top:16px}
+.btn{min-height:var(--tap);border-radius:var(--r);padding:0 20px;font-weight:700;font-size:15.5px;border:none;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:var(--accent);color:#231600}
+.btn:disabled{opacity:.55;cursor:default}
+.btn-brand{background:var(--brand);color:#fff}
+.btn-ghost{background:var(--surface);color:var(--text);border:1.5px solid var(--line)}
+.btn-block{width:100%}
+.link{background:none;border:none;color:var(--brand);font-weight:600;cursor:pointer;padding:8px 0;font-size:14.5px}
+.back{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:var(--text-dim);font-size:14.5px;text-decoration:none;
+  background:none;border:none;cursor:pointer;padding:8px 0;min-height:44px}
+input,textarea,select{width:100%;min-height:var(--tap);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);
+  padding:11px 14px;font-size:16px}
+textarea{min-height:110px;resize:vertical;line-height:1.5}
+label{display:block;font-size:13.5px;font-weight:700;margin:16px 0 6px;color:var(--text-dim)}
+.hint{font-size:13px;color:var(--text-dim);margin-top:5px}
+.error{background:#FCE9EC;color:#9C1C36;border-radius:var(--r);padding:11px 14px;font-size:14.5px;margin-top:14px}
+.ok{background:#E4F3E7;color:#1F6B30;border-radius:var(--r);padding:11px 14px;font-size:14.5px;margin-top:14px}
+html[data-theme="night"] .error{background:#3A1420;color:#F4B4C1}
+html[data-theme="night"] .ok{background:#16301C;color:#A9DDB4}
+
+.hero{padding:26px 0 4px}
+.hero h1{font-size:30px}
+.hero p{margin:6px 0 0;color:var(--text-dim)}
+.search{display:flex;gap:8px;margin-top:16px}
+.search input{flex:1}
+.results{margin-top:14px;display:grid;gap:10px}
+.result{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px;cursor:pointer;min-height:72px}
+.result:hover{border-color:var(--brand)}
+.thumb{width:62px;height:62px;border-radius:12px;background:var(--surface-2);flex:none;object-fit:cover;display:grid;place-items:center;font-size:26px}
+.result h3{font-size:17px}
+.result small{display:block;color:var(--text-dim);font-size:13px;line-height:1.4}
+.plate{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-weight:700;letter-spacing:.04em;font-size:13px;
+  background:#FFF6D8;color:#3B2A00;border:1.5px solid #2B2B2B;border-radius:6px;padding:1px 8px}
+html[data-theme="night"] .plate{background:#2C2410;color:#F6E6B6;border-color:#8C7A4A}
+.empty{text-align:center;color:var(--text-dim);padding:26px 8px}
+.spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand);animation:spin .8s linear infinite;margin:30px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+
+.bus-photo{width:calc(100% + 2 * var(--pad));margin:calc(var(--pad) * -1) calc(var(--pad) * -1) 14px;height:190px;object-fit:cover;
+  border-radius:var(--r-lg) var(--r-lg) 0 0;display:block;background:var(--surface-2)}
+.bus-head h1{font-size:27px;margin-top:8px}
+.company{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;color:var(--text-dim);font-weight:600}
+.verified{color:var(--green);font-size:13px;font-weight:700}
+.facts{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:14px;color:var(--text-dim)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:3px 11px;font-size:13px;font-weight:600}
+.status-note{margin-top:12px;font-size:14px;font-weight:600;color:var(--amber)}
+
+.score{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+.big{font-family:var(--font-display);font-size:48px;font-weight:700;line-height:1}
+.stars{color:var(--star);letter-spacing:1px;font-size:18px;white-space:nowrap}
+.dist{display:grid;gap:5px}
+.dist-row{display:grid;grid-template-columns:28px 1fr 30px;gap:8px;align-items:center;font-size:13px;color:var(--text-dim)}
+.bar{height:9px;background:var(--surface-2);border-radius:999px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--star);border-radius:999px}
+.parts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:16px}
+.part{background:var(--surface-2);border-radius:12px;padding:9px 12px;font-size:13.5px}
+.part b{display:block;font-size:18px;font-family:var(--font-display)}
+
+.rate{display:flex;gap:4px;flex-wrap:wrap}
+.star-btn{width:52px;height:52px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-size:28px;
+  line-height:1;cursor:pointer;color:var(--line)}
+.star-btn[aria-checked="true"],.star-btn.on{color:var(--star);border-color:var(--star)}
+.rate-label{font-size:14px;font-weight:700;color:var(--text-dim);margin-top:6px;min-height:22px}
+.sub-rate{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sub-rate:last-child{border-bottom:none}
+.sub-rate span{font-weight:600;font-size:15px}
+.sub-rate .star-btn{width:42px;height:42px;font-size:22px;border-radius:10px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;border-radius:999px;padding:5px 12px;
+  background:#E4F3E7;color:#1F6B30}
+html[data-theme="night"] .badge{background:#16301C;color:#A9DDB4}
+.gate{display:grid;gap:10px}
+.gate p{margin:0;color:var(--text-dim);font-size:15px}
+
+.sec{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 4px}
+.sec h2{font-size:21px}
+.sec span{font-size:13px;color:var(--text-dim)}
+.review{border-bottom:1px solid var(--line);padding:14px 0}
+.review:last-child{border-bottom:none}
+.rv-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:var(--text-dim)}
+.rv-who{font-weight:700}
+.rv-who.v{color:var(--green)}
+.review p{margin:6px 0 0;overflow-wrap:anywhere}
+.rv-parts{font-size:13px;color:var(--text-dim);margin-top:4px}
+.reply{background:var(--surface-2);border-left:4px solid var(--brand);border-radius:10px;padding:9px 12px;margin-top:10px;font-size:14.5px}
+.reply b{display:block;font-size:13px}
+.reply p{margin:2px 0 0}
+.rv-foot{display:flex;justify-content:flex-end}
+
+.sheet-back{position:fixed;inset:0;z-index:50;background:rgba(20,16,36,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surface);border-radius:22px 22px 0 0;
+  padding:20px var(--pad) calc(18px + env(safe-area-inset-bottom))}
+@media (min-width:640px){.sheet-back{align-items:center}.sheet{border-radius:22px}}
+.reason{display:flex;gap:10px;align-items:center;min-height:48px;margin:6px 0 0;padding:0 12px;border:1.5px solid var(--line);
+  border-radius:var(--r);font-size:15px;font-weight:600;color:var(--text);cursor:pointer}
+.reason input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--brand)}
+.row-btns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.row-btns .btn{flex:1}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom));background:var(--ink);color:#fff;
+  padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.owner-cta{margin-top:30px;text-align:center;font-size:14px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="index.html">Bato</a>
+    <nav aria-label="Bato">
+      <a href="bus.html">Find a bus</a>
+      <a href="index.html">Magazine</a>
+      <a href="owner.html">For bus owners</a>
+    </nav>
+  </div>
+  <div class="flags" aria-hidden="true">
+    <i style="background:#2F6FD0"></i><i style="background:#FDFAF3"></i><i style="background:#E8455F"></i>
+    <i style="background:#3E9B4F"></i><i style="background:#F4A024"></i>
+  </div>
+</header>
+
+<main class="wrap" id="view" aria-live="polite"></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const $ = (s) => document.querySelector(s);
+const esc = (s = '') => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+try{ const t = localStorage.getItem('bato.theme'); if(t) document.documentElement.dataset.theme = t; }catch(_){}
+
+const BUS_TYPE = {
+  TOURIST_DELUXE: 'Tourist deluxe', SOFA_SEATER: 'Sofa seater', AC_DELUXE: 'AC deluxe', SLEEPER: 'Sleeper',
+  MICRO_BUS: 'Micro bus', HIACE: 'Hiace', LOCAL: 'Local bus', MINI_BUS: 'Mini bus', OTHER: 'Bus',
+};
+const AMENITY = {
+  AC: 'Air conditioning', WIFI: 'Wi-Fi', CHARGING: 'Phone charging', RECLINING_SEATS: 'Reclining seats', TOILET: 'Toilet',
+  WATER: 'Drinking water', TV: 'TV', CCTV: 'CCTV', FIRST_AID: 'First aid kit', GPS_TRACKING: 'GPS tracking',
+  LUGGAGE_RACK: 'Luggage rack', BLANKETS: 'Blankets',
+};
+const RATING_WORD = ['', 'Very poor', 'Poor', 'Okay', 'Good', 'Excellent'];
+const PARTS = [['cleanliness', 'Cleanliness'], ['driving', 'Safe driving'], ['punctuality', 'On time'], ['staff', 'Staff']];
+const REASONS = [
+  ['SPAM', 'Spam or advertising'], ['HARASSMENT', 'Abusive or hateful'], ['MISINFORMATION', 'False or misleading'],
+  ['SEXUAL_CONTENT', 'Sexual content'], ['ILLEGAL', 'Illegal or dangerous'], ['OTHER', 'Something else'],
+];
+
+const state = {
+  view: 'search', q: '', results: null, searching: false, error: '',
+  bus: null, company: null, reviews: [], meta: null, loadingMore: false,
+  auth: null, form: null, formError: '', formErrorCode: '', sending: false, done: '',
+};
+
+const toast = (msg) => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600); };
+const stars = (n) => { const r = Math.round(n || 0); return '★'.repeat(r) + '☆'.repeat(5 - r); };
+const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+
+function sessionId(){
+  let sid = localStorage.getItem('bato.sid');
+  if(!sid){ sid = 'sid_' + Math.random().toString(36).slice(2, 14); localStorage.setItem('bato.sid', sid); }
+  return sid;
+}
+
+/* ---------- scan tokens: proof of scanning a sticker, kept per bus or company until they expire ---------- */
+function jwtExpiry(token){
+  try{ return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp * 1000; }catch(_){ return 0; }
+}
+function scanTokens(){ try{ return JSON.parse(localStorage.getItem('bato.scans') || '{}'); }catch(_){ return {}; } }
+function saveScan(key, token){
+  const all = scanTokens();
+  for(const k of Object.keys(all)) if(jwtExpiry(all[k]) < Date.now()) delete all[k];
+  all[key] = token;
+  try{ localStorage.setItem('bato.scans', JSON.stringify(all)); }catch(_){}
+}
+function dropScan(bus){
+  const all = scanTokens();
+  delete all[`bus:${bus.id}`]; delete all[`company:${bus.company.id}`];
+  try{ localStorage.setItem('bato.scans', JSON.stringify(all)); }catch(_){}
+}
+function scanTokenFor(bus){
+  const all = scanTokens();
+  for(const key of [`bus:${bus.id}`, `company:${bus.company.id}`]){
+    if(all[key] && jwtExpiry(all[key]) > Date.now() + 60_000) return all[key];
+  }
+  return null;
+}
+
+/* ---------- the traveller's session from login.html, refreshed the same way as index.html ---------- */
+function loadAuth(){ try{ state.auth = JSON.parse(localStorage.getItem('bato.auth') || 'null'); }catch(_){ state.auth = null; } }
+function tokenExpiresSoon(token){ return jwtExpiry(token) - Date.now() < 30_000; }
+let refreshing = null;
+function refreshSession(){
+  if(refreshing) return refreshing;
+  const run = async () => {
+    const stored = JSON.parse(localStorage.getItem('bato.auth') || 'null');
+    if(!stored?.refreshToken){ const e = new Error('signed out'); e.expired = true; throw e; }
+    if(stored.accessToken !== state.auth?.accessToken && !tokenExpiresSoon(stored.accessToken)){ state.auth = stored; return stored; }
+    const res = await fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: stored.refreshToken }),
+    });
+    if(!res.ok){ const e = new Error('Could not refresh'); e.expired = res.status === 401; throw e; }
+    const { data } = await res.json();
+    state.auth = { ...stored, accessToken: data.accessToken, refreshToken: data.refreshToken };
+    localStorage.setItem('bato.auth', JSON.stringify(state.auth));
+    return state.auth;
+  };
+  refreshing = (navigator.locks ? navigator.locks.request('bato-refresh', run) : run()).finally(() => { refreshing = null; });
+  return refreshing;
+}
+function sessionEnded(){ state.auth = null; localStorage.removeItem('bato.auth'); }
+
+async function api(path, { method = 'GET', body, auth = false } = {}){
+  const opts = { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined };
+  let res;
+  if(auth && state.auth){
+    if(tokenExpiresSoon(state.auth.accessToken)){
+      try{ await refreshSession(); }catch(err){ if(err.expired) sessionEnded(); }
+    }
+    const call = () => fetch(`${API}${path}`, state.auth
+      ? { ...opts, headers: { ...opts.headers, Authorization: `Bearer ${state.auth.accessToken}` } } : opts);
+    res = await call();
+    if(res.status === 401 && state.auth){
+      try{ await refreshSession(); res = await call(); }catch(err){ if(err.expired){ sessionEnded(); res = await call(); } }
+    }
+  } else {
+    res = await fetch(`${API}${path}`, opts);
+  }
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok){
+    const err = new Error(json?.message || 'Something went wrong. Please try again.');
+    err.code = json?.code; err.status = res.status;
+    throw err;
+  }
+  return json.data;
+}
+
+/* ---------- routing ---------- */
+function setUrl(query, push){
+  const url = `bus.html${query ? `?${query}` : ''}`;
+  if(push) history.pushState(null, '', url); else history.replaceState(null, '', url);
+}
+
+async function route(){
+  const params = new URLSearchParams(location.search);
+  const hashBus = (location.hash.match(/^#bus-([\w-]{8,64})$/) || [])[1];
+  loadAuth();
+  if(params.get('code')) return scan(params.get('code'));
+  if(params.get('id') || hashBus) return openBus(params.get('id') || hashBus, false);
+  if(params.get('company')) return openCompany(params.get('company'), false);
+  state.view = 'search';
+  state.q = params.get('q') || '';
+  render();
+  if(state.q) runSearch();
+}
+window.addEventListener('popstate', route);
+
+function render(){
+  $('#view').innerHTML = VIEWS[state.view]();
+  if(state.view === 'bus') renderForm();
+}
+
+/* ---------- views ---------- */
+const VIEWS = {
+  loading: () => `<div class="spinner" role="status" aria-label="Loading"></div>`,
+
+  error: () => `
+    <div class="card" style="margin-top:22px">
+      <h1 style="font-size:23px">We couldn't open that</h1>
+      <div class="error" role="alert">${esc(state.error)}</div>
+      <button class="btn btn-block" style="margin-top:14px" onclick="goSearch()">Search for a bus</button>
+    </div>`,
+
+  search: () => `
+    <section class="hero">
+      <h1>Rate your bus</h1>
+      <p>Find a bus by its registration number, its name or the company. Scanning the QR code inside the bus brings you straight to it.</p>
+      <form class="search" role="search" onsubmit="submitSearch(event)">
+        <label for="q" class="sr-only">Registration number, bus name or company</label>
+        <input id="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="e.g. BA 1 KHA 2345 or Himalayan" value="${esc(state.q)}">
+        <button class="btn" type="submit">Search</button>
+      </form>
+    </section>
+    <div class="results">
+      ${state.searching ? '<div class="spinner" role="status" aria-label="Searching"></div>'
+        : state.error ? `<div class="error" role="alert">${esc(state.error)}</div>`
+        : state.results === null ? ''
+        : !state.results.length ? `<div class="empty">No public buses match “${esc(state.q)}”. Check the number on the plate.
+            If the company has only just joined Bato, its buses appear once they are verified.</div>`
+        : state.results.map(resultRow).join('')}
+    </div>
+    <p class="owner-cta">Run a bus or a bus company? <a href="owner.html">Register your buses on Bato</a></p>`,
+
+  bus: () => {
+    const b = state.bus;
+    const r = b.rating;
+    const max = Math.max(1, ...r.distribution.map((d) => d.count));
+    return `
+      <button class="back" onclick="goSearch()">← Find another bus</button>
+      <article class="card bus-head">
+        ${b.photoUrl ? `<img class="bus-photo" src="${esc(b.photoUrl)}" alt="Photo of ${esc(b.label || b.registrationNo)}">` : ''}
+        <span class="plate" aria-label="Registration number">${esc(b.registrationNo)}</span>
+        <h1>${esc(b.label || b.registrationNo)}</h1>
+        <div class="company">
+          <button class="link" style="padding:0;font-size:inherit" onclick="openCompany('${esc(b.company.slug)}', true)">${esc(b.company.name)}</button>
+          <span class="verified">✓ Verified by Bato</span>
+        </div>
+        <div class="facts">
+          ${b.route ? `<span>🛣 ${esc(b.route.name)}</span>` : ''}
+          ${b.busType ? `<span>${esc(BUS_TYPE[b.busType] || b.busType)}</span>` : ''}
+          ${b.seatCount ? `<span>${b.seatCount} seats</span>` : ''}
+          ${b.make ? `<span>${esc([b.make, b.model, b.year].filter(Boolean).join(' '))}</span>` : ''}
+        </div>
+        ${b.amenities?.length ? `<div class="chips">${b.amenities.map((a) => `<span class="chip">${esc(AMENITY[a] || a)}</span>`).join('')}</div>` : ''}
+        ${b.status !== 'ACTIVE' ? `<div class="status-note">${b.status === 'IN_MAINTENANCE' ? 'This bus is in for maintenance at the moment.' : 'This bus is not running at the moment.'}</div>` : ''}
+      </article>
+
+      <section class="card" aria-labelledby="scoreHead">
+        <h2 id="scoreHead" class="sr-only">Passenger rating</h2>
+        ${r.reviews ? `
+          <div class="score">
+            <div>
+              <div class="big">${r.average.toFixed(1)}</div>
+              <div class="stars" aria-label="${r.average} out of 5">${stars(r.average)}</div>
+              <div class="hint">${r.reviews} review${r.reviews === 1 ? '' : 's'}${r.satisfiedPercent != null ? ` · ${r.satisfiedPercent}% happy` : ''}</div>
+            </div>
+            <div class="dist" aria-label="Ratings by stars">
+              ${r.distribution.map((d) => `
+                <div class="dist-row"><span>${d.stars}★</span><div class="bar"><span style="width:${Math.round((d.count / max) * 100)}%"></span></div><span>${d.count}</span></div>`).join('')}
+            </div>
+          </div>
+          <div class="parts">
+            ${PARTS.map(([k, label]) => r.parts[k] != null ? `<div class="part"><b>${r.parts[k].toFixed(1)}</b>${label}</div>` : '').join('')}
+          </div>` : `<p style="margin:0">No reviews yet. Be the first to say how this bus was.</p>`}
+      </section>
+
+      <section class="card" id="review" aria-labelledby="reviewHead">
+        <h2 id="reviewHead" style="font-size:21px">How was your ride?</h2>
+        <div id="reviewBox"></div>
+      </section>
+
+      <div class="sec"><h2>Passenger reviews</h2><span>Newest first</span></div>
+      <section class="card" style="margin-top:8px;padding-top:4px;padding-bottom:4px">
+        ${state.reviews.length ? state.reviews.map(reviewItem).join('') : '<div class="empty">No written reviews yet.</div>'}
+      </section>
+      ${state.meta && state.meta.page < state.meta.pages ? `
+        <button class="btn btn-ghost btn-block" style="margin-top:12px" onclick="loadMore()" ${state.loadingMore ? 'disabled' : ''}>
+          ${state.loadingMore ? 'Loading…' : 'Show more reviews'}</button>` : ''}`;
+  },
+
+  company: () => {
+    const c = state.company;
+    return `
+      <button class="back" onclick="goSearch()">← Find another bus</button>
+      <article class="card">
+        <h1 style="font-size:27px">${esc(c.name)}</h1>
+        <div class="company"><span class="verified">✓ Verified by Bato</span></div>
+        ${c.description ? `<p style="margin:10px 0 0">${esc(c.description)}</p>` : ''}
+        <div class="facts">
+          <span>${c.busCount} bus${c.busCount === 1 ? '' : 'es'}</span>
+          ${c.rating.reviews ? `<span><span class="stars" style="font-size:15px">${stars(c.rating.average)}</span> ${c.rating.average.toFixed(1)} from ${c.rating.reviews} reviews</span>` : ''}
+          ${c.address ? `<span>📍 ${esc(c.address)}</span>` : ''}
+        </div>
+      </article>
+      <div class="sec"><h2>Which bus are you on?</h2><span>Check the plate</span></div>
+      <div class="results">${c.buses.length ? c.buses.map(resultRow).join('') : '<div class="empty">No buses listed yet.</div>'}</div>`;
+  },
+};
+
+function resultRow(b){
+  return `
+    <button class="result" onclick="openBus('${esc(b.id)}', true)">
+      ${b.photoUrl ? `<img class="thumb" src="${esc(b.photoUrl)}" alt="">` : '<span class="thumb" aria-hidden="true">🚌</span>'}
+      <span style="flex:1;min-width:0">
+        <span class="plate">${esc(b.registrationNo)}</span>
+        <h3>${esc(b.label || b.registrationNo)}</h3>
+        <small>${esc([b.company, b.route, BUS_TYPE[b.busType]].filter(Boolean).join(' · '))}</small>
+        <small>${b.rating.reviews ? `<span class="stars" style="font-size:14px">${stars(b.rating.average)}</span> ${b.rating.average.toFixed(1)} · ${b.rating.reviews} review${b.rating.reviews === 1 ? '' : 's'}` : 'No reviews yet'}</small>
+      </span>
+      <span aria-hidden="true" style="color:var(--text-dim);font-size:20px">›</span>
+    </button>`;
+}
+
+function reviewItem(r){
+  const parts = PARTS.filter(([k]) => r[k]).map(([k, label]) => `${label} ${r[k]}`).join(' · ');
+  const reported = reportedIds().includes(r.id);
+  return `
+    <article class="review">
+      <div class="rv-head">
+        <span class="stars" aria-label="${r.overall} out of 5">${stars(r.overall)}</span>
+        <span class="rv-who ${r.verifiedRide ? 'v' : ''}">${r.verifiedRide ? '✓ Scanned on board' : 'Passenger'}</span>
+        <time datetime="${esc(r.createdAt)}">${fmtDay(r.createdAt)}</time>
+      </div>
+      ${r.comment ? `<p>${esc(r.comment)}</p>` : ''}
+      ${parts ? `<div class="rv-parts">${esc(parts)}${r.tripDate ? ` · travelled ${fmtDay(r.tripDate)}` : ''}</div>` : ''}
+      ${r.ownerReply ? `<div class="reply"><b>Reply from ${esc(state.bus.company.name)}</b><p>${esc(r.ownerReply)}</p></div>` : ''}
+      <div class="rv-foot">
+        <button class="link" onclick="openReport('${esc(r.id)}')" ${reported ? 'disabled' : ''}>${reported ? 'Reported' : 'Report'}</button>
+      </div>
+    </article>`;
+}
+
+/* ---------- review form: rendered on its own so typing survives star taps ---------- */
+function freshForm(){ return { overall: 0, cleanliness: 0, driving: 0, punctuality: 0, staff: 0, comment: '', suggestion: '', tripDate: '' }; }
+
+function starGroup(field, value, size){
+  const label = field === 'overall' ? 'Overall rating' : PARTS.find(([k]) => k === field)[1];
+  return `<div class="rate" role="radiogroup" aria-label="${label}">
+    ${[1, 2, 3, 4, 5].map((n) => `
+      <button type="button" class="star-btn ${n <= value ? 'on' : ''}" role="radio" aria-checked="${n === value}"
+        aria-label="${n} star${n === 1 ? '' : 's'}" id="star-${field}-${n}" onclick="setStar('${field}', ${n})"
+        ${size ? `style="${size}"` : ''}>★</button>`).join('')}
+  </div>`;
+}
+
+function renderForm(){
+  const box = $('#reviewBox');
+  if(!box) return;
+  const b = state.bus;
+  const f = state.form;
+  const token = scanTokenFor(b);
+  const signedIn = !!state.auth;
+
+  if(state.done){
+    box.innerHTML = `<div class="ok" role="status">${esc(state.done)}</div>`;
+    return;
+  }
+  if(!token && !signedIn){
+    const back = encodeURIComponent(`bus.html#bus-${b.id}`);
+    box.innerHTML = `
+      <div class="gate">
+        <p>To keep reviews honest, Bato asks for one of these:</p>
+        <p><strong>On the bus?</strong> Scan the QR code sticker inside with your phone camera. No account needed.</p>
+        <p><strong>Travelled already?</strong> Sign in and leave your review.</p>
+        <a class="btn btn-brand btn-block" href="login.html?returnTo=${back}">Sign in to review</a>
+        ${state.formError ? `<div class="error" role="alert">${esc(state.formError)}</div>` : ''}
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div style="margin:8px 0 4px">
+      ${token ? '<span class="badge">✓ You scanned this bus’s QR code</span>'
+        : `<span class="hint">Reviewing as ${esc(state.auth.user?.name || 'you')}. Your name is never shown to the company.</span>`}
+    </div>
+    <form onsubmit="submitReview(event)" novalidate>
+      <label id="overallLabel">Overall <span aria-hidden="true" style="color:var(--rhodo)">*</span></label>
+      ${starGroup('overall', f.overall)}
+      <div class="rate-label" aria-live="polite">${RATING_WORD[f.overall] || 'Tap a star'}</div>
+
+      <label>Rate the details <span style="font-weight:500">(optional)</span></label>
+      <div>
+        ${PARTS.map(([k, label]) => `<div class="sub-rate"><span>${label}</span>${starGroup(k, f[k], 'width:42px;height:42px;font-size:22px')}</div>`).join('')}
+      </div>
+
+      <label for="comment">Your review <span style="font-weight:500">(shown publicly)</span></label>
+      <textarea id="comment" maxlength="1000" placeholder="What went well, and what didn't?" oninput="state.form.comment=this.value">${esc(f.comment)}</textarea>
+
+      <label for="suggestion">A suggestion for the company <span style="font-weight:500">(only they see this)</span></label>
+      <textarea id="suggestion" maxlength="1000" style="min-height:80px" placeholder="e.g. Please add a stop every two hours" oninput="state.form.suggestion=this.value">${esc(f.suggestion)}</textarea>
+
+      <label for="tripDate">When did you travel? <span style="font-weight:500">(optional)</span></label>
+      <input id="tripDate" type="date" max="${todayIso()}" value="${esc(f.tripDate)}" onchange="state.form.tripDate=this.value">
+
+      ${state.formError ? `<div class="error" role="alert">${esc(state.formError)}</div>` : ''}
+      <button class="btn btn-block" style="margin-top:18px" type="submit" ${state.sending ? 'disabled' : ''}>${state.sending ? 'Sending…' : 'Send review'}</button>
+      <p class="hint">One review per bus a day. Reviews that break Bato's rules are removed.</p>
+    </form>`;
+}
+
+function setStar(field, n){
+  state.form[field] = state.form[field] === n && field !== 'overall' ? 0 : n;
+  if(field === 'overall') state.formError = '';
+  renderForm();
+  document.getElementById(`star-${field}-${n}`)?.focus();
+}
+
+async function submitReview(e){
+  e.preventDefault();
+  const b = state.bus;
+  const f = state.form;
+  if(!f.overall){ state.formError = 'Choose an overall rating from 1 to 5 stars.'; renderForm(); $('#star-overall-1')?.focus(); return; }
+  state.sending = true; state.formError = ''; renderForm();
+  const body = { overall: f.overall, sessionId: sessionId() };
+  for(const [k] of PARTS) if(f[k]) body[k] = f[k];
+  if(f.comment.trim()) body.comment = f.comment.trim();
+  if(f.suggestion.trim()) body.suggestion = f.suggestion.trim();
+  if(f.tripDate) body.tripDate = f.tripDate;
+  const token = scanTokenFor(b);
+  if(token) body.scanToken = token;
+  try{
+    const res = await api(`/buses/${b.id}/reviews`, { method: 'POST', body, auth: true });
+    state.sending = false;
+    state.form = freshForm();
+    state.done = res.message;
+    await openBus(b.id, false, true);
+    toast('Thank you for your review');
+    document.getElementById('review')?.scrollIntoView({ block: 'start' });
+  }catch(err){
+    state.sending = false;
+    if(err.code === 'SCAN_EXPIRED') dropScan(b);
+    state.formError = err.message;
+    renderForm();
+  }
+}
+
+/* ---------- actions ---------- */
+function goSearch(){ state.error = ''; state.view = 'search'; setUrl(state.q ? `q=${encodeURIComponent(state.q)}` : '', true); render(); $('#q')?.focus(); }
+
+function submitSearch(e){
+  e.preventDefault();
+  state.q = $('#q').value.trim();
+  setUrl(state.q ? `q=${encodeURIComponent(state.q)}` : '', false);
+  runSearch();
+}
+
+async function runSearch(){
+  state.error = '';
+  if(state.q.length < 2){ state.results = null; state.error = 'Type at least 2 characters.'; render(); return; }
+  state.searching = true; render();
+  try{ state.results = await api(`/buses/search?q=${encodeURIComponent(state.q)}`); }
+  catch(err){ state.results = null; state.error = err.status ? err.message : 'Bato is not reachable right now. Check your connection and try again.'; }
+  state.searching = false;
+  render();
+  $('#q')?.focus();
+}
+
+async function scan(code){
+  state.view = 'loading'; render();
+  try{
+    const data = await api(`/buses/scan/${encodeURIComponent(code)}`, { method: 'POST', body: { sessionId: sessionId() } });
+    // The address bar stops carrying the sticker code, so a copied link can't hand out "scanned on board".
+    if(data.kind === 'COMPANY'){
+      saveScan(`company:${data.company.id}`, data.scanToken);
+      setUrl(`company=${encodeURIComponent(data.company.slug)}`, false);
+      state.company = data.company; state.view = 'company'; render();
+      return;
+    }
+    saveScan(`bus:${data.bus.id}`, data.scanToken);
+    setUrl(`id=${data.bus.id}`, false);
+    showBus(data.bus);
+  }catch(err){
+    setUrl('', false);
+    state.error = err.status ? err.message : 'Bato is not reachable right now. Check your connection and try again.';
+    state.view = 'error'; render();
+  }
+}
+
+function showBus(bus, keepDone){
+  const changed = state.bus?.id !== bus.id;
+  state.bus = bus;
+  state.reviews = bus.reviews.items;
+  state.meta = bus.reviews.meta;
+  if(changed || !state.form) state.form = freshForm();
+  if(!keepDone){ state.done = ''; state.formError = ''; }
+  state.view = 'bus';
+  render();
+  if(location.hash === '#review') document.getElementById('review')?.scrollIntoView();
+}
+
+async function openBus(id, push, keepDone){
+  if(push) setUrl(`id=${encodeURIComponent(id)}`, true);
+  else if(location.hash.startsWith('#bus-')) setUrl(`id=${encodeURIComponent(id)}`, false);
+  if(!keepDone){ state.view = 'loading'; render(); }
+  try{
+    showBus(await api(`/buses/${encodeURIComponent(id)}`), keepDone);
+    if(!keepDone) window.scrollTo(0, 0);
+  }catch(err){
+    state.error = err.status ? err.message : 'Bato is not reachable right now. Check your connection and try again.';
+    state.view = 'error'; render();
+  }
+}
+
+async function openCompany(slug, push){
+  if(push) setUrl(`company=${encodeURIComponent(slug)}`, true);
+  state.view = 'loading'; render();
+  try{
+    state.company = await api(`/buses/companies/${encodeURIComponent(slug)}`);
+    state.view = 'company'; render(); window.scrollTo(0, 0);
+  }catch(err){
+    state.error = err.status ? err.message : 'Bato is not reachable right now.';
+    state.view = 'error'; render();
+  }
+}
+
+async function loadMore(){
+  state.loadingMore = true; render();
+  try{
+    const page = await api(`/buses/${state.bus.id}/reviews?page=${state.meta.page + 1}`);
+    state.reviews = state.reviews.concat(page.items);
+    state.meta = page.meta;
+  }catch(err){ toast(err.message); }
+  state.loadingMore = false; render();
+}
+
+/* ---------- reporting a review ---------- */
+function reportedIds(){ try{ return JSON.parse(localStorage.getItem('bato.reportedBusReviews') || '[]'); }catch(_){ return []; } }
+
+function openReport(id){
+  const back = document.createElement('div');
+  back.className = 'sheet-back';
+  back.innerHTML = `
+    <form class="sheet" role="dialog" aria-modal="true" aria-labelledby="rpTitle" novalidate>
+      <h2 id="rpTitle" style="font-size:21px">Report this review</h2>
+      <p class="hint" style="margin:4px 0 8px">A Bato moderator will look at it. The writer isn't told who reported it.</p>
+      <fieldset style="border:0;margin:0;padding:0">
+        <legend class="sr-only">Reason</legend>
+        ${REASONS.map(([v, l]) => `<label class="reason"><input type="radio" name="reason" value="${v}"> ${l}</label>`).join('')}
+      </fieldset>
+      <label for="rpDetail">Anything to add? <span style="font-weight:500">(optional)</span></label>
+      <textarea id="rpDetail" maxlength="1000" style="min-height:80px"></textarea>
+      <div class="error" role="alert" hidden></div>
+      <div class="row-btns">
+        <button class="btn" type="submit">Send report</button>
+        <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
+      </div>
+    </form>`;
+  const returnFocus = document.activeElement;
+  const close = () => { back.remove(); returnFocus?.focus?.(); };
+  back.addEventListener('click', (e) => { if(e.target === back) close(); });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+  back.querySelector('[data-cancel]').onclick = close;
+  back.querySelector('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const reason = back.querySelector('input[name="reason"]:checked')?.value;
+    const box = back.querySelector('.error');
+    if(!reason){ box.textContent = 'Choose a reason.'; box.hidden = false; return; }
+    const submit = back.querySelector('button[type="submit"]');
+    submit.disabled = true; submit.textContent = 'Sending…';
+    try{
+      await api('/moderation/report', {
+        method: 'POST', auth: true,
+        body: { targetType: 'BUS_REVIEW', targetId: id, reason, detail: back.querySelector('#rpDetail').value.trim() || undefined, sessionId: sessionId() },
+      });
+      const ids = reportedIds(); ids.push(id);
+      localStorage.setItem('bato.reportedBusReviews', JSON.stringify(ids.slice(-200)));
+      close(); render(); toast('Thanks. A moderator will take a look.');
+    }catch(err){
+      box.textContent = err.message; box.hidden = false; submit.disabled = false; submit.textContent = 'Send report';
+    }
+  };
+  document.body.appendChild(back);
+  back.querySelector('input[name="reason"]').focus();
+}
+
+route();
+</script>
+</body>
+</html>

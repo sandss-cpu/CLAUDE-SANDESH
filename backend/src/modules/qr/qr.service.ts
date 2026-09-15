@@ -5,10 +5,15 @@ import { ContentStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { shortCode } from '../../common/utils/slug.util';
 import { CreateQrBatchDto } from './dto/qr.dto';
+import { BusReviewsService } from '../fleet/bus-reviews.service';
 
 @Injectable()
 export class QrService {
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+    private busReviews: BusReviewsService,
+  ) {}
 
   /**
    * The heart of the product: a sticker scan resolves to route-aware content.
@@ -21,9 +26,9 @@ export class QrService {
     const qr = await this.prisma.qrCode.findUnique({
       where: { shortCode: code },
       include: {
-        operator: { select: { id: true, name: true, slug: true, logoUrl: true } },
+        operator: { select: { id: true, name: true, slug: true, logoUrl: true, verification: true, isActive: true } },
         route: true,
-        vehicle: { select: { id: true, plateNo: true, label: true } },
+        vehicle: { select: { id: true, plateNo: true, label: true, isActive: true } },
       },
     });
     if (!qr || !qr.isActive) throw new NotFoundException('This code is not active');
@@ -87,6 +92,16 @@ export class QrService {
         })
       : [];
 
+    // A seat sticker on a verified company's bus also lets the passenger review that bus.
+    // Signing a token is cheap enough for this path; the rating itself loads on the bus page.
+    const reviewable = !!qr.vehicle?.isActive && qr.operator?.verification === 'VERIFIED' && qr.operator.isActive;
+    const bus = reviewable
+      ? {
+          id: qr.vehicle.id, registrationNo: qr.vehicle.plateNo, label: qr.vehicle.label,
+          scanToken: await this.busReviews.issueScanToken({ qid: qr.id, vid: qr.vehicle.id }),
+        }
+      : null;
+
     return {
       scan: {
         qrCodeId: qr.id,
@@ -94,8 +109,9 @@ export class QrService {
         isFirstScan,
         scannedAt: new Date().toISOString(),
       },
-      operator: qr.operator,
-      vehicle: qr.vehicle,
+      operator: qr.operator && { id: qr.operator.id, name: qr.operator.name, slug: qr.operator.slug, logoUrl: qr.operator.logoUrl },
+      vehicle: qr.vehicle && { id: qr.vehicle.id, plateNo: qr.vehicle.plateNo, label: qr.vehicle.label },
+      bus,
       route: qr.route,
       currentIssue,
       routeArticles,

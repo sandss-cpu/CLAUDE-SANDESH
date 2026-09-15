@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { OperatorsService } from './operators.service';
+import { Throttle } from '@nestjs/throttler';
 import {
-  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto, RideFeedbackDto,
+  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto,
 } from './dto/operator.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -18,11 +19,10 @@ export class OperatorsController {
   @Public() @Get('routes/:id')
   routeInfo(@Param('id') id: string) { return this.operators.routeInfo(id); }
 
-  /** Anonymous, no account required — that is why the data is honest. */
-  @Public() @Post('feedback')
-  feedback(@Body() dto: RideFeedbackDto) { return this.operators.submitFeedback(dto); }
+  // Passenger ratings moved to POST /buses/:id/reviews, which needs a QR scan or a
+  // confirmed account. The old anonymous route accepted any vehicleId from anyone.
 
-  @Public() @Post('lost-items')
+  @Public() @Throttle({ default: { limit: 5, ttl: 900_000 } }) @Post('lost-items')
   lostItem(@Body() dto: LostItemDto) { return this.operators.reportLostItem(dto); }
 
   @Get(':id/dashboard')
@@ -33,7 +33,8 @@ export class OperatorsController {
   @Roles(Role.ADMIN) @Post()
   create(@Body() dto: CreateOperatorDto) { return this.operators.createOperator(dto); }
 
-  @Roles(Role.ADMIN, Role.OPERATOR_ADMIN) @Post('vehicles')
+  /** Admin only: it takes any operatorId. Owners register buses through /fleet. */
+  @Roles(Role.ADMIN) @Post('vehicles')
   vehicle(@Body() dto: CreateVehicleDto) { return this.operators.createVehicle(dto); }
 
   @Roles(Role.ADMIN) @Post('routes')

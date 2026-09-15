@@ -1,5 +1,5 @@
 import {
-  IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Length, Matches, MaxLength,
+  IsEmail, IsEnum, IsIn, IsNotEmpty, IsOptional, IsString, Length, Matches, MaxLength,
 } from 'class-validator';
 import { Language } from '@prisma/client';
 
@@ -49,6 +49,10 @@ export class RefreshDto {
 
 const PASSWORD_RULE = { message: 'Use at least 8 characters for your password' };
 
+/** Which page an emailed link opens: the traveller sign-in or the bus owner portal. */
+export const LINK_APPS = ['traveller', 'owner'] as const;
+export type LinkApp = (typeof LINK_APPS)[number];
+
 export class EmailRegisterDto {
   @IsString() @Length(2, 60, { message: 'Enter your name (2–60 characters)' })
   name: string;
@@ -58,6 +62,9 @@ export class EmailRegisterDto {
 
   @IsString() @Length(8, 128, PASSWORD_RULE)
   password: string;
+
+  @IsOptional() @IsIn(LINK_APPS)
+  app?: LinkApp;
 }
 
 export class EmailLoginDto {
@@ -71,6 +78,9 @@ export class EmailLoginDto {
 export class EmailOnlyDto {
   @IsEmail({}, { message: 'Enter a valid email address' }) @MaxLength(254)
   email: string;
+
+  @IsOptional() @IsIn(LINK_APPS)
+  app?: LinkApp;
 }
 
 export class TokenDto {

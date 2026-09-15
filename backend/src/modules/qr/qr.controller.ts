@@ -31,19 +31,24 @@ export class QrController {
     return this.qr.appLinks();
   }
 
-  @Roles(Role.ADMIN, Role.OPERATOR_ADMIN)
+  /**
+   * Admin only. These take any operatorId or sticker id with no ownership check, so
+   * an operator role here let one company mint or switch off another's stickers.
+   * Bus owners manage their own codes through /fleet, which checks membership.
+   */
+  @Roles(Role.ADMIN)
   @Post('batch')
   createBatch(@Body() dto: CreateQrBatchDto) {
     return this.qr.createBatch(dto);
   }
 
-  @Roles(Role.ADMIN, Role.OPERATOR_ADMIN)
+  @Roles(Role.ADMIN)
   @Patch(':id/deactivate')
   deactivate(@Param('id') id: string) {
     return this.qr.deactivate(id);
   }
 
-  @Roles(Role.ADMIN, Role.EDITOR, Role.OPERATOR_ADMIN)
+  @Roles(Role.ADMIN, Role.EDITOR)
   @Get('stats')
   stats(
     @Query('operatorId') operatorId?: string,

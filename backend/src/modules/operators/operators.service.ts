@@ -3,8 +3,9 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { slugify } from '../../common/utils/slug.util';
 import {
-  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto, RideFeedbackDto,
+  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto,
 } from './dto/operator.dto';
+import { normalisePlate, tidyPlate } from '../fleet/fleet.util';
 
 @Injectable()
 export class OperatorsService {
@@ -24,23 +25,17 @@ export class OperatorsService {
     return this.prisma.route.create({ data: dto });
   }
 
+  /** Created by a Bato admin, so it starts verified. */
   createOperator(dto: CreateOperatorDto) {
     return this.prisma.operator.create({
-      data: { ...dto, slug: slugify(dto.name) },
+      data: { ...dto, slug: slugify(dto.name), verification: 'VERIFIED', verifiedAt: new Date() },
     });
   }
 
   createVehicle(dto: CreateVehicleDto) {
-    return this.prisma.vehicle.create({ data: dto });
-  }
-
-  /**
-   * Passenger feedback. Anonymous by design — a passenger will not rate the
-   * driver honestly if their identity is attached, and honest data is the
-   * whole reason the operator agrees to seat-back placement.
-   */
-  submitFeedback(dto: RideFeedbackDto) {
-    return this.prisma.rideFeedback.create({ data: dto });
+    return this.prisma.vehicle.create({
+      data: { ...dto, plateNo: tidyPlate(dto.plateNo), plateKey: normalisePlate(dto.plateNo) },
+    });
   }
 
   reportLostItem(dto: LostItemDto) {

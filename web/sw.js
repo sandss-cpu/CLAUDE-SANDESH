@@ -5,11 +5,14 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v2';
+const SHELL_CACHE = 'bato-shell-v3';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
-const SHELL = ['/', '/index.html', '/manifest.json', '/config.js', '/login.html', '/admin.html'];
+const SHELL = [
+  '/', '/index.html', '/manifest.json', '/config.js', '/login.html', '/admin.html', '/bus.html',
+  '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js',
+];
 
 /**
  * Pages and scripts: network first, so a deploy reaches readers on their next
