@@ -30,6 +30,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdsModule } from './modules/ads/ads.module';
 import { FleetModule } from './modules/fleet/fleet.module';
+import { GuidesModule } from './modules/guides/guides.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { FleetModule } from './modules/fleet/fleet.module';
     AdminModule,
     AdsModule,
     FleetModule,
+    GuidesModule,
     HealthModule,
   ],
   providers: [

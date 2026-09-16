@@ -300,6 +300,7 @@ model Route {
   articleLinks    ArticleRoute[]
   businessTargets BusinessRouteTarget[]
   adTargets       AdRouteTarget[]
+  guides          RouteGuide[]
   rideFeedback    RideFeedback[]
   leads           BusinessLead[]
 
@@ -709,6 +710,7 @@ model Place {
 
   destination   Destination?    @relation(fields: [destinationId], references: [id])
   itineraryStops ItineraryStop[]
+  guideStops    RouteGuideStop[]
 
   @@index([type])
   @@map("places")
@@ -841,6 +843,7 @@ model Business {
   leads        BusinessLead[]
   sponsoredArticles Article[]
   itineraryStops    ItineraryStop[]
+  guideStops        RouteGuideStop[]
   subscriptionEvents SubscriptionEvent[]
   advertisements     Advertisement[]
 
@@ -1024,6 +1027,85 @@ model Advertisement {
 
   @@index([placement, isActive, startsAt, endsAt])
   @@map("advertisements")
+}
+
+// ------------------------- ROUTE GUIDES -------------------------
+
+enum GuideStopKind {
+  LANDMARK
+  VIEWPOINT
+  FOOD
+  HOTEL
+  REST_STOP
+  FUEL
+  ATM
+  HOSPITAL
+  TEMPLE
+  SHOPPING
+  ACTIVITY
+  OTHER
+}
+
+/// A guide written for one direction of travel, or for both. Stops are authored in
+/// the route's forward order; reading a BOTH guide backwards reverses them.
+enum GuideDirection {
+  BOTH
+  FORWARD
+  REVERSE
+}
+
+/// What an editor builds for a journey, e.g. Kathmandu → Pokhara: the landmarks,
+/// places to eat and places to stay along that corridor, in travel order.
+model RouteGuide {
+  id            String         @id @default(uuid())
+  routeId       String
+  direction     GuideDirection @default(BOTH)
+  title         String
+  summary       String?
+  coverImageUrl String?
+  status        ContentStatus  @default(DRAFT)
+  sortOrder     Int            @default(0)
+  createdById   String?
+  publishedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  route Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stops RouteGuideStop[]
+
+  @@index([routeId, status])
+  @@map("route_guides")
+}
+
+model RouteGuideStop {
+  id                  String        @id @default(uuid())
+  guideId             String
+  kind                GuideStopKind @default(LANDMARK)
+  name                String
+  description         String?
+  imageUrl            String?
+  latitude            Float?
+  longitude           Float?
+  /// How far along the corridor it is, which is also how stops are ordered for the reader.
+  distanceFromStartKm Int?
+  minutesFromStart    Int?
+  priceFromNpr        Int?
+  openingHours        String?
+  contactPhone        String?
+  tip                 String?
+  placeId             String?
+  businessId          String?
+  isHighlight         Boolean       @default(false)
+  sortOrder           Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @default(now()) @updatedAt
+
+  guide    RouteGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  place    Place?     @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  business Business?  @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([guideId, sortOrder])
+  @@map("route_guide_stops")
 }
 
 model AdRouteTarget {

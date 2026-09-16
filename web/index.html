@@ -438,6 +438,10 @@ const state = {
   draft: { template: 'FREEFORM', title: '', body: '', place: '', photos: [] },
   uploading: 0,
   trip: null,
+  journeys: { items: [], loaded: false, loading: false },
+  guide: null,
+  guideFilter: '',
+  journeyFilter: '',
   auth: null,
   readTab: 'magazine',
   vlogs: { items: [], loaded: false, loading: false, error: '', demo: false },
@@ -896,34 +900,11 @@ const SCREENS = {
   },
 
   trip(){
-    const t = state.trip || DEMO.trip;
-    return `
-      <div class="sec-head"><h2>${esc(t.title)}</h2><span>${esc(t.budget)}</span></div>
-      <div class="offline-chip"><span class="dot"></span>
-        <span>Saved on this phone. Works with no signal.</span></div>
-      ${slotAd('TRIP_PLANNER', 'banner')}
-      ${t.days.map(d => `
-        <div class="day">
-          <div class="day-h">
-            <div class="day-n">${d.n}</div>
-            <h3 style="font-size:17px">${esc(d.title)}</h3>
-          </div>
-          ${d.stops.map(s => `
-            <div class="stop">
-              <time>${esc(s.t)}</time>
-              <div>
-                <strong style="font-size:15.5px">${esc(s.name)}</strong>
-                ${s.note ? `<div style="font-size:13.5px;color:var(--text-dim)">${esc(s.note)}</div>` : ''}
-              </div>
-            </div>`).join('')}
-        </div>`).join('')}
-      <div class="btn-row">
-        <button class="btn btn-ghost" onclick="toast('Link copied')">Share</button>
-        <button class="btn btn-brand" onclick="toast('Saved as PDF')">Export PDF</button>
-      </div>
-      <div class="sec-head"><h2>Permits you'll need</h2><span>Before you go</span></div>
-      <div class="num"><div><strong>TIMS card</strong><br><small style="color:var(--text-dim)">Nepal Tourism Board</small></div><span style="font-weight:700">NPR 2,000</span></div>
-      <div class="num"><div><strong>ACAP</strong><br><small style="color:var(--text-dim)">Annapurna Conservation Area</small></div><span style="font-weight:700">NPR 3,000</span></div>`;
+    if(state.guide === 'loading'){
+      return `<div class="sec-head"><h2>Opening the guide…</h2><span></span></div>
+        <div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:90px"></div>`;
+    }
+    return state.guide ? guideView(state.guide) : journeysView();
   },
 
   map(){
@@ -1123,6 +1104,187 @@ function openBiz(slug){
   state.business = DEMO.businesses.find(b => b.slug === slug);
   go('business');
 }
+/* ---------- route guides: what to see, eat and where to stay on the way ---------- */
+const STOP_ICON = {
+  LANDMARK: '🏛', VIEWPOINT: '🌄', FOOD: '🍛', HOTEL: '🛏', REST_STOP: '🚻', FUEL: '⛽',
+  ATM: '🏧', HOSPITAL: '🏥', TEMPLE: '🛕', SHOPPING: '🛍', ACTIVITY: '🧗', OTHER: '📍',
+};
+const STOP_LABEL = {
+  LANDMARK: 'Landmark', VIEWPOINT: 'View', FOOD: 'Food', HOTEL: 'Stay', REST_STOP: 'Rest stop', FUEL: 'Fuel',
+  ATM: 'ATM', HOSPITAL: 'Hospital', TEMPLE: 'Temple', SHOPPING: 'Shopping', ACTIVITY: 'Activity', OTHER: 'Stop',
+};
+const timeFromStart = (m) => m == null ? '' : m < 60 ? `${m} min in` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''} in`;
+
+function loadJourneys(){
+  const j = state.journeys;
+  if(j.loaded || j.loading || !state.liveApi || !state.online) return j.items;
+  j.loading = true;
+  fetch(`${API}/guides/journeys`)
+    .then((res) => res.json())
+    .then((json) => { j.items = Array.isArray(json.data) ? json.data : []; })
+    .catch(() => { j.items = []; })
+    .finally(() => { j.loading = false; j.loaded = true; if(state.screen === 'trip') render(); });
+  return j.items;
+}
+
+function journeysView(){
+  const journeys = loadJourneys();
+  const term = state.journeyFilter.trim().toLowerCase();
+  const shown = term
+    ? journeys.filter((j) => `${j.from} ${j.to} ${j.title}`.toLowerCase().includes(term))
+    : journeys;
+  return `
+    <div class="sec-head"><h2>Where are you heading?</h2><span>Pick your journey</span></div>
+    <p style="font-size:14.5px;color:var(--text-dim);margin-top:0">
+      Bato's editors have marked the landmarks, food stops and places to stay along each road, in the order you pass them.
+    </p>
+    <label for="journeyQ" class="sr-only">Search journeys</label>
+    <input id="journeyQ" type="search" placeholder="e.g. Pokhara" value="${esc(state.journeyFilter)}"
+           oninput="state.journeyFilter=this.value; render(); $('#journeyQ').focus()">
+    ${slotAd('TRIP_PLANNER', 'banner')}
+    ${state.journeys.loading ? '<div class="skel" style="height:96px;margin-top:12px"></div>' : ''}
+    ${shown.length ? shown.map(journeyCard).join('') : (state.journeys.loaded ? `
+      <div class="empty"><div class="big">🧭</div><h3>No journeys yet</h3>
+        <p>${term ? 'Nothing matches that search.' : 'Guides are being written. Check again soon.'}</p></div>` : '')}
+    ${demoTripCard()}`;
+}
+
+function journeyCard(j){
+  return `
+    <button class="card" style="padding:0" onclick="openJourney('${esc(j.guideId)}','${esc(j.direction)}')">
+      ${j.coverImageUrl ? `<img class="vlog-cover" src="${esc(j.coverImageUrl)}" alt="" loading="lazy">` : ''}
+      <div class="card-body">
+        <div class="meta" style="margin-top:0"><span>🚌 ${esc(j.from)} → ${esc(j.to)}</span>
+          ${j.route?.distanceKm ? `<span>${j.route.distanceKm} km</span>` : ''}
+          ${j.route?.typicalHours ? `<span>${j.route.typicalHours} h</span>` : ''}</div>
+        <h3 style="margin-top:6px">${esc(j.title)}</h3>
+        ${j.summary ? `<p>${esc(j.summary)}</p>` : ''}
+        <div class="meta"><span>${j.stopCount} stop${j.stopCount === 1 ? '' : 's'}</span>
+          ${j.highlights?.length ? `<span>${esc(j.highlights.slice(0, 2).join(' · '))}</span>` : ''}</div>
+      </div>
+    </button>`;
+}
+
+/** The bundled sample itinerary, kept for offline and demo use. */
+function demoTripCard(){
+  const t = state.trip || DEMO.trip;
+  if(state.liveApi && state.journeys.items.length) return '';
+  return `
+    <div class="sec-head"><h2>${esc(t.title)}</h2><span>${esc(t.budget)}</span></div>
+    <div class="offline-chip"><span class="dot"></span><span>Saved on this phone. Works with no signal.</span></div>
+    ${t.days.map((d) => `
+      <div class="day">
+        <div class="day-h"><div class="day-n">${d.n}</div><h3 style="font-size:17px">${esc(d.title)}</h3></div>
+        ${d.stops.map((s) => `
+          <div class="stop"><time>${esc(s.t)}</time>
+            <div><strong style="font-size:15.5px">${esc(s.name)}</strong>
+              ${s.note ? `<div style="font-size:13.5px;color:var(--text-dim)">${esc(s.note)}</div>` : ''}</div>
+          </div>`).join('')}
+      </div>`).join('')}`;
+}
+
+async function openJourney(guideId, direction){
+  state.guide = 'loading';
+  state.guideFilter = '';
+  go('trip');
+  try{
+    const res = await fetch(`${API}/guides/${encodeURIComponent(guideId)}?direction=${encodeURIComponent(direction)}`);
+    const json = await res.json();
+    if(!res.ok) throw new Error(json?.message || 'That guide is not available.');
+    state.guide = json.data;
+  }catch(err){
+    state.guide = null;
+    toast(err.message);
+  }
+  render();
+  window.scrollTo(0, 0);
+}
+
+function closeGuide(){ state.guide = null; state.guideFilter = ''; render(); }
+function setGuideFilter(kind){ state.guideFilter = state.guideFilter === kind ? '' : kind; render(); }
+
+function guideView(g){
+  const kinds = [...new Set(g.stops.map((s) => s.kind))];
+  const stops = state.guideFilter ? g.stops.filter((s) => s.kind === state.guideFilter) : g.stops;
+  const cards = stops.map(stopCard);
+  return `
+    <button class="chip" onclick="closeGuide()" style="margin:14px 0 10px">← All journeys</button>
+    <div class="sec-head"><h2>${esc(g.title)}</h2><span>${esc(g.from)} → ${esc(g.to)}</span></div>
+    ${g.summary ? `<p style="font-size:15px;color:var(--text-dim);margin-top:0">${esc(g.summary)}</p>` : ''}
+    <div class="meta" style="margin-bottom:10px">
+      <span>🚌 ${esc(g.route?.name || '')}</span>
+      ${g.route?.distanceKm ? `<span>${g.route.distanceKm} km</span>` : ''}
+      ${g.route?.typicalHours ? `<span>about ${g.route.typicalHours} h</span>` : ''}
+      <span>${g.stops.length} stops</span>
+    </div>
+    ${g.directions?.length > 1 ? `
+      <div class="chips" style="margin-bottom:8px">
+        <button class="chip" aria-pressed="${g.direction === 'FORWARD'}" onclick="openJourney('${esc(g.id)}','FORWARD')">
+          ${esc(g.route.startPlace)} → ${esc(g.route.endPlace)}</button>
+        <button class="chip" aria-pressed="${g.direction === 'REVERSE'}" onclick="openJourney('${esc(g.id)}','REVERSE')">
+          ${esc(g.route.endPlace)} → ${esc(g.route.startPlace)}</button>
+      </div>` : ''}
+    ${kinds.length > 1 ? `
+      <div class="chips" style="margin-bottom:12px">
+        <button class="chip" aria-pressed="${!state.guideFilter}" onclick="setGuideFilter('')">All stops</button>
+        ${kinds.map((k) => `<button class="chip" aria-pressed="${state.guideFilter === k}" onclick="setGuideFilter('${k}')">
+          ${STOP_ICON[k] || '📍'} ${esc(STOP_LABEL[k] || k)}</button>`).join('')}
+      </div>` : ''}
+    ${cards.length ? interleaveAds(cards, 'ROUTE_GUIDE') : '<div class="empty"><p>No stops of that kind on this road.</p></div>'}
+    ${g.articles?.length ? `
+      <div class="sec-head"><h2>Stories on this road</h2><span>From the magazine</span></div>
+      ${g.articles.map((a) => `
+        <button class="card" onclick="openRouteArticle('${esc(a.slug)}')">
+          <div class="card-body">
+            <h3 style="font-size:18px">${esc(a.title)}</h3>
+            ${a.subtitle ? `<p>${esc(a.subtitle)}</p>` : ''}
+            <div class="meta"><span>${a.readMinutes || 3} min read</span></div>
+          </div>
+        </button>`).join('')}` : ''}`;
+}
+
+function stopCard(s){
+  const facts = [
+    s.distanceFromStartKm != null ? `${s.distanceFromStartKm} km` : '',
+    timeFromStart(s.minutesFromStart),
+    s.priceFromNpr ? `from NPR ${Number(s.priceFromNpr).toLocaleString('en-IN')}` : '',
+    s.openingHours || '',
+  ].filter(Boolean);
+  return `
+    <article class="card">
+      ${s.imageUrl ? `<img class="vlog-cover" src="${esc(s.imageUrl)}" alt="" loading="lazy">` : ''}
+      <div class="card-body">
+        <div class="meta" style="margin-top:0">
+          <span>${STOP_ICON[s.kind] || '📍'} ${esc(STOP_LABEL[s.kind] || s.kind)}</span>
+          ${s.isHighlight ? '<span style="color:var(--accent);font-weight:700">Worth stopping</span>' : ''}
+        </div>
+        <h3 style="margin-top:6px">${esc(s.name)}</h3>
+        ${s.description ? `<p>${esc(s.description)}</p>` : ''}
+        ${facts.length ? `<div class="meta">${facts.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : ''}
+        ${s.tip ? `<p style="margin-top:8px;font-size:14px"><strong>Tip:</strong> ${esc(s.tip)}</p>` : ''}
+        ${s.contactPhone ? `<a class="btn btn-ghost" style="margin-top:10px" href="tel:${esc(s.contactPhone.replace(/\s/g, ''))}">📞 Call</a>` : ''}
+      </div>
+    </article>`;
+}
+
+/** A magazine story linked to this corridor, fetched on demand. */
+async function openRouteArticle(slug){
+  try{
+    const res = await fetch(`${API}/magazine/articles/${encodeURIComponent(slug)}`);
+    const json = await res.json();
+    if(!res.ok) throw new Error(json?.message || 'That story is not available.');
+    const a = json.data;
+    state.article = {
+      slug: a.slug, title: a.title, subtitle: a.subtitle || '', body: a.body || '',
+      cat: a.category?.slug || 'road', catName: a.category?.name || 'On the Road',
+      readMinutes: a.readMinutes, audio: !!a.audioUrl,
+    };
+    go('article');
+  }catch(err){
+    toast(err.message);
+  }
+}
+
 /* ---------- marketing slots ---------- */
 const AD_LIMITS = {
   TOP_BANNER: 1, BETWEEN_STORIES: 3, ARTICLE_TOP: 1, ARTICLE_BOTTOM: 1,

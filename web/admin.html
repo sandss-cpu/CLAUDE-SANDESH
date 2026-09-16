@@ -218,6 +218,7 @@ const state = {
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
   ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
+  guides: { items: [], status: '', routeId: '', editing: null, stopsFor: null, editingStop: null, flash: '' },
 };
 
 /* =========================== API =========================== */
@@ -594,6 +595,7 @@ const SECTIONS = [
   ['ads', 'Ads', ['ADMIN']],
   ['articles', 'Articles', ['EDITOR', 'ADMIN']],
   ['issues', 'Issues', ['EDITOR', 'ADMIN']],
+  ['guides', 'Route guides', ['EDITOR', 'ADMIN']],
   ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
   ['users', 'Users', ['MODERATOR', 'ADMIN']],
 ];
@@ -1753,9 +1755,379 @@ async function viewCompany(id){
   back.querySelector('[data-close]').focus();
 }
 
+/* =========================== route guides =========================== */
+
+const STOP_KINDS = {
+  LANDMARK: ['Landmark', '🏛'], VIEWPOINT: ['Viewpoint', '🌄'], FOOD: ['Food stop', '🍛'], HOTEL: ['Hotel', '🛏'],
+  REST_STOP: ['Rest stop', '🚻'], FUEL: ['Fuel', '⛽'], ATM: ['ATM', '🏧'], HOSPITAL: ['Hospital', '🏥'],
+  TEMPLE: ['Temple', '🛕'], SHOPPING: ['Shopping', '🛍'], ACTIVITY: ['Activity', '🧗'], OTHER: ['Other', '📍'],
+};
+const DIRECTIONS = { BOTH: 'Both ways', FORWARD: 'Start → end only', REVERSE: 'End → start only' };
+const routeOf = (id) => state.routes.find((r) => r.id === id);
+const journeyText = (g) => {
+  const r = g.route || routeOf(g.routeId);
+  if(!r) return '—';
+  return g.direction === 'REVERSE' ? `${r.endPlace} → ${r.startPlace}`
+    : g.direction === 'FORWARD' ? `${r.startPlace} → ${r.endPlace}`
+    : `${r.startPlace} ⇄ ${r.endPlace}`;
+};
+
+async function screenGuides(){
+  const g = state.guides;
+  await loadReferenceData();
+  const params = new URLSearchParams();
+  if(g.status) params.set('status', g.status);
+  if(g.routeId) params.set('routeId', g.routeId);
+  g.items = await api(`/guides/admin?${params}`);
+  return `
+    <div class="top-row"><h2>Route guides</h2>
+      <div class="row-actions">
+        <button class="btn" onclick="openRouteForm()">+ New route</button>
+        <button class="btn btn-primary" onclick="openGuideForm(null)">+ New guide</button>
+      </div>
+    </div>
+    <p class="hint" style="margin:-8px 0 14px">What travellers see on the Trips screen: the landmarks, food stops and hotels
+      along a corridor, in the order they pass them. Published guides appear for the journey the traveller picks.</p>
+    <div class="filters">
+      <select aria-label="Filter by status" onchange="state.guides.status=this.value; renderMain()">
+        ${['', 'DRAFT', 'PUBLISHED', 'ARCHIVED'].map((s) =>
+          `<option value="${s}" ${g.status === s ? 'selected' : ''}>${s ? s[0] + s.slice(1).toLowerCase() : 'All guides'}</option>`).join('')}
+      </select>
+      <select aria-label="Filter by route" onchange="state.guides.routeId=this.value; renderMain()">
+        <option value="">All routes</option>
+        ${state.routes.map((r) => `<option value="${esc(r.id)}" ${g.routeId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+      </select>
+    </div>
+    ${g.flash ? `<div class="error" role="alert" style="margin-bottom:12px">${esc(g.flash)}</div>` : ''}
+    ${!g.items.length ? '<div class="empty">No guides yet. Create one for a route, then add the stops along it.</div>' : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Guide</th><th>Journey</th><th>Shown</th><th>Stops</th><th>Status</th><th></th></tr></thead>
+        <tbody>${g.items.map((x) => `
+          <tr>
+            <td><strong>${esc(x.title)}</strong>${x.summary ? `<div class="hint">${esc(x.summary.slice(0, 90))}</div>` : ''}</td>
+            <td>${esc(journeyText(x))}<div class="hint">${esc(x.route?.code || '')}</div></td>
+            <td>${esc(DIRECTIONS[x.direction])}</td>
+            <td>${x.stopCount}</td>
+            <td><span class="pill ${x.status}">${x.status[0] + x.status.slice(1).toLowerCase()}</span></td>
+            <td class="row-actions">
+              <button class="btn btn-sm btn-brand" onclick="openStops('${x.id}')">Stops</button>
+              <button class="btn btn-sm" onclick="openGuideForm('${x.id}')">Edit</button>
+              ${x.status === 'PUBLISHED'
+                ? `<button class="btn btn-sm" onclick="setGuideStatus('${x.id}', 'DRAFT')">Unpublish</button>`
+                : `<button class="btn btn-sm" onclick="setGuideStatus('${x.id}', 'PUBLISHED')">Publish</button>`}
+              <button class="btn btn-sm btn-danger" onclick="deleteGuide('${x.id}')">Delete</button>
+            </td>
+          </tr>`).join('')}</tbody></table></div>`}
+    ${g.editing ? guideForm(g.editing) : ''}
+    ${g.stopsFor ? stopsPanel(g.stopsFor) : ''}`;
+}
+
+function guideForm(guide){
+  const isNew = !guide.id;
+  const v = (k) => esc(guide[k] ?? '');
+  return `
+    <div class="modal-back" onclick="if(event.target===this) closeGuideForm()">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="guide-form-title">
+        <h2 id="guide-form-title" style="margin-bottom:10px">${isNew ? 'New route guide' : 'Edit guide'}</h2>
+        <form id="guide-form" novalidate onsubmit="saveGuide(event, ${isNew ? 'null' : `'${guide.id}'`})">
+          <label for="guide-route">Route</label>
+          <select id="guide-route">
+            ${state.routes.map((r) => `<option value="${esc(r.id)}" ${guide.routeId === r.id ? 'selected' : ''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}
+          </select>
+          <div class="hint">Not listed? Close this and use “New route”.</div>
+          <label for="guide-direction">Which way round</label>
+          <select id="guide-direction">
+            ${Object.entries(DIRECTIONS).map(([k, l]) =>
+              `<option value="${k}" ${(guide.direction || 'BOTH') === k ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <div class="hint">“Both ways” is written once in the start → end order; travellers going the other way see it reversed.</div>
+          <label for="guide-title">Title</label>
+          <input id="guide-title" maxlength="140" value="${v('title')}" placeholder="e.g. Kathmandu to Pokhara: where to stop">
+          <label for="guide-summary">Summary <small>(optional)</small></label>
+          <textarea id="guide-summary" maxlength="600" style="min-height:80px;font-family:inherit">${v('summary')}</textarea>
+          ${imageField('guide-cover', 'Cover image (optional)', guide.coverImageUrl, 'Wide images work best')}
+          <div id="guide-form-error" class="error" role="alert" hidden></div>
+          <div class="row-actions" style="margin-top:18px">
+            <button id="guide-save" class="btn btn-primary" type="submit">${isNew ? 'Create guide' : 'Save changes'}</button>
+            <button class="btn btn-ghost" type="button" onclick="closeGuideForm()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+}
+
+function openGuideForm(id){
+  state.guides.editing = id ? state.guides.items.find((x) => x.id === id) : { direction: 'BOTH', routeId: state.routes[0]?.id };
+  state.guides.flash = '';
+  renderMain();
+}
+function closeGuideForm(){ state.guides.editing = null; renderMain(); }
+
+async function saveGuide(e, id){
+  e.preventDefault();
+  const box = $('#guide-form-error');
+  box.hidden = true;
+  const dto = {
+    routeId: $('#guide-route').value,
+    direction: $('#guide-direction').value,
+    title: $('#guide-title').value.trim(),
+    summary: $('#guide-summary').value.trim() || undefined,
+    coverImageUrl: $('#guide-cover').value || undefined,
+  };
+  if(dto.title.length < 3){ box.textContent = 'Give the guide a title.'; box.hidden = false; return; }
+  const btn = $('#guide-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const saved = id ? await api(`/guides/admin/${id}`, { method: 'PATCH', body: dto })
+      : await api('/guides/admin', { method: 'POST', body: dto });
+    state.guides.editing = null;
+    notify('Guide saved.');
+    if(!id) state.guides.stopsFor = saved.id;
+    renderMain();
+  }catch(err){
+    box.textContent = err.message; box.hidden = false;
+    btn.disabled = false; btn.textContent = id ? 'Save changes' : 'Create guide';
+  }
+}
+
+async function setGuideStatus(id, status){
+  try{
+    await api(`/guides/admin/${id}/status`, { method: 'PATCH', body: { status } });
+    notify(status === 'PUBLISHED' ? 'Guide published. Travellers can see it now.' : 'Guide unpublished.');
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+async function deleteGuide(id){
+  const guide = state.guides.items.find((x) => x.id === id);
+  const ok = await askDialog({
+    title: `Delete “${guide?.title}”?`,
+    message: 'The guide and all its stops are removed. Travellers stop seeing it straight away.',
+    confirmLabel: 'Delete guide', danger: true,
+  });
+  if(!ok) return;
+  try{ await api(`/guides/admin/${id}`, { method: 'DELETE' }); notify('Guide deleted.'); }
+  catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+/* ---- stops ---- */
+
+async function openStops(guideId){
+  state.guides.stopsFor = guideId;
+  state.guides.editingStop = null;
+  state.guides.detail = await api(`/guides/admin/${guideId}`).catch(() => null);
+  renderMain();
+}
+function closeStops(){ state.guides.stopsFor = null; state.guides.detail = null; state.guides.editingStop = null; renderMain(); }
+
+function stopsPanel(){
+  const guide = state.guides.detail;
+  if(!guide) return '';
+  const stops = guide.stops || [];
+  return `
+    <div class="modal-back" onclick="if(event.target===this) closeStops()">
+      <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="stops-title">
+        <div class="top-row" style="margin-bottom:6px">
+          <div><h2 id="stops-title">${esc(guide.title)}</h2>
+            <div class="hint">${esc(journeyText(guide))} · ${plural(stops.length, 'stop')} in travel order</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="closeStops()">Close</button>
+        </div>
+        ${state.guides.editingStop ? stopForm(state.guides.editingStop) : `
+          <button class="btn btn-primary" onclick="openStopForm(null)">+ Add a stop</button>`}
+        ${!stops.length ? '<div class="empty">No stops yet. Add the places travellers pass, in order.</div>' : `
+          <div class="table-wrap" style="margin-top:12px"><table>
+            <thead><tr><th>#</th><th>Stop</th><th>Kind</th><th>Along the way</th><th></th></tr></thead>
+            <tbody>${stops.map((s, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td><strong>${esc(s.name)}</strong>${s.isHighlight ? ' <span class="pill APPROVED">Highlight</span>' : ''}
+                  ${s.description ? `<div class="hint">${esc(s.description.slice(0, 80))}</div>` : ''}</td>
+                <td>${STOP_KINDS[s.kind]?.[1] || ''} ${esc(STOP_KINDS[s.kind]?.[0] || s.kind)}</td>
+                <td>${s.distanceFromStartKm != null ? `${s.distanceFromStartKm} km` : '—'}
+                  ${s.minutesFromStart != null ? `<div class="hint">${Math.floor(s.minutesFromStart / 60)}h ${s.minutesFromStart % 60}m in</div>` : ''}</td>
+                <td class="row-actions">
+                  <button class="btn btn-sm" onclick="moveStop(${i}, -1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+                  <button class="btn btn-sm" onclick="moveStop(${i}, 1)" ${i === stops.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+                  <button class="btn btn-sm" onclick="openStopForm('${s.id}')">Edit</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteStop('${s.id}')">Delete</button>
+                </td>
+              </tr>`).join('')}</tbody></table></div>`}
+      </div>
+    </div>`;
+}
+
+function stopForm(stop){
+  const isNew = !stop.id;
+  const v = (k) => esc(stop[k] ?? '');
+  return `
+    <form id="stop-form" novalidate onsubmit="saveStop(event, ${isNew ? 'null' : `'${stop.id}'`})"
+          style="border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:10px">
+      <h3 style="font-size:17px;margin-bottom:8px">${isNew ? 'Add a stop' : 'Edit stop'}</h3>
+      <div class="two-col">
+        <div><label for="stop-kind">Kind</label>
+          <select id="stop-kind">${Object.entries(STOP_KINDS).map(([k, [l, icon]]) =>
+            `<option value="${k}" ${(stop.kind || 'LANDMARK') === k ? 'selected' : ''}>${icon} ${l}</option>`).join('')}</select></div>
+        <div><label for="stop-name">Name</label>
+          <input id="stop-name" maxlength="140" value="${v('name')}" placeholder="e.g. Kurintar riverside tea shops"></div>
+      </div>
+      <label for="stop-desc">Description <small>(optional)</small></label>
+      <textarea id="stop-desc" maxlength="2000" style="min-height:70px;font-family:inherit">${v('description')}</textarea>
+      <div class="two-col">
+        <div><label for="stop-km">Kilometres from the start <small>(optional)</small></label>
+          <input id="stop-km" type="number" min="0" max="2000" value="${v('distanceFromStartKm')}"></div>
+        <div><label for="stop-min">Minutes from the start <small>(optional)</small></label>
+          <input id="stop-min" type="number" min="0" max="10000" value="${v('minutesFromStart')}"></div>
+      </div>
+      <div class="two-col">
+        <div><label for="stop-price">Price from (NPR) <small>(optional)</small></label>
+          <input id="stop-price" type="number" min="0" value="${v('priceFromNpr')}"></div>
+        <div><label for="stop-hours">Opening hours <small>(optional)</small></label>
+          <input id="stop-hours" maxlength="120" value="${v('openingHours')}" placeholder="e.g. 6am – 8pm"></div>
+      </div>
+      <div class="two-col">
+        <div><label for="stop-phone">Phone <small>(optional)</small></label>
+          <input id="stop-phone" maxlength="40" value="${v('contactPhone')}"></div>
+        <div><label for="stop-tip">Tip for travellers <small>(optional)</small></label>
+          <input id="stop-tip" maxlength="300" value="${v('tip')}" placeholder="e.g. Ask for the fish curry"></div>
+      </div>
+      ${imageField('stop-image', 'Photo (optional)', stop.imageUrl, 'One photo of the place')}
+      <div class="checks"><label><input type="checkbox" id="stop-highlight" ${stop.isHighlight ? 'checked' : ''}> Highlight this stop</label></div>
+      <div id="stop-form-error" class="error" role="alert" hidden></div>
+      <div class="row-actions" style="margin-top:14px">
+        <button id="stop-save" class="btn btn-primary" type="submit">${isNew ? 'Add stop' : 'Save stop'}</button>
+        <button class="btn btn-ghost" type="button" onclick="state.guides.editingStop=null; renderMain()">Cancel</button>
+      </div>
+    </form>`;
+}
+
+function openStopForm(id){
+  const stops = state.guides.detail?.stops || [];
+  state.guides.editingStop = id ? stops.find((s) => s.id === id) : { kind: 'LANDMARK' };
+  renderMain();
+}
+
+async function saveStop(e, id){
+  e.preventDefault();
+  const box = $('#stop-form-error');
+  box.hidden = true;
+  const numberOrUndefined = (sel) => ($(sel).value === '' ? undefined : Number($(sel).value));
+  const dto = {
+    kind: $('#stop-kind').value,
+    name: $('#stop-name').value.trim(),
+    description: $('#stop-desc').value.trim() || undefined,
+    distanceFromStartKm: numberOrUndefined('#stop-km'),
+    minutesFromStart: numberOrUndefined('#stop-min'),
+    priceFromNpr: numberOrUndefined('#stop-price'),
+    openingHours: $('#stop-hours').value.trim() || undefined,
+    contactPhone: $('#stop-phone').value.trim() || undefined,
+    tip: $('#stop-tip').value.trim() || undefined,
+    imageUrl: $('#stop-image').value || undefined,
+    isHighlight: $('#stop-highlight').checked,
+  };
+  if(dto.name.length < 2){ box.textContent = 'Give the stop a name.'; box.hidden = false; return; }
+  const btn = $('#stop-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const guideId = state.guides.stopsFor;
+    state.guides.detail = id
+      ? await api(`/guides/admin/stops/${id}`, { method: 'PATCH', body: dto })
+      : await api(`/guides/admin/${guideId}/stops`, { method: 'POST', body: dto });
+    state.guides.editingStop = null;
+    notify('Stop saved.');
+    renderMain();
+  }catch(err){
+    box.textContent = err.message; box.hidden = false;
+    btn.disabled = false; btn.textContent = id ? 'Save stop' : 'Add stop';
+  }
+}
+
+async function deleteStop(id){
+  const ok = await askDialog({ title: 'Delete this stop?', confirmLabel: 'Delete', danger: true });
+  if(!ok) return;
+  try{ state.guides.detail = await api(`/guides/admin/stops/${id}`, { method: 'DELETE' }); notify('Stop deleted.'); }
+  catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+async function moveStop(index, delta){
+  const stops = [...(state.guides.detail?.stops || [])];
+  const target = index + delta;
+  if(target < 0 || target >= stops.length) return;
+  [stops[index], stops[target]] = [stops[target], stops[index]];
+  try{
+    state.guides.detail = await api(`/guides/admin/${state.guides.stopsFor}/stops/reorder`, {
+      method: 'POST', body: { ids: stops.map((s) => s.id) },
+    });
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+/* ---- routes ---- */
+
+function openRouteForm(){
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = `
+    <form class="modal" role="dialog" aria-modal="true" aria-labelledby="route-title" novalidate>
+      <h2 id="route-title" style="margin-bottom:8px">New route</h2>
+      <p class="hint" style="margin:0">A corridor travellers ride, such as Kathmandu – Pokhara. Guides, ads and articles can all be aimed at it.</p>
+      <div class="two-col">
+        <div><label for="route-code">Short code</label><input id="route-code" maxlength="20" placeholder="KTM-BGL"></div>
+        <div><label for="route-name">Name</label><input id="route-name" maxlength="120" placeholder="Kathmandu – Baglung"></div>
+      </div>
+      <div class="two-col">
+        <div><label for="route-start">Starts at</label><input id="route-start" maxlength="60" placeholder="Kathmandu"></div>
+        <div><label for="route-end">Ends at</label><input id="route-end" maxlength="60" placeholder="Baglung"></div>
+      </div>
+      <div class="two-col">
+        <div><label for="route-km">Distance (km) <small>(optional)</small></label><input id="route-km" type="number" min="1" max="2000"></div>
+        <div><label for="route-hours">Typical hours <small>(optional)</small></label><input id="route-hours" type="number" min="1" max="72" step="0.5"></div>
+      </div>
+      <div class="error" role="alert" hidden></div>
+      <div class="row-actions" style="margin-top:16px">
+        <button class="btn btn-primary" type="submit">Create route</button>
+        <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
+      </div>
+    </form>`;
+  const close = () => back.remove();
+  back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-cancel]')) close(); });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+  back.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const box = back.querySelector('.error');
+    const dto = {
+      code: back.querySelector('#route-code').value.trim().toUpperCase(),
+      name: back.querySelector('#route-name').value.trim(),
+      startPlace: back.querySelector('#route-start').value.trim(),
+      endPlace: back.querySelector('#route-end').value.trim(),
+      distanceKm: back.querySelector('#route-km').value ? Number(back.querySelector('#route-km').value) : undefined,
+      typicalHours: back.querySelector('#route-hours').value ? Number(back.querySelector('#route-hours').value) : undefined,
+    };
+    if(!dto.code || !dto.name || !dto.startPlace || !dto.endPlace){
+      box.textContent = 'Code, name, start and end are all needed.'; box.hidden = false; return;
+    }
+    const submit = back.querySelector('button[type="submit"]');
+    submit.disabled = true; submit.textContent = 'Creating…';
+    try{
+      await api('/operators/routes', { method: 'POST', body: dto });
+      state.routes = [];
+      await loadReferenceData();
+      close();
+      notify(`Route ${dto.name} created.`);
+      renderMain();
+    }catch(err){
+      box.textContent = err.message; box.hidden = false;
+      submit.disabled = false; submit.textContent = 'Create route';
+    }
+  });
+  document.body.appendChild(back);
+  back.querySelector('#route-code').focus();
+}
+
 const SCREENS = {
   overview: screenOverview, fleet: screenFleet, ads: screenAds, articles: screenArticles, issues: screenIssues,
-  moderation: screenModeration, users: screenUsers,
+  guides: screenGuides, moderation: screenModeration, users: screenUsers,
 };
 
 /* =========================== boot =========================== */
