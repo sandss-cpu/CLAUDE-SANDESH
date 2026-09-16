@@ -19,6 +19,46 @@
   --r-sm:8px; --r:12px; --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
   --font-display:'Fraunces',Georgia,serif; --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
+/* ---------- colour palettes ----------
+   Each one restates the whole set of tokens, so a palette can never leave a
+   colour from the previous one behind. Picked in the sidebar, kept per browser. */
+html[data-palette="dawn"]{
+  --bg:#EDF2F8; --surface:#fff; --surface-2:#E3EBF5; --text:#12243B; --text-dim:#4C6076; --line:#CFDAE8;
+  --brand:#2F5D9E; --accent:#F0883F; --ink:#12243B;
+}
+html[data-palette="teahouse"]{
+  --bg:#F4EADC; --surface:#FFFCF7; --surface-2:#EFE2CE; --text:#3A2A18; --text-dim:#6B573F; --line:#DFCDB2;
+  --brand:#8A5A2B; --accent:#D98E04; --ink:#3A2A18;
+}
+html[data-palette="rhododendron"]{
+  --bg:#FAEFF1; --surface:#fff; --surface-2:#F3E0E4; --text:#2C1420; --text-dim:#6B4451; --line:#E7CBD2;
+  --brand:#A82848; --accent:#E8455F; --ink:#2C1420;
+}
+html[data-palette="forest"]{
+  --bg:#EDF3ED; --surface:#fff; --surface-2:#DFEADF; --text:#132318; --text-dim:#456049; --line:#C9DBCB;
+  --brand:#2F6B3F; --accent:#6FAE3F; --ink:#132318;
+}
+html[data-palette="nightbus"]{
+  --bg:#141024; --surface:#1E1834; --surface-2:#271F42; --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  --brand:#8B6FD4; --accent:#E8A33F; --ink:#0D0A18;
+  --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+html[data-palette="nightbus"] .pill.PUBLISHED,html[data-palette="nightbus"] .pill.APPROVED,html[data-palette="nightbus"] .pill.ACTIVE{background:#16301C;color:#A9DDB4}
+html[data-palette="nightbus"] .pill.IN_REVIEW,html[data-palette="nightbus"] .pill.PENDING,html[data-palette="nightbus"] .pill.OPEN,html[data-palette="nightbus"] .pill.PAUSED{background:#35270D;color:#F1C77A}
+html[data-palette="nightbus"] .pill.REJECTED,html[data-palette="nightbus"] .pill.REPORT{background:#3A1420;color:#F4B4C1}
+html[data-palette="nightbus"] .error{background:#3A1420;color:#F4B4C1}
+html[data-palette="nightbus"] aside{background:#0D0A18}
+html[data-palette="slate"]{
+  --bg:#EEF0F3; --surface:#fff; --surface-2:#E2E6EB; --text:#14181D; --text-dim:#4A535E; --line:#CBD2DA;
+  --brand:#3C4A5A; --accent:#C97B2C; --ink:#14181D;
+}
+.palette-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.palette-card{border:2px solid var(--line);border-radius:var(--r);padding:10px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;color:inherit}
+.palette-card[aria-pressed="true"]{border-color:var(--brand)}
+.palette-card strong{display:block;font-size:14px;margin-bottom:6px}
+.swatches{display:flex;gap:4px}
+.swatches i{width:22px;height:22px;border-radius:6px;border:1px solid rgba(0,0,0,.12)}
+
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:15px;line-height:1.5}
 h1,h2,h3{font-family:var(--font-display);font-weight:600;margin:0}
@@ -219,6 +259,7 @@ const state = {
   overview: null, subscriptions: [], auditLog: [],
   ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
   guides: { items: [], status: '', routeId: '', editing: null, stopsFor: null, editingStop: null, flash: '' },
+  creators: { items: [], status: '' },
 };
 
 /* =========================== API =========================== */
@@ -596,6 +637,7 @@ const SECTIONS = [
   ['articles', 'Articles', ['EDITOR', 'ADMIN']],
   ['issues', 'Issues', ['EDITOR', 'ADMIN']],
   ['guides', 'Route guides', ['EDITOR', 'ADMIN']],
+  ['creators', 'Creators', ['EDITOR', 'ADMIN']],
   ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
   ['users', 'Users', ['MODERATOR', 'ADMIN']],
 ];
@@ -617,7 +659,10 @@ function renderSidebar(){
         return `<button class="${state.screen===key?'active':''}" onclick="goSection('${key}')">${label}${badge}</button>`;
       }).join('')}
     </nav>
-    <div class="signout"><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
+    <div class="signout">
+      <button class="btn btn-ghost btn-sm" onclick="openPalettePicker()">🎨 Appearance</button>
+      <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button>
+    </div>`;
 }
 
 function goSection(key){ state.screen = key; renderMain(); renderSidebar(); }
@@ -2125,13 +2170,140 @@ function openRouteForm(){
   back.querySelector('#route-code').focus();
 }
 
+/* =========================== creators =========================== */
+
+const CREATOR_STATUS = { PENDING: ['Waiting', 'PENDING'], APPROVED: ['Approved', 'APPROVED'], SUSPENDED: ['Suspended', 'REJECTED'] };
+
+async function screenCreators(){
+  const c = state.creators;
+  c.items = await api(`/creators/admin${c.status ? `?status=${c.status}` : ''}`);
+  const waiting = c.items.filter((x) => x.status === 'PENDING').length;
+  return `
+    <div class="top-row"><h2>Creators</h2>
+      <a class="btn btn-sm" href="creator.html" target="_blank" rel="noopener">Creator pages ↗</a></div>
+    <p class="hint" style="margin:-8px 0 14px">Travellers who applied for a creator profile. Approving one publishes their profile
+      and lets their journeys go live; suspending takes both off the public side.</p>
+    <div class="filters">
+      <select aria-label="Filter creators" onchange="state.creators.status=this.value; renderMain()">
+        ${['', 'PENDING', 'APPROVED', 'SUSPENDED'].map((s) =>
+          `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s ? CREATOR_STATUS[s][0] : `All creators${waiting ? ` (${waiting} waiting)` : ''}`}</option>`).join('')}
+      </select>
+    </div>
+    ${!c.items.length ? '<div class="empty">No creator applications yet.</div>' : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Creator</th><th>Account</th><th>About</th><th>Published</th><th>Status</th><th></th></tr></thead>
+        <tbody>${c.items.map((x) => `
+          <tr>
+            <td><strong>${esc(x.displayName)}</strong><div class="hint">@${esc(x.handle)}${x.isFeatured ? ' · ★ featured' : ''}</div></td>
+            <td>${esc(x.user?.name || '—')}<div class="hint">${esc(x.user?.email || x.user?.phone || '')}</div></td>
+            <td>${esc(x.headline || x.bio?.slice(0, 80) || '—')}
+              ${x.homeBase ? `<div class="hint">${esc(x.homeBase)}</div>` : ''}</td>
+            <td>${x.journeys} journeys<div class="hint">${x.posts} adventures</div></td>
+            <td><span class="pill ${CREATOR_STATUS[x.status][1]}">${CREATOR_STATUS[x.status][0]}</span>
+              ${x.reviewNote ? `<div class="hint">${esc(x.reviewNote)}</div>` : ''}</td>
+            <td class="row-actions">
+              ${x.status !== 'APPROVED' ? `<button class="btn btn-sm btn-brand" onclick="reviewCreator('${x.id}','APPROVED')">Approve</button>` : ''}
+              ${x.status === 'APPROVED' ? `<button class="btn btn-sm" onclick="featureCreator('${x.id}', ${!x.isFeatured})">${x.isFeatured ? 'Unfeature' : 'Feature'}</button>` : ''}
+              ${x.status === 'PENDING' ? `<button class="btn btn-sm" onclick="reviewCreator('${x.id}','SUSPENDED')">Refuse</button>` : ''}
+              ${x.status === 'APPROVED' ? `<button class="btn btn-sm btn-danger" onclick="reviewCreator('${x.id}','SUSPENDED')">Suspend</button>` : ''}
+              ${x.status === 'APPROVED' ? `<a class="btn btn-sm" href="creator.html?handle=${encodeURIComponent(x.handle)}" target="_blank" rel="noopener">View</a>` : ''}
+            </td>
+          </tr>`).join('')}</tbody></table></div>`}`;
+}
+
+async function reviewCreator(id, status){
+  const creator = state.creators.items.find((x) => x.id === id);
+  const approving = status === 'APPROVED';
+  const note = await askDialog({
+    title: approving ? `Approve @${creator?.handle}?` : `${creator?.status === 'PENDING' ? 'Refuse' : 'Suspend'} @${creator?.handle}?`,
+    message: approving
+      ? 'Their profile goes public and they can publish journeys. Check their posts read like real travel writing first.'
+      : 'Their profile and journeys leave the public side. They see your reason in their creator panel.',
+    confirmLabel: approving ? 'Approve' : 'Confirm',
+    danger: !approving,
+    field: {
+      type: 'textarea', label: approving ? 'Welcome note (optional)' : 'Reason (shown to them)',
+      validate: (v) => (!approving && !v ? 'Give them a reason.' : ''),
+    },
+  });
+  if(note === null) return;
+  try{
+    state.creators.items = await api(`/creators/admin/${id}`, { method: 'PATCH', body: { status, note: note || undefined } });
+    notify(approving ? 'Creator approved.' : 'Done.');
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+async function featureCreator(id, isFeatured){
+  try{
+    state.creators.items = await api(`/creators/admin/${id}`, { method: 'PATCH', body: { status: 'APPROVED', isFeatured } });
+    notify(isFeatured ? 'Featured on the creators page.' : 'No longer featured.');
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
 const SCREENS = {
   overview: screenOverview, fleet: screenFleet, ads: screenAds, articles: screenArticles, issues: screenIssues,
-  guides: screenGuides, moderation: screenModeration, users: screenUsers,
+  guides: screenGuides, creators: screenCreators, moderation: screenModeration, users: screenUsers,
 };
+
+/* =========================== appearance =========================== */
+
+/**
+ * Palettes for the whole platform, not only this panel: each one is a background,
+ * a surface, a brand colour and an accent that keep text contrast above 4.5:1.
+ */
+const PALETTES = [
+  ['', 'Prayer Flag', 'Bato’s own: cream paper, dusk purple, saffron', ['#F2EEE3', '#5B3FA8', '#F4A024', '#E8455F']],
+  ['dawn', 'Himalaya Dawn', 'Cool morning blue, calm for long editing sessions', ['#EDF2F8', '#2F5D9E', '#F0883F', '#12243B']],
+  ['teahouse', 'Teahouse', 'Warm sand and brass, like an old lodge dining room', ['#F4EADC', '#8A5A2B', '#D98E04', '#3A2A18']],
+  ['rhododendron', 'Rhododendron', 'Nepal’s national flower: soft pink with a deep red', ['#FAEFF1', '#A82848', '#E8455F', '#2C1420']],
+  ['forest', 'Forest Trail', 'Green hills, easy on the eye in daylight', ['#EDF3ED', '#2F6B3F', '#6FAE3F', '#132318']],
+  ['slate', 'Slate', 'Neutral grey, lets photos and ads show their own colour', ['#EEF0F3', '#3C4A5A', '#C97B2C', '#14181D']],
+  ['nightbus', 'Night Bus', 'Dark mode for working at night, same as the reader app', ['#141024', '#8B6FD4', '#E8A33F', '#EDE7F7']],
+];
+
+function applyPalette(name){
+  if(name) document.documentElement.dataset.palette = name;
+  else delete document.documentElement.dataset.palette;
+  try{ localStorage.setItem('bato.admin.palette', name || ''); }catch(_){}
+}
+
+function openPalettePicker(){
+  const current = (() => { try{ return localStorage.getItem('bato.admin.palette') || ''; }catch(_){ return ''; } })();
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="palette-title">
+      <div class="top-row" style="margin-bottom:4px"><h2 id="palette-title">Appearance</h2>
+        <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+      <p class="hint" style="margin:0">Changes the control panel's colours on this browser. Everyone else keeps their own choice.</p>
+      <div class="palette-grid" role="group" aria-label="Colour palette">
+        ${PALETTES.map(([value, name, note, colours]) => `
+          <button class="palette-card" data-palette-value="${value}" aria-pressed="${current === value}">
+            <strong>${esc(name)}</strong>
+            <div class="swatches" aria-hidden="true">${colours.map((c) => `<i style="background:${c}"></i>`).join('')}</div>
+            <div class="hint" style="margin-top:6px">${esc(note)}</div>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  const close = () => back.remove();
+  back.addEventListener('click', (e) => {
+    if(e.target === back || e.target.closest('[data-close]')) return close();
+    const card = e.target.closest('[data-palette-value]');
+    if(!card) return;
+    applyPalette(card.dataset.paletteValue);
+    back.querySelectorAll('.palette-card').forEach((c) => c.setAttribute('aria-pressed', String(c === card)));
+    notify(`${card.querySelector('strong').textContent} applied.`);
+  });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+  document.body.appendChild(back);
+  back.querySelector('[data-close]').focus();
+}
 
 /* =========================== boot =========================== */
 
+try{ applyPalette(localStorage.getItem('bato.admin.palette') || ''); }catch(_){}
 loadAuth();
 if(state.auth && !['EDITOR','MODERATOR','ADMIN'].includes(state.auth.user?.role)){
   state.auth = null; localStorage.removeItem('bato.admin.auth');

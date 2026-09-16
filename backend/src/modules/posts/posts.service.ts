@@ -11,7 +11,13 @@ import { CreatePostDto, PostQueryDto, UpdatePostDto } from './dto/post.dto';
 const POST_CARD = {
   id: true, title: true, coverImageUrl: true, locationName: true, template: true,
   publishedAt: true, createdAt: true, isElevated: true, body: true,
-  author: { select: { id: true, name: true, avatarUrl: true, homeDistrict: true } },
+  author: {
+    select: {
+      id: true, name: true, avatarUrl: true, homeDistrict: true,
+      // So a vlog card can link to its writer's creator profile when they have one.
+      creatorProfile: { select: { handle: true, displayName: true, status: true } },
+    },
+  },
   destination: { select: { slug: true, name: true, district: true } },
   _count: { select: { photos: true } },
 } satisfies Prisma.PostSelect;

@@ -11,6 +11,7 @@ companies manage their fleet and read what passengers think of each bus.
 | `web/index.html` | Installable, offline-first reader app (PWA) |
 | `web/login.html` | Traveller sign in, create an account, reset a password |
 | `web/bus.html` | Public bus page: find a bus, see its rating, review it, open a bus QR code |
+| `web/creator.html` | Creator profiles, journeys, and the creator's own panel |
 | `web/owner.html` + `owner-*.js` | Bus owner portal (separate sign-in) |
 | `web/admin.html` | Control panel for editors, moderators and admins |
 | `render.yaml` | One-click deployment blueprint for Render |
@@ -29,8 +30,20 @@ on. Editors, moderators and admins also confirm with an authenticator app.
 published, newest first, with 👍 / 👎 counts. Photos are resized in the browser (which
 strips GPS metadata) and checked by file signature on the server.
 
-**Marketing slots.** Newspaper-style ads in four placements with day, week or month runs,
-linking to a website or an in-app overview page.
+**Marketing slots.** Newspaper-style ads in twelve placements — top banner, between
+magazine stories, top and bottom of articles, the vlog feed, trip planner, route guides,
+maps, more screen, bus pages, creator profiles and bus search — with day, week or month
+runs, linking to a website or an in-app overview page. Each ad can be aimed at chosen
+routes: a targeted ad wins the slot for travellers on that corridor and never appears on
+others, while an ad with no targets shows everywhere.
+
+**Route guides.** Editors curate a corridor in the control panel: the landmarks,
+viewpoints, food stops, hotels, rest stops, fuel and ATMs along it, in the order
+travellers pass them, with distance, time, prices, opening hours and tips. Travellers
+pick where they are heading on the Trips screen — Kathmandu → Pokhara, Pokhara →
+Kathmandu, or anywhere else a route exists — and read the guide in their direction of
+travel. A guide written once for "both ways" is reversed automatically on the return leg,
+and each guide also lists the magazine stories linked to that route.
 
 **Reporting and moderation.** Anyone can report a story, comment, article or bus review.
 Three different people reporting a live item hides it until a moderator decides.
@@ -41,6 +54,19 @@ riding: a fresh scan of that bus's QR code, or a signed-in account. Reviews have
 overall rating, optional scores for cleanliness, driving, punctuality and staff, a public
 comment and a private suggestion for the company. The traveller app's **More → Rate this
 bus** opens the bus whose seat sticker was scanned.
+
+### For creators (`/creator.html`)
+
+An admin gives a traveller creator access, and they get a public profile built around
+whole journeys rather than loose photos — the gap Instagram leaves.
+
+| Area | What it does |
+|---|---|
+| **Profile** | Handle, cover, avatar, headline, bio, home base, specialities, languages and links, with counts of journeys, adventures, upvotes and followers |
+| **Journeys** | A trip told in order: the posts that make it up, the road it followed, how many days it ran to, what it cost broken down by transport, stay, food and permits, the gear worth carrying and tips for the next traveller |
+| **Creator panel** | Apply for access, edit the profile, create journeys, add and reorder their own posts, publish or unpublish |
+| **Followers** | Readers follow a creator; their stories link back to the profile from the vlog feed |
+| **Admin** | *Creators* in the control panel approves, refuses, features or suspends. Nothing is public before approval, and suspending takes the profile and its journeys down |
 
 ### For bus owners and bus companies (`/owner.html`)
 
@@ -65,6 +91,10 @@ A separate sign-in and dashboard that works for one bus or hundreds.
 **Admins** see *Bus companies* in the control panel: how many buses are registered with
 Bato, companies waiting for verification, and verify, reject or suspend with a reason
 the company sees. Held and reported bus reviews appear in Moderation.
+
+**Appearance.** The control panel ships seven colour palettes — Prayer Flag (Bato's own),
+Himalaya Dawn, Teahouse, Rhododendron, Forest Trail, Slate and Night Bus. Pick one under
+*Appearance* in the sidebar; the choice is per browser, so each editor keeps their own.
 
 ---
 
@@ -121,7 +151,12 @@ QR test links, to the file:
 | `traveller@bato.test` | Passenger account for reviewing buses |
 
 `npm run seed` still creates the original demo accounts (password `BatoDemo#2026`) and
-the demo seat sticker **`DEMO2024`**.
+the demo seat sticker **`DEMO2024`**. Two more seeds fill the new screens:
+
+```bash
+npm run seed:guides      # route guides for Kathmandu–Pokhara and Kathmandu–Chitwan
+npm run seed:creators    # an approved demo creator with a journey
+```
 
 ### API checks
 
@@ -188,9 +223,11 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/fleet` | Owner portal: `companies`, `companies/:id/dashboard`, `…/buses`, `…/reviews`, `…/drivers`, `…/members`, `…/qr`, `…/notifications`; `buses/:id` with `maintenance`, `incidents`, `documents`, `fuel`, `crew`, `qr`, `qr/rotate`, `history`, `archive`; `reviews/:id/reply`, `reviews/:id/report` |
 | `/fleet/admin` | `stats`, `companies`, `companies/:id/verification`, `reminders/run` (admin only) |
 | `/buses` | Public: `search`, `scan/:code`, `companies/:slug`, `:id`, `:id/reviews` |
+| `/guides` | Public: `journeys`, `:id`; editors and admins: `admin` list and detail, create, edit, `:id/status`, `:id/stops`, `:id/stops/reorder`, `admin/stops/:stopId` |
+| `/creators` | Public: list, `:handle`, `:handle/journeys/:slug`; signed in: `apply`, `me`, `me/journeys…`, `:handle/follow`; admins: `admin`, `admin/:id` |
 | `/posts` | feed (newest first), `publish`, `:id/vote`, `mine` |
 | `/media` | `upload` |
-| `/ads` | public slot by `placement`, `impressions`, `:id/click`, `:id/overview`; `admin` |
+| `/ads` | public slot by `placement` (optionally `routeId`), `impressions`, `:id/click`, `:id/overview`; `admin` |
 | `/moderation` | `report`, `queue`, `reports`, `bus-reviews`, `act`, `audit` |
 | `/magazine` | articles, issues, categories, `elevate`; `admin/articles`, `admin/issues` |
 | `/qr` | `r/:code`: everything a reader needs from one seat-sticker scan, including a bus review token |

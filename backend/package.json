@@ -15,7 +15,8 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:prod": "ts-node prisma/seed-prod.ts",
     "accounts:test": "ts-node prisma/create-test-accounts.ts",
-    "seed:guides": "ts-node prisma/guides-demo.ts"
+    "seed:guides": "ts-node prisma/guides-demo.ts",
+    "seed:creators": "ts-node prisma/creators-demo.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

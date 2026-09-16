@@ -1000,7 +1000,15 @@ const SCREENS = {
         </p>
       `}
       <a class="btn btn-ghost" style="margin-top:10px" href="bus.html">Find a bus by number plate</a>
-      <p style="font-size:13px;color:var(--text-dim);margin:10px 0 0">Run buses? <a href="owner.html">Bato for bus owners</a></p>
+
+      <div class="sec-head"><h2>Creators</h2><span>Travellers worth following</span></div>
+      <p style="font-size:14px;color:var(--text-dim);margin-top:0">
+        Profiles built around whole journeys: the road, the days, what it cost and what to carry.
+      </p>
+      <a class="btn btn-ghost" href="creator.html">Browse creators</a>
+      <a class="btn btn-ghost" style="margin-top:8px" href="creator.html?panel=1">Become a creator</a>
+
+      <p style="font-size:13px;color:var(--text-dim);margin:14px 0 0">Run buses? <a href="owner.html">Bato for bus owners</a></p>
 
       <div class="sec-head"><h2>Emergency</h2><span>Works offline</span></div>
       <div class="sos">
@@ -1664,11 +1672,19 @@ function vlogCard(p){
       <div class="vlog-foot">
         ${voteBar(p)}
         <span class="vlog-foot-right">
+          ${creatorLink(p.author)}
           ${p._count?.photos > 1 ? `<span class="vlog-photos">📷 ${p._count.photos} photos</span>` : ''}
           ${reportButton('POST', p.id)}
         </span>
       </div>
     </article>`;
+}
+
+/** Writers with an approved creator profile get a link to it from their stories. */
+function creatorLink(author){
+  const c = author?.creatorProfile;
+  if(c?.status !== 'APPROVED') return '';
+  return `<a class="vlog-photos" style="text-decoration:none" href="creator.html?handle=${encodeURIComponent(c.handle)}">@${esc(c.handle)}</a>`;
 }
 
 function vlogsFeed(){

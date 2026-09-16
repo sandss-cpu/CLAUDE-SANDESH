@@ -31,6 +31,7 @@ import { HealthModule } from './modules/health/health.module';
 import { AdsModule } from './modules/ads/ads.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { GuidesModule } from './modules/guides/guides.module';
+import { CreatorsModule } from './modules/creators/creators.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { GuidesModule } from './modules/guides/guides.module';
     AdsModule,
     FleetModule,
     GuidesModule,
+    CreatorsModule,
     HealthModule,
   ],
   providers: [

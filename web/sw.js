@@ -11,7 +11,7 @@ const IMAGE_CACHE = 'bato-images-v1';
 
 const SHELL = [
   '/', '/index.html', '/manifest.json', '/config.js', '/login.html', '/admin.html', '/bus.html',
-  '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js',
+  '/creator.html', '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js',
 ];
 
 /**

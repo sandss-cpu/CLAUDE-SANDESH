@@ -214,6 +214,7 @@ model User {
   followers         Follow[]          @relation("Following")
   operatorLinks     OperatorAdmin[]
   busReviews        RideFeedback[]
+  creatorProfile    CreatorProfile?   @relation("CreatorUser")
 
   @@index([role])
   @@map("users")
@@ -301,6 +302,7 @@ model Route {
   businessTargets BusinessRouteTarget[]
   adTargets       AdRouteTarget[]
   guides          RouteGuide[]
+  creatorJourneys CreatorJourney[]
   rideFeedback    RideFeedback[]
   leads           BusinessLead[]
 
@@ -563,6 +565,7 @@ model Destination {
   posts    Post[]
   places   Place[]
   businesses Business[]
+  creatorJourneys CreatorJourney[]
 
   @@map("destinations")
 }
@@ -609,6 +612,7 @@ model Post {
   photos      PostPhoto[]
   votes       PostVote[]
   elevatedTo  Article?     @relation("ElevatedPost")
+  journeyEntries CreatorJourneyPost[]
 
   @@unique([authorId, clientDraftId])
   @@index([status, moderation, publishedAt])
@@ -1027,6 +1031,100 @@ model Advertisement {
 
   @@index([placement, isActive, startsAt, endsAt])
   @@map("advertisements")
+}
+
+// ------------------------- CREATORS -------------------------
+
+enum CreatorStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+/// A traveller an admin has given creator access: a public profile built around
+/// their adventures, with the context Instagram leaves out — the route, the days,
+/// what it cost and what they carried.
+model CreatorProfile {
+  id           String        @id @default(uuid())
+  userId       String        @unique
+  handle       String        @unique
+  displayName  String
+  headline     String?
+  bio          String?
+  avatarUrl    String?
+  coverUrl     String?
+  homeBase     String?
+  languages    String[]      @default([])
+  specialities String[]      @default([])
+  websiteUrl   String?
+  instagram    String?
+  youtube      String?
+  status       CreatorStatus @default(PENDING)
+  isFeatured   Boolean       @default(false)
+  approvedAt   DateTime?
+  approvedById String?
+  /// Why an application was refused or an account suspended; shown to the creator.
+  reviewNote   String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user     User             @relation("CreatorUser", fields: [userId], references: [id], onDelete: Cascade)
+  journeys CreatorJourney[]
+
+  @@index([status, isFeatured])
+  @@map("creator_profiles")
+}
+
+/// One trip told in order: the posts that make it up, plus the route, the length,
+/// the real cost and the gear that worked.
+model CreatorJourney {
+  id            String        @id @default(uuid())
+  creatorId     String
+  slug          String
+  title         String
+  summary       String?
+  coverImageUrl String?
+  routeId       String?
+  destinationId String?
+  startedOn     DateTime?
+  dayCount      Int?
+  transportNpr  Int?
+  stayNpr       Int?
+  foodNpr       Int?
+  permitsNpr    Int?
+  otherNpr      Int?
+  gear          String[]      @default([])
+  tips          String?
+  status        ContentStatus @default(DRAFT)
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  creator     CreatorProfile       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  route       Route?               @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  destination Destination?         @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  entries     CreatorJourneyPost[]
+
+  @@unique([creatorId, slug])
+  @@index([status, publishedAt])
+  @@map("creator_journeys")
+}
+
+/// Posts belong to the traveller, not the journey, so adding one to a journey is a
+/// link: the post keeps its votes, comments and moderation state.
+model CreatorJourneyPost {
+  journeyId String
+  postId    String
+  dayNumber Int?
+  note      String?
+  sortOrder Int    @default(0)
+
+  journey CreatorJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  post    Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([journeyId, postId])
+  @@index([postId])
+  @@map("creator_journey_posts")
 }
 
 // ------------------------- ROUTE GUIDES -------------------------

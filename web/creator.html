@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Creators — Bato</title>
+<meta name="description" content="Travellers who tell the whole story: the road, the days, what it cost and what to carry.">
+<meta name="theme-color" content="#5B3FA8">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+<style>
+:root{
+  --saffron:#F4A024; --dusk:#5B3FA8; --rhodo:#E8455F; --ink:#1C1A2E; --paper:#FDFAF3; --green:#2F8A43; --amber:#B86A00;
+  --bg:var(--paper); --surface:#fff; --surface-2:#F6F1E6; --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --brand:var(--dusk); --accent:var(--saffron);
+  --r:14px; --r-lg:20px; --tap:48px; --pad:18px;
+  --shadow:0 2px 10px rgba(28,26,46,.07), 0 12px 34px rgba(28,26,46,.06);
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+html[data-theme="night"]{
+  --bg:#141024; --surface:#1E1834; --surface-2:#271F42; --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  --brand:#8B6FD4; --accent:#E8A33F; --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:16px;line-height:1.55;
+  padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.2;margin:0}
+a{color:var(--brand)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.muted{color:var(--text-dim)}
+.small{font-size:13.5px}
+
+.top{background:linear-gradient(135deg,var(--dusk) 0%,#7A4FC4 60%,var(--rhodo) 150%);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 0 0}
+.top-in{max-width:760px;margin:0 auto;padding:0 var(--pad) 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--font-display);font-size:22px;font-weight:700;color:#fff;text-decoration:none}
+.top nav{display:flex;gap:2px;flex-wrap:wrap}
+.top nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 10px;border-radius:999px;opacity:.9}
+.top nav a:hover{background:rgba(255,255,255,.14)}
+.flags{display:flex;height:5px}.flags i{flex:1}
+
+.wrap{max-width:760px;margin:0 auto;padding:0 var(--pad)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:var(--pad);margin-top:16px}
+.btn{min-height:var(--tap);border-radius:var(--r);padding:0 18px;font-weight:700;font-size:15px;border:1.5px solid transparent;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:var(--accent);color:#231600}
+.btn:disabled{opacity:.55;cursor:default}
+.btn-brand{background:var(--brand);color:#fff}
+.btn-ghost{background:var(--surface);border-color:var(--line);color:var(--text)}
+.btn-danger{background:var(--rhodo);color:#fff}
+.btn-sm{min-height:36px;padding:0 12px;font-size:13.5px}
+.btn-block{width:100%}
+.link{background:none;border:none;color:var(--brand);font-weight:600;cursor:pointer;padding:6px 0;font-size:14.5px}
+.back{display:inline-flex;gap:6px;align-items:center;margin-top:14px;color:var(--text-dim);font-size:14.5px;background:none;border:none;cursor:pointer;padding:8px 0}
+input,textarea,select{width:100%;min-height:var(--tap);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:10px 13px;font-size:16px}
+textarea{min-height:100px;resize:vertical}
+label{display:block;font-size:13.5px;font-weight:700;margin:14px 0 5px;color:var(--text-dim)}
+.hint{font-size:13px;color:var(--text-dim);margin-top:5px}
+.error{background:#FCE9EC;color:#9C1C36;border-radius:var(--r);padding:11px 14px;font-size:14.5px;margin-top:14px}
+.ok{background:#E4F3E7;color:#1F6B30;border-radius:var(--r);padding:11px 14px;font-size:14.5px;margin-top:14px}
+html[data-theme="night"] .error{background:#3A1420;color:#F4B4C1}
+html[data-theme="night"] .ok{background:#16301C;color:#A9DDB4}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:700;background:var(--surface-2);color:var(--text-dim)}
+.pill.good{background:#E4F3E7;color:#1F6B30}.pill.warn{background:#FDF1DA;color:#8A5300}.pill.bad{background:#FCE9EC;color:#9C1C36}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{border:1.5px solid var(--line);background:var(--surface-2);border-radius:999px;padding:4px 12px;font-size:13.5px;font-weight:600}
+.spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand);animation:spin .8s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+.empty{text-align:center;color:var(--text-dim);padding:30px 10px}
+
+/* profile */
+.cover{height:170px;border-radius:var(--r-lg);background:linear-gradient(135deg,#5B3FA8,#E8455F);object-fit:cover;width:100%;display:block;margin-top:16px}
+.who{display:flex;gap:14px;align-items:flex-end;margin-top:-42px;padding:0 6px}
+.avatar{width:96px;height:96px;border-radius:50%;border:4px solid var(--surface);object-fit:cover;background:var(--surface-2);flex:none;
+  display:grid;place-items:center;font-size:34px;font-family:var(--font-display)}
+.who h1{font-size:26px}
+.handle{color:var(--text-dim);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px;text-align:center}
+.stat b{display:block;font-family:var(--font-display);font-size:20px}
+.stat span{font-size:12px;color:var(--text-dim)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow);
+  text-align:left;padding:0;cursor:pointer;color:inherit;font:inherit;text-decoration:none;display:block}
+.tile:hover{border-color:var(--brand)}
+.tile img{width:100%;height:140px;object-fit:cover;background:var(--surface-2);display:block}
+.tile .body{padding:12px 14px}
+.tile h3{font-size:17px}
+.sec{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 2px;gap:10px;flex-wrap:wrap}
+.sec h2{font-size:21px}
+.cost{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px}
+.cost div{background:var(--surface-2);border-radius:12px;padding:9px 12px;font-size:13px;color:var(--text-dim)}
+.cost b{display:block;font-family:var(--font-display);font-size:18px;color:var(--text)}
+.entry{border-left:3px solid var(--line);padding:0 0 18px 16px;position:relative;margin-left:8px}
+.entry::before{content:"";position:absolute;left:-8px;top:4px;width:13px;height:13px;border-radius:50%;background:var(--brand)}
+.entry h3{font-size:18px}
+.entry .day{font-size:12.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.05em}
+.gallery{display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px}
+.gallery img{height:150px;border-radius:12px;flex:none;object-fit:cover}
+.ad{margin:18px 0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.ad-rule{display:flex;align-items:center;gap:10px;padding:6px 12px 0;font-family:var(--font-display);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)}
+.ad-body{display:flex;gap:12px;align-items:stretch;width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer;color:inherit;text-decoration:none}
+.ad-body img{width:38%;max-width:200px;object-fit:cover;background:var(--surface-2)}
+.ad-copy{padding:10px 12px 12px 0}
+.ad-copy .from{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.07em}
+.ad-copy h3{font-size:17px;margin:2px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.panel-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.journey-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.journey-row:last-child{border-bottom:none}
+.post-pick{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.post-pick:last-child{border-bottom:none}
+.post-pick img{width:56px;height:44px;border-radius:8px;object-fit:cover;background:var(--surface-2);flex:none}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));background:var(--ink);color:#fff;
+  padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.modal-back{position:fixed;inset:0;background:rgba(20,16,36,.5);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:28px 14px;overflow-y:auto}
+.modal{background:var(--surface);border-radius:var(--r-lg);width:100%;max-width:620px;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+@media (max-width:600px){.two{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="index.html">Bato</a>
+    <nav aria-label="Bato">
+      <a href="creator.html">Creators</a>
+      <a href="index.html">Magazine</a>
+      <a href="bus.html">Rate a bus</a>
+      <a href="creator.html?panel=1">Creator panel</a>
+    </nav>
+  </div>
+  <div class="flags" aria-hidden="true">
+    <i style="background:#2F6FD0"></i><i style="background:#FDFAF3"></i><i style="background:#E8455F"></i>
+    <i style="background:#3E9B4F"></i><i style="background:#F4A024"></i>
+  </div>
+</header>
+
+<main class="wrap" id="view" aria-live="polite"></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s = '') => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+try{ const t = localStorage.getItem('bato.theme'); if(t) document.documentElement.dataset.theme = t; }catch(_){}
+
+const npr = (n) => n == null ? '—' : `NPR ${Number(n).toLocaleString('en-IN')}`;
+const fmtDay = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const initials = (name) => (name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+
+const state = {
+  view: 'loading', auth: null, error: '',
+  creators: [], profile: null, journey: null, dash: null, ad: null,
+  editing: null, busy: false, formError: '',
+};
+
+const toast = (msg) => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600); };
+
+/* ---------- session (shared with the traveller app) ---------- */
+function jwtExpiry(token){ try{ return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp * 1000; }catch(_){ return 0; } }
+const expiresSoon = (t) => jwtExpiry(t) - Date.now() < 30_000;
+function loadAuth(){ try{ state.auth = JSON.parse(localStorage.getItem('bato.auth') || 'null'); }catch(_){ state.auth = null; } }
+let refreshing = null;
+function refreshSession(){
+  if(refreshing) return refreshing;
+  const run = async () => {
+    const stored = JSON.parse(localStorage.getItem('bato.auth') || 'null');
+    if(!stored?.refreshToken){ const e = new Error('signed out'); e.expired = true; throw e; }
+    if(stored.accessToken !== state.auth?.accessToken && !expiresSoon(stored.accessToken)){ state.auth = stored; return stored; }
+    const res = await fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: stored.refreshToken }),
+    });
+    if(!res.ok){ const e = new Error('Could not refresh'); e.expired = res.status === 401; throw e; }
+    const { data } = await res.json();
+    state.auth = { ...stored, accessToken: data.accessToken, refreshToken: data.refreshToken };
+    localStorage.setItem('bato.auth', JSON.stringify(state.auth));
+    return state.auth;
+  };
+  refreshing = (navigator.locks ? navigator.locks.request('bato-refresh', run) : run()).finally(() => { refreshing = null; });
+  return refreshing;
+}
+function signedOut(){ state.auth = null; localStorage.removeItem('bato.auth'); }
+
+async function api(path, { method = 'GET', body, auth = false } = {}){
+  const opts = { method, headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined };
+  let res;
+  if(auth && state.auth){
+    if(expiresSoon(state.auth.accessToken)){ try{ await refreshSession(); }catch(err){ if(err.expired) signedOut(); } }
+    const call = () => fetch(`${API}${path}`, state.auth
+      ? { ...opts, headers: { ...opts.headers, Authorization: `Bearer ${state.auth.accessToken}` } } : opts);
+    res = await call();
+    if(res.status === 401 && state.auth){
+      try{ await refreshSession(); res = await call(); }catch(err){ if(err.expired){ signedOut(); res = await call(); } }
+    }
+  }else{
+    res = await fetch(`${API}${path}`, opts);
+  }
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok){ const e = new Error(json?.message || 'Something went wrong.'); e.status = res.status; e.code = json?.code; throw e; }
+  return json.data;
+}
+
+async function loadAd(){
+  try{
+    const ads = await api('/ads?placement=CREATOR_PROFILE&limit=1');
+    state.ad = ads[0] || null;
+  }catch(_){ state.ad = null; }
+}
+
+function adBlock(){
+  const ad = state.ad;
+  if(!ad) return '';
+  const external = ad.linkType === 'EXTERNAL' && /^https:\/\//i.test(ad.externalUrl || '');
+  const inner = `
+    ${ad.imageUrl ? `<img src="${esc(ad.imageUrl)}" alt="">` : ''}
+    <span class="ad-copy"><span class="from">${esc(ad.advertiserName)}</span>
+      <h3>${esc(ad.title)}</h3>${ad.tagline ? `<div class="muted small">${esc(ad.tagline)}</div>` : ''}</span>`;
+  fetch(`${API}/ads/impressions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [ad.id] }), keepalive: true,
+  }).catch(() => {});
+  return `<aside class="ad"><div class="ad-rule"><span>Sponsored</span></div>
+    ${external
+      ? `<a class="ad-body" href="${esc(ad.externalUrl)}" target="_blank" rel="sponsored noopener noreferrer" onclick="adClicked('${esc(ad.id)}')">${inner}</a>`
+      : `<span class="ad-body">${inner}</span>`}</aside>`;
+}
+function adClicked(id){ fetch(`${API}/ads/${encodeURIComponent(id)}/click`, { method: 'POST', keepalive: true }).catch(() => {}); }
+
+/* ---------- routing ---------- */
+function setUrl(query, push){
+  const url = `creator.html${query ? `?${query}` : ''}`;
+  if(push) history.pushState(null, '', url); else history.replaceState(null, '', url);
+}
+
+async function route(){
+  loadAuth();
+  const p = new URLSearchParams(location.search);
+  state.error = '';
+  if(p.get('panel')) return openPanel();
+  if(p.get('handle') && p.get('journey')) return openJourney(p.get('handle'), p.get('journey'));
+  if(p.get('handle')) return openProfile(p.get('handle'));
+  return openDirectory();
+}
+window.addEventListener('popstate', route);
+const render = () => { $('#view').innerHTML = VIEWS[state.view](); };
+
+const VIEWS = {
+  loading: () => '<div class="spinner" role="status" aria-label="Loading"></div>',
+  error: () => `<div class="card"><h1 style="font-size:22px">Not found</h1>
+    <div class="error" role="alert">${esc(state.error)}</div>
+    <button class="btn btn-block" style="margin-top:14px" onclick="openDirectory(true)">See all creators</button></div>`,
+
+  directory: () => `
+    <div class="sec" style="margin-top:22px"><h2 style="font-size:27px">Creators on Bato</h2></div>
+    <p class="muted" style="margin-top:0">Travellers who tell the whole story: the road they took, how many days it ran to,
+      what it actually cost and what was worth carrying. Everything Instagram leaves out.</p>
+    ${adBlock()}
+    ${state.creators.length ? `<div class="grid">${state.creators.map(creatorTile).join('')}</div>`
+      : '<div class="empty">No creators yet. Bato is approving the first ones now.</div>'}
+    <div class="card" style="margin-top:22px">
+      <h2 style="font-size:19px">Want your own creator profile?</h2>
+      <p class="muted">Publish your adventures on Bato, build a profile around your journeys, and let readers follow you.
+        A Bato admin checks each application.</p>
+      <a class="btn btn-brand" href="creator.html?panel=1">Apply for creator access</a>
+    </div>`,
+
+  profile: () => {
+    const c = state.profile;
+    return `
+      <button class="back" onclick="openDirectory(true)">← All creators</button>
+      ${c.coverUrl ? `<img class="cover" src="${esc(c.coverUrl)}" alt="">` : '<div class="cover"></div>'}
+      <div class="who">
+        ${c.avatarUrl ? `<img class="avatar" src="${esc(c.avatarUrl)}" alt="">` : `<div class="avatar">${esc(initials(c.displayName))}</div>`}
+        <div style="flex:1;min-width:0;padding-bottom:6px">
+          <h1>${esc(c.displayName)}</h1>
+          <div class="handle">@${esc(c.handle)}${c.isFeatured ? ' · <span class="pill good">Featured</span>' : ''}</div>
+        </div>
+      </div>
+      ${c.headline ? `<p style="font-size:17px;margin:12px 0 0">${esc(c.headline)}</p>` : ''}
+      ${c.bio ? `<p class="muted" style="margin-top:6px">${esc(c.bio)}</p>` : ''}
+      <div class="chips">
+        ${c.homeBase ? `<span class="chip">📍 ${esc(c.homeBase)}</span>` : ''}
+        ${(c.specialities || []).map((s) => `<span class="chip">${esc(s)}</span>`).join('')}
+        ${(c.languages || []).map((s) => `<span class="chip">🗣 ${esc(s)}</span>`).join('')}
+        ${c.websiteUrl ? `<a class="chip" href="${esc(c.websiteUrl)}" target="_blank" rel="noopener nofollow">Website ↗</a>` : ''}
+        ${c.instagram ? `<span class="chip">Instagram @${esc(c.instagram.replace(/^@/, ''))}</span>` : ''}
+      </div>
+      <div class="stats">
+        <div class="stat"><b>${c.stats.journeys}</b><span>Journeys</span></div>
+        <div class="stat"><b>${c.stats.posts}</b><span>Adventures</span></div>
+        <div class="stat"><b>${c.stats.upvotes}</b><span>Upvotes</span></div>
+        <div class="stat"><b>${c.stats.followers}</b><span>Followers</span></div>
+      </div>
+      <div class="row">
+        ${c.isMe
+          ? `<a class="btn btn-brand" href="creator.html?panel=1">Open my creator panel</a>`
+          : state.auth
+            ? `<button class="btn ${c.isFollowing ? 'btn-ghost' : 'btn-brand'}" onclick="toggleFollow()">${c.isFollowing ? 'Following ✓' : 'Follow'}</button>`
+            : `<a class="btn btn-brand" href="login.html?returnTo=${encodeURIComponent('creator.html')}">Sign in to follow</a>`}
+      </div>
+      ${adBlock()}
+      ${c.journeys.length ? `
+        <div class="sec"><h2>Journeys</h2><span class="muted small">The whole trip, in order</span></div>
+        <div class="grid">${c.journeys.map((j) => journeyTile(j, c.handle)).join('')}</div>` : ''}
+      ${c.pins.length ? `
+        <div class="sec"><h2>Where they've been</h2></div>
+        <div class="chips">${c.pins.map((p) => `<span class="chip">📍 ${esc(p.locationName || p.title)}</span>`).join('')}</div>` : ''}
+      <div class="sec"><h2>Adventures</h2><span class="muted small">${plural(c.posts.length, 'post')}</span></div>
+      ${c.posts.length ? `<div class="grid">${c.posts.map(postTile).join('')}</div>`
+        : '<div class="empty">Nothing published yet.</div>'}`;
+  },
+
+  journey: () => {
+    const j = state.journey;
+    const costs = [['Transport', j.transportNpr], ['Stay', j.stayNpr], ['Food', j.foodNpr], ['Permits', j.permitsNpr], ['Other', j.otherNpr]]
+      .filter(([, v]) => v != null);
+    return `
+      <button class="back" onclick="openProfile('${esc(j.creator.handle)}', true)">← ${esc(j.creator.displayName)}</button>
+      ${j.coverImageUrl ? `<img class="cover" src="${esc(j.coverImageUrl)}" alt="">` : ''}
+      <h1 style="font-size:28px;margin-top:16px">${esc(j.title)}</h1>
+      <div class="chips">
+        ${j.route ? `<span class="chip">🚌 ${esc(j.route.name)}</span>` : ''}
+        ${j.destination ? `<span class="chip">📍 ${esc(j.destination.name)}</span>` : ''}
+        ${j.dayCount ? `<span class="chip">${plural(j.dayCount, 'day')}</span>` : ''}
+        ${j.startedOn ? `<span class="chip">${esc(fmtDay(j.startedOn))}</span>` : ''}
+      </div>
+      ${j.summary ? `<p style="font-size:17px;margin-top:12px">${esc(j.summary)}</p>` : ''}
+      ${costs.length ? `
+        <div class="sec"><h2>What it cost</h2><span class="muted small">Total ${esc(npr(j.totalCostNpr))}</span></div>
+        <div class="cost">${costs.map(([label, v]) => `<div><b>${esc(npr(v))}</b>${label}</div>`).join('')}</div>` : ''}
+      ${j.gear?.length ? `
+        <div class="sec"><h2>What they carried</h2></div>
+        <div class="chips">${j.gear.map((g) => `<span class="chip">🎒 ${esc(g)}</span>`).join('')}</div>` : ''}
+      ${j.tips ? `<div class="card"><h2 style="font-size:18px">Tips</h2><p style="white-space:pre-wrap;margin:6px 0 0">${esc(j.tips)}</p></div>` : ''}
+      ${adBlock()}
+      <div class="sec"><h2>The journey</h2><span class="muted small">${plural(j.entries.length, 'stop')}</span></div>
+      ${j.entries.map((e) => `
+        <article class="entry">
+          ${e.dayNumber ? `<div class="day">Day ${e.dayNumber}</div>` : ''}
+          <h3>${esc(e.post.title)}</h3>
+          ${e.post.locationName ? `<div class="muted small">📍 ${esc(e.post.locationName)}</div>` : ''}
+          ${e.note ? `<p class="muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
+          <p style="white-space:pre-wrap">${esc(e.post.body)}</p>
+          ${e.post.photos.length ? `<div class="gallery">${e.post.photos.map((p) => `<img src="${esc(p.url)}" alt="${esc(p.caption || '')}" loading="lazy">`).join('')}</div>` : ''}
+        </article>`).join('')}`;
+  },
+
+  panel: () => panelView(),
+};
+
+function creatorTile(c){
+  return `
+    <a class="tile" href="creator.html?handle=${encodeURIComponent(c.handle)}" onclick="event.preventDefault(); openProfile('${esc(c.handle)}', true)">
+      ${c.coverUrl ? `<img src="${esc(c.coverUrl)}" alt="">` : ''}
+      <div class="body">
+        <h3>${esc(c.displayName)}</h3>
+        <div class="muted small">@${esc(c.handle)}${c.homeBase ? ` · ${esc(c.homeBase)}` : ''}</div>
+        ${c.headline ? `<p class="small" style="margin:6px 0 0">${esc(c.headline)}</p>` : ''}
+        <div class="muted small" style="margin-top:6px">${plural(c.journeys, 'journey')} · ${plural(c.posts, 'adventure')}</div>
+      </div>
+    </a>`;
+}
+
+function journeyTile(j, handle){
+  return `
+    <a class="tile" href="creator.html?handle=${encodeURIComponent(handle)}&journey=${encodeURIComponent(j.slug)}"
+       onclick="event.preventDefault(); openJourney('${esc(handle)}','${esc(j.slug)}', true)">
+      ${j.coverImageUrl ? `<img src="${esc(j.coverImageUrl)}" alt="">` : ''}
+      <div class="body">
+        <h3>${esc(j.title)}</h3>
+        <div class="muted small">${[j.route?.name, j.dayCount ? plural(j.dayCount, 'day') : '', j.totalCostNpr ? npr(j.totalCostNpr) : '']
+          .filter(Boolean).map(esc).join(' · ')}</div>
+        ${j.summary ? `<p class="small" style="margin:6px 0 0">${esc(j.summary.slice(0, 110))}</p>` : ''}
+      </div>
+    </a>`;
+}
+
+function postTile(p){
+  return `
+    <article class="tile" style="cursor:default">
+      ${p.coverImageUrl || p.photos?.[0]?.url ? `<img src="${esc(p.coverImageUrl || p.photos[0].url)}" alt="" loading="lazy">` : ''}
+      <div class="body">
+        <h3>${esc(p.title)}</h3>
+        ${p.locationName ? `<div class="muted small">📍 ${esc(p.locationName)}</div>` : ''}
+        <p class="small" style="margin:6px 0 0">${esc(p.body)}</p>
+      </div>
+    </article>`;
+}
+
+/* ---------- public pages ---------- */
+async function openDirectory(push){
+  if(push) setUrl('', true);
+  state.view = 'loading'; render();
+  try{
+    await loadAd();
+    state.creators = await api('/creators');
+    state.view = 'directory';
+  }catch(err){ state.error = err.message; state.view = 'error'; }
+  render(); window.scrollTo(0, 0);
+}
+
+async function openProfile(handle, push){
+  if(push) setUrl(`handle=${encodeURIComponent(handle)}`, true);
+  state.view = 'loading'; render();
+  try{
+    await loadAd();
+    state.profile = await api(`/creators/${encodeURIComponent(handle)}`, { auth: true });
+    state.view = 'profile';
+  }catch(err){ state.error = err.message; state.view = 'error'; }
+  render(); window.scrollTo(0, 0);
+}
+
+async function openJourney(handle, slug, push){
+  if(push) setUrl(`handle=${encodeURIComponent(handle)}&journey=${encodeURIComponent(slug)}`, true);
+  state.view = 'loading'; render();
+  try{
+    await loadAd();
+    state.journey = await api(`/creators/${encodeURIComponent(handle)}/journeys/${encodeURIComponent(slug)}`);
+    state.view = 'journey';
+  }catch(err){ state.error = err.message; state.view = 'error'; }
+  render(); window.scrollTo(0, 0);
+}
+
+async function toggleFollow(){
+  const c = state.profile;
+  try{
+    const res = await api(`/creators/${encodeURIComponent(c.handle)}/follow`, { method: c.isFollowing ? 'DELETE' : 'POST', auth: true });
+    c.isFollowing = res.following;
+    c.stats.followers = res.followers;
+    render();
+    toast(res.following ? `Following @${c.handle}` : 'Unfollowed');
+  }catch(err){ toast(err.message); }
+}
+
+/* ---------- the creator's own panel ---------- */
+async function openPanel(push){
+  if(push) setUrl('panel=1', true);
+  loadAuth();
+  if(!state.auth){
+    state.view = 'panel'; state.dash = null; render(); return;
+  }
+  state.view = 'loading'; render();
+  try{
+    state.dash = await api('/creators/me', { auth: true });
+  }catch(err){
+    if(err.status === 401){ signedOut(); state.dash = null; }
+    else { state.error = err.message; state.view = 'error'; render(); return; }
+  }
+  state.view = 'panel'; render(); window.scrollTo(0, 0);
+}
+
+function panelView(){
+  if(!state.auth){
+    return `
+      <div class="card" style="margin-top:26px">
+        <h1 style="font-size:24px">Creator panel</h1>
+        <p class="muted">Sign in with your Bato traveller account to apply for creator access or manage your profile.</p>
+        <a class="btn btn-brand btn-block" href="login.html?returnTo=${encodeURIComponent('creator.html')}">Sign in</a>
+      </div>`;
+  }
+  if(!state.dash) return applyForm();
+
+  const { profile, stats, journeys, posts } = state.dash;
+  const statusPill = profile.status === 'APPROVED' ? '<span class="pill good">Approved</span>'
+    : profile.status === 'PENDING' ? '<span class="pill warn">Waiting for Bato</span>'
+    : '<span class="pill bad">Suspended</span>';
+  return `
+    <div class="sec" style="margin-top:22px"><h2 style="font-size:26px">Creator panel</h2>${statusPill}</div>
+    ${profile.status === 'PENDING' ? `<div class="ok" role="status">Bato is checking your application. You can build journeys now;
+      they go public once you are approved.</div>` : ''}
+    ${profile.status === 'SUSPENDED' ? `<div class="error" role="alert">Your profile is suspended.
+      ${esc(profile.reviewNote || 'Contact Bato for details.')}</div>` : ''}
+    ${profile.status === 'APPROVED' && profile.reviewNote ? `<div class="ok">${esc(profile.reviewNote)}</div>` : ''}
+
+    <div class="card">
+      <div class="panel-head">
+        <div><h2 style="font-size:20px">${esc(profile.displayName)}</h2>
+          <div class="muted">@${esc(profile.handle)}${profile.headline ? ` · ${esc(profile.headline)}` : ''}</div></div>
+        <div class="row" style="margin:0">
+          <button class="btn btn-ghost btn-sm" onclick="editProfile()">Edit profile</button>
+          ${profile.status === 'APPROVED' ? `<a class="btn btn-ghost btn-sm" href="creator.html?handle=${encodeURIComponent(profile.handle)}">View public page</a>` : ''}
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>${stats.journeys}</b><span>Published journeys</span></div>
+        <div class="stat"><b>${stats.posts}</b><span>Live adventures</span></div>
+        <div class="stat"><b>${stats.upvotes}</b><span>Upvotes</span></div>
+        <div class="stat"><b>${stats.followers}</b><span>Followers</span></div>
+      </div>
+    </div>
+
+    <div class="sec"><h2>Journeys</h2><button class="btn btn-primary btn-sm" onclick="editJourney(null)">+ New journey</button></div>
+    <p class="muted small" style="margin-top:0">A journey ties your posts into one trip, with the road, the days, the real cost and the gear.</p>
+    <div class="card">
+      ${journeys.length ? journeys.map(journeyRow).join('') : '<div class="empty">No journeys yet. Create one and add your posts to it.</div>'}
+    </div>
+
+    <div class="sec"><h2>Your adventures</h2><a class="link" href="index.html#write">Write a new one →</a></div>
+    <div class="card">
+      ${posts.length ? posts.slice(0, 12).map((p) => `
+        <div class="post-pick">
+          ${p.coverImageUrl ? `<img src="${esc(p.coverImageUrl)}" alt="">` : '<div style="width:56px;height:44px;border-radius:8px;background:var(--surface-2);flex:none"></div>'}
+          <div style="flex:1;min-width:0"><strong>${esc(p.title)}</strong>
+            <div class="muted small">${p.status === 'PUBLISHED' && p.moderation === 'APPROVED' ? 'Live' : p.moderation === 'PENDING' ? 'Waiting for review' : p.status.toLowerCase()}
+              · ${esc(fmtDay(p.publishedAt || p.createdAt))}</div></div>
+        </div>`).join('') : '<div class="empty">Nothing written yet. Adventures you publish in the app appear here.</div>'}
+    </div>`;
+}
+
+function journeyRow(j){
+  const status = j.status === 'PUBLISHED' ? '<span class="pill good">Published</span>' : '<span class="pill">Draft</span>';
+  return `
+    <div class="journey-row">
+      <div style="flex:1;min-width:200px">
+        <strong>${esc(j.title)}</strong> ${status}
+        <div class="muted small">${[j.route?.name, j.dayCount ? plural(j.dayCount, 'day') : '', j.totalCostNpr ? npr(j.totalCostNpr) : '', plural(j.entries.length, 'post')]
+          .filter(Boolean).map(esc).join(' · ')}</div>
+      </div>
+      <div class="row" style="margin:0">
+        <button class="btn btn-ghost btn-sm" onclick="manageEntries('${esc(j.id)}')">Posts</button>
+        <button class="btn btn-ghost btn-sm" onclick="editJourney('${esc(j.id)}')">Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="setJourneyStatus('${esc(j.id)}','${j.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED'}')">
+          ${j.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteJourney('${esc(j.id)}')">Delete</button>
+      </div>
+    </div>`;
+}
+
+function applyForm(){
+  return `
+    <div class="card" style="margin-top:22px">
+      <h1 style="font-size:24px">Apply for creator access</h1>
+      <p class="muted">Pick a handle and tell readers who you are. A Bato admin checks each application, usually within a few days.
+        You can start building journeys straight away.</p>
+      <form onsubmit="submitApply(event)" novalidate>
+        <div class="two">
+          <div><label for="handle">Handle</label>
+            <input id="handle" maxlength="24" placeholder="e.g. sunita_treks" autocapitalize="none">
+            <div class="hint">Lower-case letters, numbers and underscores. This is your profile address and cannot be changed.</div></div>
+          <div><label for="displayName">Display name</label><input id="displayName" maxlength="60"></div>
+        </div>
+        <label for="headline">One line about you</label>
+        <input id="headline" maxlength="120" placeholder="e.g. Slow trekking and mountain food, mostly in the mid-hills">
+        <label for="bio">About you</label>
+        <textarea id="bio" maxlength="1000"></textarea>
+        <div class="two">
+          <div><label for="homeBase">Where you're based</label><input id="homeBase" maxlength="80" placeholder="e.g. Pokhara"></div>
+          <div><label for="specialities">What you cover</label>
+            <input id="specialities" maxlength="120" placeholder="trekking, food, photography">
+            <div class="hint">Separate with commas.</div></div>
+        </div>
+        ${state.formError ? `<div class="error" role="alert">${esc(state.formError)}</div>` : ''}
+        <button class="btn btn-brand btn-block" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Sending…' : 'Apply'}</button>
+      </form>
+    </div>`;
+}
+
+async function submitApply(e){
+  e.preventDefault();
+  const dto = {
+    handle: $('#handle').value.trim().toLowerCase(),
+    displayName: $('#displayName').value.trim(),
+    headline: $('#headline').value.trim() || undefined,
+    bio: $('#bio').value.trim() || undefined,
+    homeBase: $('#homeBase').value.trim() || undefined,
+    specialities: $('#specialities').value.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6),
+  };
+  if(!/^[a-z0-9_]{3,24}$/.test(dto.handle)){ state.formError = 'Handles are 3–24 characters: lower-case letters, numbers and underscores.'; render(); return; }
+  if(dto.displayName.length < 2){ state.formError = 'Enter the name you want on your profile.'; render(); return; }
+  state.busy = true; state.formError = ''; render();
+  try{
+    state.dash = await api('/creators/apply', { method: 'POST', body: dto, auth: true });
+    state.busy = false;
+    render();
+    toast('Application sent. Bato will review it.');
+  }catch(err){
+    state.busy = false; state.formError = err.message; render();
+  }
+}
+
+/* ---------- panel dialogs ---------- */
+function dialog({ title, intro = '', fields, values = {}, submitLabel = 'Save', onSubmit }){
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'modal-back';
+    const field = (f) => {
+      const id = `d-${f.name}`;
+      const val = values[f.name] ?? '';
+      const control = f.type === 'textarea'
+        ? `<textarea id="${id}" maxlength="${f.maxlength || 2000}">${esc(val)}</textarea>`
+        : f.type === 'select'
+          ? `<select id="${id}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+          : `<input id="${id}" type="${f.type || 'text'}" maxlength="${f.maxlength || 200}" value="${esc(val)}" placeholder="${esc(f.placeholder || '')}">`;
+      return `<div class="${f.full ? '' : 'half'}"><label for="${id}">${esc(f.label)}</label>${control}
+        ${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
+    };
+    back.innerHTML = `
+      <form class="modal" role="dialog" aria-modal="true" aria-labelledby="d-title" novalidate>
+        <h2 id="d-title">${esc(title)}</h2>
+        ${intro ? `<p class="muted small">${esc(intro)}</p>` : ''}
+        ${fields.map(field).join('')}
+        <div class="error" role="alert" hidden></div>
+        <div class="row">
+          <button class="btn btn-brand" type="submit">${esc(submitLabel)}</button>
+          <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
+        </div>
+      </form>`;
+    const close = (v) => { back.remove(); resolve(v); };
+    back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-cancel]')) close(null); });
+    back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(null); });
+    back.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const out = {};
+      for(const f of fields) out[f.name] = $(`#d-${f.name}`, back).value.trim();
+      const box = back.querySelector('.error');
+      const btn = back.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try{ close(await onSubmit(out)); }
+      catch(err){ box.textContent = err.message; box.hidden = false; btn.disabled = false; }
+    });
+    document.body.appendChild(back);
+    back.querySelector('input,textarea,select')?.focus();
+  });
+}
+
+async function editProfile(){
+  const p = state.dash.profile;
+  const saved = await dialog({
+    title: 'Edit profile', submitLabel: 'Save profile',
+    fields: [
+      { name: 'displayName', label: 'Display name', maxlength: 60 },
+      { name: 'headline', label: 'One line about you', maxlength: 120 },
+      { name: 'bio', label: 'About you', type: 'textarea', maxlength: 1000 },
+      { name: 'homeBase', label: 'Where you are based', maxlength: 80 },
+      { name: 'specialities', label: 'What you cover', hint: 'Separate with commas', maxlength: 120 },
+      { name: 'languages', label: 'Languages', hint: 'Separate with commas', maxlength: 120 },
+      { name: 'websiteUrl', label: 'Website (https://)', maxlength: 300 },
+      { name: 'instagram', label: 'Instagram handle', maxlength: 60 },
+    ],
+    values: { ...p, specialities: (p.specialities || []).join(', '), languages: (p.languages || []).join(', ') },
+    onSubmit: (v) => api('/creators/me', {
+      method: 'PATCH', auth: true,
+      body: {
+        ...v,
+        specialities: v.specialities.split(',').map((s) => s.trim()).filter(Boolean),
+        languages: v.languages.split(',').map((s) => s.trim()).filter(Boolean),
+        websiteUrl: v.websiteUrl || undefined,
+      },
+    }),
+  });
+  if(saved){ state.dash = saved; render(); toast('Profile saved.'); }
+}
+
+async function editJourney(id){
+  const j = id ? state.dash.journeys.find((x) => x.id === id) : {};
+  const saved = await dialog({
+    title: id ? 'Edit journey' : 'New journey',
+    intro: 'Give readers the road, the length, the real cost and what you carried.',
+    submitLabel: id ? 'Save journey' : 'Create journey',
+    fields: [
+      { name: 'title', label: 'Title', maxlength: 140, placeholder: 'e.g. Five days on the Annapurna foothills' },
+      { name: 'summary', label: 'Summary', type: 'textarea', maxlength: 600 },
+      { name: 'dayCount', label: 'How many days', type: 'number' },
+      { name: 'startedOn', label: 'Started on', type: 'date' },
+      { name: 'transportNpr', label: 'Transport (NPR)', type: 'number' },
+      { name: 'stayNpr', label: 'Stay (NPR)', type: 'number' },
+      { name: 'foodNpr', label: 'Food (NPR)', type: 'number' },
+      { name: 'permitsNpr', label: 'Permits (NPR)', type: 'number' },
+      { name: 'otherNpr', label: 'Other (NPR)', type: 'number' },
+      { name: 'gear', label: 'Gear worth carrying', hint: 'Separate with commas', maxlength: 400 },
+      { name: 'tips', label: 'Tips for others', type: 'textarea', maxlength: 2000 },
+    ],
+    values: { ...j, startedOn: j.startedOn ? String(j.startedOn).slice(0, 10) : '', gear: (j.gear || []).join(', ') },
+    onSubmit: (v) => {
+      const num = (x) => (x === '' ? undefined : Number(x));
+      const body = {
+        title: v.title, summary: v.summary || undefined, dayCount: num(v.dayCount), startedOn: v.startedOn || undefined,
+        transportNpr: num(v.transportNpr), stayNpr: num(v.stayNpr), foodNpr: num(v.foodNpr),
+        permitsNpr: num(v.permitsNpr), otherNpr: num(v.otherNpr), tips: v.tips || undefined,
+        gear: v.gear.split(',').map((s) => s.trim()).filter(Boolean),
+      };
+      return id ? api(`/creators/me/journeys/${id}`, { method: 'PATCH', body, auth: true })
+        : api('/creators/me/journeys', { method: 'POST', body, auth: true });
+    },
+  });
+  if(saved){ state.dash = saved; render(); toast('Journey saved.'); }
+}
+
+async function setJourneyStatus(id, status){
+  try{
+    state.dash = await api(`/creators/me/journeys/${id}/status`, { method: 'PATCH', body: { status }, auth: true });
+    render();
+    toast(status === 'PUBLISHED' ? 'Journey published.' : 'Journey unpublished.');
+  }catch(err){ toast(err.message); }
+}
+
+async function deleteJourney(id){
+  const j = state.dash.journeys.find((x) => x.id === id);
+  if(!confirmDelete(j?.title)) return;
+  try{
+    state.dash = await api(`/creators/me/journeys/${id}`, { method: 'DELETE', auth: true });
+    render(); toast('Journey deleted.');
+  }catch(err){ toast(err.message); }
+}
+function confirmDelete(title){ return window.confirm(`Delete “${title}”? The posts stay in your account.`); }
+
+/** Choose which of the creator's posts belong to a journey, and in what order. */
+async function manageEntries(journeyId){
+  const journey = state.dash.journeys.find((j) => j.id === journeyId);
+  const chosen = new Set(journey.entries.map((e) => e.post.id));
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  const paint = () => {
+    back.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="e-title">
+        <div class="panel-head"><h2 id="e-title">${esc(journey.title)}</h2>
+          <button class="btn btn-ghost btn-sm" data-close>Done</button></div>
+        <p class="muted small">Tick the adventures that belong to this journey. Drag order comes from the order you add them.</p>
+        <div style="margin-top:10px">
+          ${state.dash.posts.length ? state.dash.posts.map((p) => `
+            <div class="post-pick">
+              ${p.coverImageUrl ? `<img src="${esc(p.coverImageUrl)}" alt="">` : '<div style="width:56px;height:44px;border-radius:8px;background:var(--surface-2);flex:none"></div>'}
+              <div style="flex:1;min-width:0"><strong>${esc(p.title)}</strong>
+                <div class="muted small">${esc(fmtDay(p.publishedAt || p.createdAt))}</div></div>
+              <button class="btn btn-sm ${chosen.has(p.id) ? 'btn-ghost' : 'btn-brand'}" data-toggle="${esc(p.id)}">
+                ${chosen.has(p.id) ? 'Remove' : 'Add'}</button>
+            </div>`).join('') : '<div class="empty">Write an adventure in the app first.</div>'}
+        </div>
+      </div>`;
+  };
+  paint();
+  back.addEventListener('click', async (e) => {
+    if(e.target === back || e.target.closest('[data-close]')){ back.remove(); render(); return; }
+    const btn = e.target.closest('[data-toggle]');
+    if(!btn) return;
+    const postId = btn.dataset.toggle;
+    btn.disabled = true;
+    try{
+      state.dash = chosen.has(postId)
+        ? await api(`/creators/me/journeys/${journeyId}/posts/${postId}`, { method: 'DELETE', auth: true })
+        : await api(`/creators/me/journeys/${journeyId}/posts`, { method: 'POST', body: { postId }, auth: true });
+      chosen.has(postId) ? chosen.delete(postId) : chosen.add(postId);
+      Object.assign(journey, state.dash.journeys.find((j) => j.id === journeyId));
+      paint();
+    }catch(err){ toast(err.message); btn.disabled = false; }
+  });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ back.remove(); render(); } });
+  document.body.appendChild(back);
+}
+
+route();
+</script>
+</body>
+</html>

@@ -20,6 +20,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
 | `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
+| `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
 | `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order |
 | `web/config.js` | API address; overwritten by the Render static-site build |
 | `render.yaml` | Deployment blueprint (Postgres, API with uploads disk, static site) |
@@ -52,6 +53,8 @@ escaped quotes written directly inside command substitution.
 
 ```bash
 TEST_ACCOUNTS_FILE=../Bato_Test_Accounts.md npm run accounts:test   # test accounts + demo bus companies
+npm run seed:guides            # demo route guides
+npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
 ```
 
@@ -96,7 +99,8 @@ when a signed-in user should be recognised but anonymous access is still allowed
 ### Modules
 
 `auth` `users` `qr` `magazine` `posts` `engagement` `places` `itineraries`
-`businesses` `operators` `moderation` `safety` `media` `admin` `ads` `fleet` `health`
+`businesses` `operators` `moderation` `safety` `media` `admin` `ads` `fleet` `guides`
+`creators` `health`
 
 - **auth**: every sign-in method ends in `completeSignIn()`, which blocks suspended
   accounts and sends privileged roles to the authenticator step. Add new methods
@@ -113,6 +117,15 @@ when a signed-in user should be recognised but anonymous access is still allowed
   decided by `OperatorAdmin` membership in `FleetAccessService`, never by `User.role`:
   OWNER or MANAGER, and non-members get 404. Every service method calls
   `access.company()` or `access.bus()` first; new endpoints must too
+- **ads**: twelve placements, and `AdRouteTarget` aims an ad at corridors. `slot()` serves
+  targeted ads first and fills the rest with untargeted ones; an ad targeted elsewhere
+  never appears, and with no `routeId` only untargeted ads show
+- **guides**: `RouteGuide` + `RouteGuideStop` are what an editor curates along a route.
+  Stops are always stored in the route's forward order; a `BOTH` guide is reversed when
+  read in the REVERSE direction, so never store a second reversed copy
+- **creators**: `CreatorProfile` is only public once an admin sets `APPROVED`;
+  `CreatorJourney` groups the creator's own `Post` rows through `CreatorJourneyPost`, so
+  entries keep their votes, comments and moderation state rather than being copies
 
 `qr.resolve()` is the centre of the product. One unauthenticated call returns the
 operator, route, corridor-specific articles, corridor-targeted businesses, the
