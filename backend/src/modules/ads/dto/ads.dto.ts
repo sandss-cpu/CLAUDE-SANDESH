@@ -56,6 +56,10 @@ export class SaveAdDto {
 
   @IsOptional() @IsUUID('4', { message: 'Unknown business' })
   businessId?: string;
+
+  /** Empty means every route. */
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true, message: 'Unknown route' })
+  routeIds?: string[];
 }
 
 export class AdSlotQueryDto {
@@ -64,6 +68,10 @@ export class AdSlotQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(5)
   limit?: number;
+
+  /** The corridor the traveller is on, so route-targeted ads can win the slot. */
+  @IsOptional() @IsUUID('4')
+  routeId?: string;
 }
 
 export class AdminAdQueryDto {

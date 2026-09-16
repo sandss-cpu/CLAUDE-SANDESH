@@ -211,7 +211,7 @@ const state = {
   error: '',
   login: { step: 'email', email: '', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false },
   articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
-  categories: [], issues: [],
+  categories: [], issues: [], routes: [],
   elevate: { items: [] },
   moderation: { tab: 'reports', posts: [], comments: [], reviews: [], reports: [], busReviews: [], queue: null, badge: 0 },
   fleet: { stats: null, items: [], status: '', q: '' },
@@ -652,6 +652,7 @@ async function loadArticles(){
 async function loadReferenceData(){
   if(!state.categories.length) state.categories = await api('/magazine/categories');
   if(!state.issues.length) state.issues = (await api('/magazine/admin/issues')) || [];
+  if(!state.routes.length) state.routes = (await api('/operators/routes')) || [];
 }
 
 function articleForm(a){
@@ -1304,9 +1305,17 @@ async function screenOverview(){
 
 const PLACEMENTS = {
   TOP_BANNER: 'Top banner (Read screen)',
-  BETWEEN_STORIES: 'Between stories',
+  BETWEEN_STORIES: 'Between magazine stories',
   ARTICLE_TOP: 'Top of articles',
   ARTICLE_BOTTOM: 'Bottom of articles',
+  VLOG_FEED: 'Between traveller vlogs',
+  TRIP_PLANNER: 'Trips screen (journey planner)',
+  ROUTE_GUIDE: 'Inside a route guide',
+  MAP_SCREEN: 'Maps screen',
+  MORE_SCREEN: 'More screen',
+  BUS_PAGE: 'Bus profile page',
+  CREATOR_PROFILE: 'Creator profiles',
+  SEARCH_RESULTS: 'Bus search results',
 };
 const AD_STATUS_LABEL = { ACTIVE: 'Active', SCHEDULED: 'Scheduled', PAUSED: 'Paused', EXPIRED: 'Expired' };
 const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1324,6 +1333,7 @@ function adTiming(ad){
 
 async function screenAds(){
   const a = state.ads;
+  await loadReferenceData();
   a.items = await api(`/ads/admin${a.status ? `?status=${a.status}` : ''}`);
   return `
     <div class="top-row">
@@ -1346,7 +1356,8 @@ async function screenAds(){
               <td><div class="ad-cell"><img src="${esc(ad.imageUrl)}" alt="">
                 <div><strong>${esc(ad.title)}</strong><br>
                 <small>${esc(ad.advertiserName)} · ${ad.linkType === 'EXTERNAL' ? 'Opens website' : 'Overview page'}</small></div></div></td>
-              <td>${esc(PLACEMENTS[ad.placement])}</td>
+              <td>${esc(PLACEMENTS[ad.placement] || ad.placement)}
+                <div class="hint">${ad.routes?.length ? esc(ad.routes.map((r) => r.code).join(', ')) : 'All routes'}</div></td>
               <td><span class="pill ${ad.status}">${AD_STATUS_LABEL[ad.status]}</span></td>
               <td>${fmtDay(ad.startsAt)} – ${fmtDay(ad.endsAt)}<br>
                 <small>${adTiming(ad)}</small></td>
@@ -1406,6 +1417,11 @@ function adForm(ad){
               ${Object.entries(PLACEMENTS).map(([k, l]) =>
                 `<option value="${k}" ${(ad.placement || 'BETWEEN_STORIES') === k ? 'selected' : ''}>${l}</option>`).join('')}
             </select>
+            <label for="ad-routes">Show only to travellers on these routes <small>(optional)</small></label>
+            <select id="ad-routes" multiple size="4">
+              ${state.routes.map((r) => `<option value="${esc(r.id)}" ${(ad.routeIds || []).includes(r.id) ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+            </select>
+            <div class="hint">Leave all unselected to show the ad everywhere. Hold ⌘ or Ctrl to pick several.</div>
             <div class="two-col">
               <div><label for="ad-start">Starts</label>
                 <input id="ad-start" type="date" value="${isoDay(ad.startsAt ? new Date(ad.startsAt) : new Date())}"></div>
@@ -1545,6 +1561,8 @@ async function saveAd(e, id){
     overviewTitle: f.linkType === 'OVERVIEW' ? $('#ad-ov-title').value.trim() : undefined,
     overviewBody: f.linkType === 'OVERVIEW' ? ($('#ad-ov-body').value.trim() || undefined) : undefined,
     overviewImageUrl: f.linkType === 'OVERVIEW' ? ($('#ad-ov-image').value || undefined) : undefined,
+    // Always sent, so clearing every route means "show everywhere" rather than "leave as it was".
+    routeIds: [...$('#ad-routes').selectedOptions].map((o) => o.value),
   };
   if(!dto.imageUrl){ showAdError('Upload an image for the ad first.'); return; }
 

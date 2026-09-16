@@ -901,6 +901,7 @@ const SCREENS = {
       <div class="sec-head"><h2>${esc(t.title)}</h2><span>${esc(t.budget)}</span></div>
       <div class="offline-chip"><span class="dot"></span>
         <span>Saved on this phone. Works with no signal.</span></div>
+      ${slotAd('TRIP_PLANNER', 'banner')}
       ${t.days.map(d => `
         <div class="day">
           <div class="day-h">
@@ -951,6 +952,7 @@ const SCREENS = {
           <div class="sq" style="background:var(--surface-2)">${i}</div>
           <div><h4>${n}</h4><small>${s}</small></div>
         </div>`).join('')}
+      ${slotAd('MAP_SCREEN')}
       <p style="font-size:13px;color:var(--text-dim);margin-top:16px">
         The full map runs in the app, which can hold packs this size. A browser cannot —
         phones clear that storage when they run low.
@@ -1030,6 +1032,8 @@ const SCREENS = {
       ${DEMO.safety.map(n => `
         <div class="num"><span>${esc(n.label)}</span>
           <a href="tel:${n.phone.replace(/\s/g,'')}">${esc(n.phone)}</a></div>`).join('')}
+
+      ${slotAd('MORE_SCREEN')}
 
       <div class="sec-head"><h2>Reading comfort</h2><span></span></div>
       <div class="settings">
@@ -1120,7 +1124,10 @@ function openBiz(slug){
   go('business');
 }
 /* ---------- marketing slots ---------- */
-const AD_LIMITS = { TOP_BANNER: 1, BETWEEN_STORIES: 3, ARTICLE_TOP: 1, ARTICLE_BOTTOM: 1 };
+const AD_LIMITS = {
+  TOP_BANNER: 1, BETWEEN_STORIES: 3, ARTICLE_TOP: 1, ARTICLE_BOTTOM: 1,
+  VLOG_FEED: 3, TRIP_PLANNER: 1, ROUTE_GUIDE: 2, MAP_SCREEN: 1, MORE_SCREEN: 1,
+};
 
 /** Ads for a slot, fetched once per page view. An empty slot renders nothing at all. */
 function adsFor(placement){
@@ -1133,7 +1140,9 @@ async function loadAds(placement){
   const slot = state.ads[placement];
   slot.loading = true;
   try{
-    const res = await fetch(`${API}/ads?placement=${placement}&limit=${AD_LIMITS[placement]}`);
+    // The corridor from the QR scan, so an advertiser on this route wins the slot.
+    const route = state.route?.id ? `&routeId=${encodeURIComponent(state.route.id)}` : '';
+    const res = await fetch(`${API}/ads?placement=${placement}&limit=${AD_LIMITS[placement] || 1}${route}`);
     const json = await res.json().catch(() => ({}));
     slot.items = res.ok && Array.isArray(json.data) ? json.data : [];
   }catch(_){
@@ -1176,8 +1185,8 @@ function slotAd(placement, variant = 'inline'){
 }
 
 /** One sponsored block after every third story, until the slot's ads run out. */
-function interleaveAds(cards){
-  const ads = adsFor('BETWEEN_STORIES');
+function interleaveAds(cards, placement = 'BETWEEN_STORIES'){
+  const ads = adsFor(placement);
   if(!ads.length) return cards.join('');
   let next = 0;
   return cards.map((html, i) => (i % 3 === 2 && next < ads.length ? html + adBlock(ads[next++]) : html)).join('');
@@ -1517,7 +1526,7 @@ function vlogsFeed(){
     <div class="sec-head"><h2>From travellers</h2><span>Newest first</span></div>
     ${v.demo ? `<div class="offline-chip warn"><span class="dot"></span>
       <span>Sample stories. Connect to the server for live vlogs and voting.</span></div>` : ''}
-    ${v.items.length ? interleaveAds(v.items.map(vlogCard)) : `
+    ${v.items.length ? interleaveAds(v.items.map(vlogCard), 'VLOG_FEED') : `
       <div class="empty-state">
         <p>No vlogs yet. Be the first to share a story from the road.</p>
       </div>`}

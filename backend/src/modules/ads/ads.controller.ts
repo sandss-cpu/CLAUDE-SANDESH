@@ -48,7 +48,7 @@ export class AdsController {
 
   /** The ads to show in one slot right now. */
   @Public() @Get()
-  slot(@Query() q: AdSlotQueryDto) { return this.ads.slot(q.placement, q.limit ?? 1); }
+  slot(@Query() q: AdSlotQueryDto) { return this.ads.slot(q.placement, q.limit ?? 1, q.routeId); }
 
   @Public()
   @Throttle({ default: { limit: 60, ttl: 60_000 } })

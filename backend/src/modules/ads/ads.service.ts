@@ -49,14 +49,31 @@ export class AdsService {
 
   // ---------------- public slots ----------------
 
-  /** Least-shown first, so several advertisers booked on one slot share the exposure. */
-  async slot(placement: AdPlacement, limit = 1) {
-    return this.prisma.advertisement.findMany({
-      where: { placement, ...liveWhere() },
-      select: PUBLIC_AD,
-      orderBy: [{ impressions: 'asc' }, { startsAt: 'asc' }],
-      take: limit,
+  /**
+   * Least-shown first, so several advertisers booked on one slot share the exposure.
+   *
+   * An ad aimed at the traveller's corridor wins the slot ahead of one with no
+   * targeting; ads aimed at *other* routes never appear. With no route known
+   * (off a bus, or a general screen), only untargeted ads show.
+   */
+  async slot(placement: AdPlacement, limit = 1, routeId?: string) {
+    const order: Prisma.AdvertisementOrderByWithRelationInput[] = [{ impressions: 'asc' }, { startsAt: 'asc' }];
+    const untargeted = { placement, ...liveWhere(), routeTargets: { none: {} } };
+
+    if (!routeId) {
+      return this.prisma.advertisement.findMany({ where: untargeted, select: PUBLIC_AD, orderBy: order, take: limit });
+    }
+
+    const targeted = await this.prisma.advertisement.findMany({
+      where: { placement, ...liveWhere(), routeTargets: { some: { routeId } } },
+      select: PUBLIC_AD, orderBy: order, take: limit,
     });
+    if (targeted.length >= limit) return targeted;
+
+    const fill = await this.prisma.advertisement.findMany({
+      where: untargeted, select: PUBLIC_AD, orderBy: order, take: limit - targeted.length,
+    });
+    return [...targeted, ...fill];
   }
 
   async recordImpressions(ids: string[]) {
@@ -108,12 +125,17 @@ export class AdsService {
 
     const ads = await this.prisma.advertisement.findMany({
       where,
-      include: { business: { select: { id: true, name: true, slug: true } } },
+      include: {
+        business: { select: { id: true, name: true, slug: true } },
+        routeTargets: { include: { route: { select: { id: true, code: true, name: true } } } },
+      },
       orderBy: [{ endsAt: 'desc' }],
     });
 
-    return ads.map((ad) => ({
+    return ads.map(({ routeTargets, ...ad }) => ({
       ...ad,
+      routes: routeTargets.map((t) => t.route),
+      routeIds: routeTargets.map((t) => t.routeId),
       status: adStatus(ad, now),
       daysLeft: Math.max(0, Math.ceil((ad.endsAt.getTime() - now.getTime()) / DAY_MS)),
       ctr: ad.impressions ? +((ad.clicks / ad.impressions) * 100).toFixed(1) : 0,
@@ -122,16 +144,39 @@ export class AdsService {
 
   async create(dto: SaveAdDto, actorId: string) {
     const data = this.toData(dto, true);
-    const ad = await this.prisma.advertisement.create({ data: { ...data, createdById: actorId } });
+    await this.assertRoutes(dto.routeIds);
+    const ad = await this.prisma.advertisement.create({
+      data: {
+        ...data, createdById: actorId,
+        routeTargets: dto.routeIds?.length ? { create: dto.routeIds.map((routeId) => ({ routeId })) } : undefined,
+      },
+    });
     await this.audit(actorId, ad.id, ModerationAct.CREATE, `${ad.placement} · ${ad.advertiserName}`);
     return ad;
   }
 
   async update(id: string, dto: SaveAdDto, actorId: string) {
     await this.findOrThrow(id);
-    const ad = await this.prisma.advertisement.update({ where: { id }, data: this.toData(dto, false) });
+    await this.assertRoutes(dto.routeIds);
+    const ad = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.advertisement.update({ where: { id }, data: this.toData(dto, false) });
+      // The form always submits the whole targeting list, so replace it wholesale.
+      if (dto.routeIds) {
+        await tx.adRouteTarget.deleteMany({ where: { adId: id } });
+        if (dto.routeIds.length) {
+          await tx.adRouteTarget.createMany({ data: dto.routeIds.map((routeId) => ({ adId: id, routeId })) });
+        }
+      }
+      return saved;
+    });
     await this.audit(actorId, id, ModerationAct.UPDATE);
     return ad;
+  }
+
+  private async assertRoutes(routeIds?: string[]) {
+    if (!routeIds?.length) return;
+    const found = await this.prisma.route.count({ where: { id: { in: routeIds } } });
+    if (found !== new Set(routeIds).size) throw new BadRequestException('Choose routes from the list.');
   }
 
   async setActive(id: string, isActive: boolean, actorId: string) {

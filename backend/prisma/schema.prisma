@@ -299,6 +299,7 @@ model Route {
   qrCodes         QrCode[]
   articleLinks    ArticleRoute[]
   businessTargets BusinessRouteTarget[]
+  adTargets       AdRouteTarget[]
   rideFeedback    RideFeedback[]
   leads           BusinessLead[]
 
@@ -967,6 +968,14 @@ enum AdPlacement {
   BETWEEN_STORIES
   ARTICLE_TOP
   ARTICLE_BOTTOM
+  VLOG_FEED
+  TRIP_PLANNER
+  ROUTE_GUIDE
+  MAP_SCREEN
+  MORE_SCREEN
+  BUS_PAGE
+  CREATOR_PROFILE
+  SEARCH_RESULTS
 }
 
 enum AdDurationUnit {
@@ -1006,12 +1015,26 @@ model Advertisement {
   createdById      String
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+  /// No targets means "show on every route". With targets, the ad only appears to
+  /// travellers on those corridors, so a Pokhara hotel isn't sold to a Chitwan bus.
+  routeTargets     AdRouteTarget[]
 
   business  Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
   createdBy User      @relation("AdCreator", fields: [createdById], references: [id])
 
   @@index([placement, isActive, startsAt, endsAt])
   @@map("advertisements")
+}
+
+model AdRouteTarget {
+  adId    String
+  routeId String
+  ad      Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+  route   Route         @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@id([adId, routeId])
+  @@index([routeId])
+  @@map("ad_route_targets")
 }
 
 // ------------------------- OPERATOR FEEDBACK -------------------------
