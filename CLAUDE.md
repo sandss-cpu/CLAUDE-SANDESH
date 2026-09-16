@@ -53,7 +53,8 @@ escaped quotes written directly inside command substitution.
 
 ```bash
 TEST_ACCOUNTS_FILE=../Bato_Test_Accounts.md npm run accounts:test   # test accounts + demo bus companies
-npm run seed:guides            # demo route guides
+npm run seed:guides            # demo road guides
+npm run seed:itinerary         # demo place itinerary (three days in Pokhara)
 npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
 ```
@@ -120,9 +121,15 @@ when a signed-in user should be recognised but anonymous access is still allowed
 - **ads**: twelve placements, and `AdRouteTarget` aims an ad at corridors. `slot()` serves
   targeted ads first and fills the rest with untargeted ones; an ad targeted elsewhere
   never appears, and with no `routeId` only untargeted ads show
-- **guides**: `RouteGuide` + `RouteGuideStop` are what an editor curates along a route.
-  Stops are always stored in the route's forward order; a `BOTH` guide is reversed when
-  read in the REVERSE direction, so never store a second reversed copy
+- **guides**: `RouteGuide` + `RouteGuideStop`, in two kinds. A `ROUTE` guide hangs off a
+  route and its stops are always stored in the route's forward order; a `BOTH` guide is
+  reversed when read in REVERSE, so never store a second reversed copy. A `DESTINATION`
+  guide hangs off a destination and its stops carry `dayNumber`, grouped into days for the
+  reader. Exactly one of `routeId` / `destinationId` is set, enforced in `checkedTarget()`
+- **settings**: one row (`PlatformSetting`, id `app`) holds the palette, background and app
+  name every page paints. `GET /settings/theme` is public and read on boot; only an admin
+  can PATCH it. Palette and background names are validated against the lists in
+  `settings.dto.ts`, which must match the CSS in `index.html` — add to both or neither
 - **creators**: `CreatorProfile` is only public once an admin sets `APPROVED`;
   `CreatorJourney` groups the creator's own `Post` rows through `CreatorJourneyPost`, so
   entries keep their votes, comments and moderation state rather than being copies
@@ -267,6 +274,16 @@ bottom-anchored navigation. Every one of those is a response to reading on a
 vibrating vehicle at night — treat them as requirements, not preferences.
 
 Body font is Mukta because it covers Devanagari and Latin in one family.
+
+**The masthead leads with Batoma, not the operator.** The app is the product; the route,
+bus company and seat are details of one ride and sit under it in small type. The wider
+rename was deliberately not done — sign-in, the control panel, the owner portal and
+printed QR stickers still say Bato.
+
+**Palettes and backgrounds are CSS-only.** Every palette restates the whole token set so no
+colour survives from the previous one, and the backgrounds are gradients and repeating
+patterns rather than images, so a night bus on a weak connection pays nothing for them.
+The reader paints the last known theme from `localStorage` before the API answers.
 
 It falls back to bundled demo content mirroring the seed when the API is
 unreachable, so the whole flow demos with no backend running.

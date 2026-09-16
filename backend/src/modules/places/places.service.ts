@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PlaceType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { haversineKm, AMS_ALERT_ALTITUDE_M } from '../../common/utils/geo.util';
-import { CreatePlaceDto, NearbyQueryDto } from './dto/place.dto';
+import { uniqueSlug } from '../../common/utils/slug.util';
+import { CreateDestinationDto, CreatePlaceDto, NearbyQueryDto } from './dto/place.dto';
 
 @Injectable()
 export class PlacesService {
@@ -69,6 +70,13 @@ export class PlacesService {
         province: true, latitude: true, longitude: true, heroImageUrl: true,
       },
     });
+  }
+
+  /** Editors add the places they want itineraries for; the slug is derived and kept unique. */
+  async createDestination(dto: CreateDestinationDto) {
+    const slug = await uniqueSlug(dto.name, async (s) =>
+      !!(await this.prisma.destination.findUnique({ where: { slug: s }, select: { id: true } })));
+    return this.prisma.destination.create({ data: { ...dto, slug } });
   }
 
   async getDestination(slug: string) {

@@ -566,6 +566,7 @@ model Destination {
   places   Place[]
   businesses Business[]
   creatorJourneys CreatorJourney[]
+  guides   RouteGuide[]
 
   @@map("destinations")
 }
@@ -1152,15 +1153,27 @@ enum GuideDirection {
   REVERSE
 }
 
+/// ROUTE guides follow a corridor in travel order; DESTINATION guides are the
+/// day-by-day plan for a place, so their stops carry day numbers.
+enum GuideKind {
+  ROUTE
+  DESTINATION
+}
+
 /// What an editor builds for a journey, e.g. Kathmandu → Pokhara: the landmarks,
 /// places to eat and places to stay along that corridor, in travel order.
 model RouteGuide {
   id            String         @id @default(uuid())
-  routeId       String
+  kind          GuideKind      @default(ROUTE)
+  /// Set for ROUTE guides; null for DESTINATION ones, and the other way round.
+  routeId       String?
+  destinationId String?
   direction     GuideDirection @default(BOTH)
   title         String
   summary       String?
   coverImageUrl String?
+  /// Day-by-day plans say how long they run; route guides leave it null.
+  dayCount      Int?
   status        ContentStatus  @default(DRAFT)
   sortOrder     Int            @default(0)
   createdById   String?
@@ -1168,10 +1181,12 @@ model RouteGuide {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  route Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  stops RouteGuideStop[]
+  route       Route?           @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  destination Destination?     @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  stops       RouteGuideStop[]
 
   @@index([routeId, status])
+  @@index([destinationId, status])
   @@map("route_guides")
 }
 
@@ -1184,6 +1199,8 @@ model RouteGuideStop {
   imageUrl            String?
   latitude            Float?
   longitude           Float?
+  /// Which day of a destination itinerary this stop belongs to; null on route guides.
+  dayNumber           Int?
   /// How far along the corridor it is, which is also how stops are ordered for the reader.
   distanceFromStartKm Int?
   minutesFromStart    Int?
@@ -1525,6 +1542,20 @@ model FleetNotification {
 
   @@index([operatorId, readAt, createdAt])
   @@map("fleet_notifications")
+}
+
+/// One row, id "app": how Batoma looks to everyone. Set by an admin in the control
+/// panel and read by every page, so the whole platform changes together.
+model PlatformSetting {
+  id              String   @id @default("app")
+  themePalette    String   @default("prayer-flag")
+  themeBackground String   @default("none")
+  appName         String   @default("Batoma")
+  tagline         String?
+  updatedById     String?
+  updatedAt       DateTime @updatedAt
+
+  @@map("platform_settings")
 }
 
 /// Append-only moderation audit trail.

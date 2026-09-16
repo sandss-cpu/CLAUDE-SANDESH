@@ -32,6 +32,7 @@ import { AdsModule } from './modules/ads/ads.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { GuidesModule } from './modules/guides/guides.module';
 import { CreatorsModule } from './modules/creators/creators.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { CreatorsModule } from './modules/creators/creators.module';
     FleetModule,
     GuidesModule,
     CreatorsModule,
+    SettingsModule,
     HealthModule,
   ],
   providers: [

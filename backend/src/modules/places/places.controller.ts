@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { PlaceType, Role } from '@prisma/client';
 import { PlacesService } from './places.service';
-import { CreatePlaceDto, NearbyQueryDto } from './dto/place.dto';
+import { CreateDestinationDto, CreatePlaceDto, NearbyQueryDto } from './dto/place.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -36,6 +36,9 @@ export class PlacesController {
 
   @Public() @Get('destinations/:slug')
   destination(@Param('slug') slug: string) { return this.places.getDestination(slug); }
+
+  @Roles(Role.EDITOR, Role.ADMIN) @Post('destinations')
+  createDestination(@Body() dto: CreateDestinationDto) { return this.places.createDestination(dto); }
 
   @Roles(Role.EDITOR, Role.ADMIN) @Post()
   create(@Body() dto: CreatePlaceDto) { return this.places.create(dto); }

@@ -251,14 +251,14 @@ const state = {
   error: '',
   login: { step: 'email', email: '', phone: '', devCode: '', challengeToken: '', enrol: null, error: '', busy: false },
   articles: { items: [], meta: null, status: '', q: '', editing: null, saving: false },
-  categories: [], issues: [], routes: [],
+  categories: [], issues: [], routes: [], destinations: [],
   elevate: { items: [] },
   moderation: { tab: 'reports', posts: [], comments: [], reviews: [], reports: [], busReviews: [], queue: null, badge: 0 },
   fleet: { stats: null, items: [], status: '', q: '' },
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
   ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
-  guides: { items: [], status: '', routeId: '', editing: null, stopsFor: null, editingStop: null, flash: '' },
+  guides: { items: [], status: '', routeId: '', kind: '', editing: null, stopsFor: null, editingStop: null, flash: '' },
   creators: { items: [], status: '' },
 };
 
@@ -685,6 +685,7 @@ async function renderMain(){
   const html = await (SCREENS[state.screen] || SCREENS.articles)();
   $('#main').innerHTML = html;
   if(state.screen === 'ads' && state.ads.editing){ toggleAdLink(); updateAdPreview(); }
+  if(state.screen === 'guides' && state.guides.editing) toggleGuideKind();
 }
 
 /* =========================== articles =========================== */
@@ -700,6 +701,7 @@ async function loadReferenceData(){
   if(!state.categories.length) state.categories = await api('/magazine/categories');
   if(!state.issues.length) state.issues = (await api('/magazine/admin/issues')) || [];
   if(!state.routes.length) state.routes = (await api('/operators/routes')) || [];
+  if(!state.destinations.length) state.destinations = (await api('/places/destinations')) || [];
 }
 
 function articleForm(a){
@@ -1808,8 +1810,13 @@ const STOP_KINDS = {
   TEMPLE: ['Temple', '🛕'], SHOPPING: ['Shopping', '🛍'], ACTIVITY: ['Activity', '🧗'], OTHER: ['Other', '📍'],
 };
 const DIRECTIONS = { BOTH: 'Both ways', FORWARD: 'Start → end only', REVERSE: 'End → start only' };
+const GUIDE_KINDS = { ROUTE: 'Road guide (along a route)', DESTINATION: 'Place itinerary (day by day)' };
 const routeOf = (id) => state.routes.find((r) => r.id === id);
 const journeyText = (g) => {
+  if(g.kind === 'DESTINATION'){
+    const d = g.destination || state.destinations.find((x) => x.id === g.destinationId);
+    return d ? `${d.name}${g.dayCount ? ` · ${plural(g.dayCount, 'day')}` : ''}` : '—';
+  }
   const r = g.route || routeOf(g.routeId);
   if(!r) return '—';
   return g.direction === 'REVERSE' ? `${r.endPlace} → ${r.startPlace}`
@@ -1823,20 +1830,27 @@ async function screenGuides(){
   const params = new URLSearchParams();
   if(g.status) params.set('status', g.status);
   if(g.routeId) params.set('routeId', g.routeId);
+  if(g.kind) params.set('kind', g.kind);
   g.items = await api(`/guides/admin?${params}`);
   return `
     <div class="top-row"><h2>Route guides</h2>
       <div class="row-actions">
         <button class="btn" onclick="openRouteForm()">+ New route</button>
+        <button class="btn" onclick="openDestinationForm()">+ New place</button>
         <button class="btn btn-primary" onclick="openGuideForm(null)">+ New guide</button>
       </div>
     </div>
-    <p class="hint" style="margin:-8px 0 14px">What travellers see on the Trips screen: the landmarks, food stops and hotels
-      along a corridor, in the order they pass them. Published guides appear for the journey the traveller picks.</p>
+    <p class="hint" style="margin:-8px 0 14px">What travellers see on the Trips screen. A <strong>road guide</strong> lists the landmarks,
+      food stops and hotels along a route in the order they pass them; a <strong>place itinerary</strong> lays a destination out day by day.
+      Add the routes and places you need, then write the guide for each.</p>
     <div class="filters">
       <select aria-label="Filter by status" onchange="state.guides.status=this.value; renderMain()">
         ${['', 'DRAFT', 'PUBLISHED', 'ARCHIVED'].map((s) =>
           `<option value="${s}" ${g.status === s ? 'selected' : ''}>${s ? s[0] + s.slice(1).toLowerCase() : 'All guides'}</option>`).join('')}
+      </select>
+      <select aria-label="Filter by kind" onchange="state.guides.kind=this.value; renderMain()">
+        <option value="">Roads and places</option>
+        ${Object.entries(GUIDE_KINDS).map(([k, l]) => `<option value="${k}" ${g.kind === k ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <select aria-label="Filter by route" onchange="state.guides.routeId=this.value; renderMain()">
         <option value="">All routes</option>
@@ -1846,12 +1860,14 @@ async function screenGuides(){
     ${g.flash ? `<div class="error" role="alert" style="margin-bottom:12px">${esc(g.flash)}</div>` : ''}
     ${!g.items.length ? '<div class="empty">No guides yet. Create one for a route, then add the stops along it.</div>' : `
       <div class="table-wrap"><table>
-        <thead><tr><th>Guide</th><th>Journey</th><th>Shown</th><th>Stops</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Guide</th><th>Road or place</th><th>Shown</th><th>Stops</th><th>Status</th><th></th></tr></thead>
         <tbody>${g.items.map((x) => `
           <tr>
-            <td><strong>${esc(x.title)}</strong>${x.summary ? `<div class="hint">${esc(x.summary.slice(0, 90))}</div>` : ''}</td>
-            <td>${esc(journeyText(x))}<div class="hint">${esc(x.route?.code || '')}</div></td>
-            <td>${esc(DIRECTIONS[x.direction])}</td>
+            <td><strong>${esc(x.title)}</strong>
+              <div class="hint">${x.kind === 'DESTINATION' ? 'Place itinerary' : 'Road guide'}</div>
+              ${x.summary ? `<div class="hint">${esc(x.summary.slice(0, 90))}</div>` : ''}</td>
+            <td>${esc(journeyText(x))}<div class="hint">${esc(x.route?.code || x.destination?.district || '')}</div></td>
+            <td>${x.kind === 'DESTINATION' ? 'Day by day' : esc(DIRECTIONS[x.direction])}</td>
             <td>${x.stopCount}</td>
             <td><span class="pill ${x.status}">${x.status[0] + x.status.slice(1).toLowerCase()}</span></td>
             <td class="row-actions">
@@ -1875,17 +1891,34 @@ function guideForm(guide){
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="guide-form-title">
         <h2 id="guide-form-title" style="margin-bottom:10px">${isNew ? 'New route guide' : 'Edit guide'}</h2>
         <form id="guide-form" novalidate onsubmit="saveGuide(event, ${isNew ? 'null' : `'${guide.id}'`})">
-          <label for="guide-route">Route</label>
-          <select id="guide-route">
-            ${state.routes.map((r) => `<option value="${esc(r.id)}" ${guide.routeId === r.id ? 'selected' : ''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}
+          <label for="guide-kind">What kind of guide</label>
+          <select id="guide-kind" onchange="toggleGuideKind()">
+            ${Object.entries(GUIDE_KINDS).map(([k, l]) =>
+              `<option value="${k}" ${(guide.kind || 'ROUTE') === k ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
-          <div class="hint">Not listed? Close this and use “New route”.</div>
-          <label for="guide-direction">Which way round</label>
-          <select id="guide-direction">
-            ${Object.entries(DIRECTIONS).map(([k, l]) =>
-              `<option value="${k}" ${(guide.direction || 'BOTH') === k ? 'selected' : ''}>${l}</option>`).join('')}
-          </select>
-          <div class="hint">“Both ways” is written once in the start → end order; travellers going the other way see it reversed.</div>
+          <div id="guide-route-fields">
+            <label for="guide-route">Route</label>
+            <select id="guide-route">
+              ${state.routes.map((r) => `<option value="${esc(r.id)}" ${guide.routeId === r.id ? 'selected' : ''}>${esc(r.name)} (${esc(r.code)})</option>`).join('')}
+            </select>
+            <div class="hint">Not listed? Close this and use “New route”.</div>
+            <label for="guide-direction">Which way round</label>
+            <select id="guide-direction">
+              ${Object.entries(DIRECTIONS).map(([k, l]) =>
+                `<option value="${k}" ${(guide.direction || 'BOTH') === k ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <div class="hint">“Both ways” is written once in the start → end order; travellers going the other way see it reversed.</div>
+          </div>
+          <div id="guide-destination-fields">
+            <label for="guide-destination">Place</label>
+            <select id="guide-destination">
+              ${state.destinations.map((d) => `<option value="${esc(d.id)}" ${guide.destinationId === d.id ? 'selected' : ''}>${esc(d.name)}${d.district ? ` (${esc(d.district)})` : ''}</option>`).join('')}
+            </select>
+            <div class="hint">Not listed? Close this and use “New place”.</div>
+            <label for="guide-days">How many days</label>
+            <input id="guide-days" type="number" min="1" max="60" value="${esc(guide.dayCount ?? 3)}">
+            <div class="hint">Each stop is then filed under a day number.</div>
+          </div>
           <label for="guide-title">Title</label>
           <input id="guide-title" maxlength="140" value="${v('title')}" placeholder="e.g. Kathmandu to Pokhara: where to stop">
           <label for="guide-summary">Summary <small>(optional)</small></label>
@@ -1902,23 +1935,39 @@ function guideForm(guide){
 }
 
 function openGuideForm(id){
-  state.guides.editing = id ? state.guides.items.find((x) => x.id === id) : { direction: 'BOTH', routeId: state.routes[0]?.id };
+  state.guides.editing = id
+    ? state.guides.items.find((x) => x.id === id)
+    : { kind: 'ROUTE', direction: 'BOTH', routeId: state.routes[0]?.id, destinationId: state.destinations[0]?.id };
   state.guides.flash = '';
   renderMain();
 }
 function closeGuideForm(){ state.guides.editing = null; renderMain(); }
 
+/** A guide belongs to a route or to a place, so only one set of fields applies. */
+function toggleGuideKind(){
+  const kind = $('#guide-kind')?.value;
+  if(!kind) return;
+  $('#guide-route-fields').hidden = kind !== 'ROUTE';
+  $('#guide-destination-fields').hidden = kind !== 'DESTINATION';
+}
+
 async function saveGuide(e, id){
   e.preventDefault();
   const box = $('#guide-form-error');
   box.hidden = true;
+  const kind = $('#guide-kind').value;
   const dto = {
-    routeId: $('#guide-route').value,
-    direction: $('#guide-direction').value,
+    kind,
+    routeId: kind === 'ROUTE' ? $('#guide-route').value : undefined,
+    destinationId: kind === 'DESTINATION' ? $('#guide-destination').value : undefined,
+    dayCount: kind === 'DESTINATION' ? Number($('#guide-days').value) || undefined : undefined,
+    direction: kind === 'ROUTE' ? $('#guide-direction').value : 'BOTH',
     title: $('#guide-title').value.trim(),
     summary: $('#guide-summary').value.trim() || undefined,
     coverImageUrl: $('#guide-cover').value || undefined,
   };
+  if(kind === 'ROUTE' && !dto.routeId){ box.textContent = 'Add a route first, then write its guide.'; box.hidden = false; return; }
+  if(kind === 'DESTINATION' && !dto.destinationId){ box.textContent = 'Add a place first, then write its itinerary.'; box.hidden = false; return; }
   if(dto.title.length < 3){ box.textContent = 'Give the guide a title.'; box.hidden = false; return; }
   const btn = $('#guide-save');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -1982,10 +2031,11 @@ function stopsPanel(){
           <button class="btn btn-primary" onclick="openStopForm(null)">+ Add a stop</button>`}
         ${!stops.length ? '<div class="empty">No stops yet. Add the places travellers pass, in order.</div>' : `
           <div class="table-wrap" style="margin-top:12px"><table>
-            <thead><tr><th>#</th><th>Stop</th><th>Kind</th><th>Along the way</th><th></th></tr></thead>
+            <thead><tr><th>${guide.kind === 'DESTINATION' ? 'Day' : '#'}</th><th>Stop</th><th>Kind</th>
+              <th>${guide.kind === 'DESTINATION' ? 'Timing' : 'Along the way'}</th><th></th></tr></thead>
             <tbody>${stops.map((s, i) => `
               <tr>
-                <td>${i + 1}</td>
+                <td>${guide.kind === 'DESTINATION' ? `Day ${s.dayNumber ?? 1}` : i + 1}</td>
                 <td><strong>${esc(s.name)}</strong>${s.isHighlight ? ' <span class="pill APPROVED">Highlight</span>' : ''}
                   ${s.description ? `<div class="hint">${esc(s.description.slice(0, 80))}</div>` : ''}</td>
                 <td>${STOP_KINDS[s.kind]?.[1] || ''} ${esc(STOP_KINDS[s.kind]?.[0] || s.kind)}</td>
@@ -2002,6 +2052,64 @@ function stopsPanel(){
     </div>`;
 }
 
+/** A town or area an itinerary can be written for. Sits beside "New route". */
+function openDestinationForm(){
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = `
+    <form class="modal" role="dialog" aria-modal="true" aria-labelledby="dest-title" novalidate>
+      <h2 id="dest-title" style="margin-bottom:8px">New place</h2>
+      <p class="hint" style="margin:0">A town or area you can write a day-by-day itinerary for, such as Pokhara or Sauraha.</p>
+      <div class="two-col">
+        <div><label for="dest-name">Name</label><input id="dest-name" maxlength="120" placeholder="Bandipur"></div>
+        <div><label for="dest-district">District</label><input id="dest-district" maxlength="80" placeholder="Tanahun"></div>
+      </div>
+      <div class="two-col">
+        <div><label for="dest-lat">Latitude</label><input id="dest-lat" type="number" step="0.0001" placeholder="27.9333"></div>
+        <div><label for="dest-lng">Longitude</label><input id="dest-lng" type="number" step="0.0001" placeholder="84.4167"></div>
+      </div>
+      <label for="dest-desc">Description <small>(optional)</small></label>
+      <textarea id="dest-desc" maxlength="1000" style="min-height:70px;font-family:inherit"></textarea>
+      <div class="error" role="alert" hidden></div>
+      <div class="row-actions" style="margin-top:16px">
+        <button class="btn btn-primary" type="submit">Create place</button>
+        <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
+      </div>
+    </form>`;
+  const close = () => back.remove();
+  back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-cancel]')) close(); });
+  back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+  back.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const box = back.querySelector('.error');
+    const dto = {
+      name: back.querySelector('#dest-name').value.trim(),
+      district: back.querySelector('#dest-district').value.trim(),
+      latitude: Number(back.querySelector('#dest-lat').value),
+      longitude: Number(back.querySelector('#dest-lng').value),
+      description: back.querySelector('#dest-desc').value.trim() || undefined,
+    };
+    if(!dto.name || !dto.district || !Number.isFinite(dto.latitude) || !Number.isFinite(dto.longitude)){
+      box.textContent = 'Name, district and both coordinates are needed.'; box.hidden = false; return;
+    }
+    const submit = back.querySelector('button[type="submit"]');
+    submit.disabled = true; submit.textContent = 'Creating…';
+    try{
+      await api('/places/destinations', { method: 'POST', body: dto });
+      state.destinations = [];
+      await loadReferenceData();
+      close();
+      notify(`${dto.name} added.`);
+      renderMain();
+    }catch(err){
+      box.textContent = err.message; box.hidden = false;
+      submit.disabled = false; submit.textContent = 'Create place';
+    }
+  });
+  document.body.appendChild(back);
+  back.querySelector('#dest-name').focus();
+}
+
 function stopForm(stop){
   const isNew = !stop.id;
   const v = (k) => esc(stop[k] ?? '');
@@ -2016,6 +2124,10 @@ function stopForm(stop){
         <div><label for="stop-name">Name</label>
           <input id="stop-name" maxlength="140" value="${v('name')}" placeholder="e.g. Kurintar riverside tea shops"></div>
       </div>
+      ${state.guides.detail?.kind === 'DESTINATION' ? `
+        <label for="stop-day">Day</label>
+        <input id="stop-day" type="number" min="1" max="60" value="${esc(stop.dayNumber ?? 1)}">
+        <div class="hint">Which day of the itinerary this belongs to.</div>` : ''}
       <label for="stop-desc">Description <small>(optional)</small></label>
       <textarea id="stop-desc" maxlength="2000" style="min-height:70px;font-family:inherit">${v('description')}</textarea>
       <div class="two-col">
@@ -2059,6 +2171,7 @@ async function saveStop(e, id){
   const numberOrUndefined = (sel) => ($(sel).value === '' ? undefined : Number($(sel).value));
   const dto = {
     kind: $('#stop-kind').value,
+    dayNumber: $('#stop-day') ? Number($('#stop-day').value) || 1 : undefined,
     name: $('#stop-name').value.trim(),
     description: $('#stop-desc').value.trim() || undefined,
     distanceFromStartKm: numberOrUndefined('#stop-km'),
@@ -2254,7 +2367,7 @@ const SCREENS = {
  * a surface, a brand colour and an accent that keep text contrast above 4.5:1.
  */
 const PALETTES = [
-  ['', 'Prayer Flag', 'Bato’s own: cream paper, dusk purple, saffron', ['#F2EEE3', '#5B3FA8', '#F4A024', '#E8455F']],
+  ['', 'Prayer Flag', 'Batoma’s own: cream paper, dusk purple, saffron', ['#F2EEE3', '#5B3FA8', '#F4A024', '#E8455F']],
   ['dawn', 'Himalaya Dawn', 'Cool morning blue, calm for long editing sessions', ['#EDF2F8', '#2F5D9E', '#F0883F', '#12243B']],
   ['teahouse', 'Teahouse', 'Warm sand and brass, like an old lodge dining room', ['#F4EADC', '#8A5A2B', '#D98E04', '#3A2A18']],
   ['rhododendron', 'Rhododendron', 'Nepal’s national flower: soft pink with a deep red', ['#FAEFF1', '#A82848', '#E8455F', '#2C1420']],
@@ -2269,32 +2382,104 @@ function applyPalette(name){
   try{ localStorage.setItem('bato.admin.palette', name || ''); }catch(_){}
 }
 
-function openPalettePicker(){
-  const current = (() => { try{ return localStorage.getItem('bato.admin.palette') || ''; }catch(_){ return ''; } })();
+/**
+ * The platform's own look, shared by every traveller: the same palettes and
+ * Nepali backgrounds the reader app knows how to paint. Saved on the server, so
+ * changing it here changes Batoma for everyone.
+ */
+const APP_PALETTES = [
+  ['prayer-flag', 'Prayer Flag', 'Batoma’s own: cream paper, dusk purple, saffron', ['#FDFAF3', '#5B3FA8', '#F4A024', '#E8455F']],
+  ['rhododendron', 'Rhododendron', 'Nepal’s national flower: soft pink with a deep red', ['#FDF1F3', '#A82848', '#E8455F', '#2C1420']],
+  ['himalaya-dawn', 'Himalaya Dawn', 'First light on the snow: cool blue and a warm sunrise', ['#EEF3FA', '#2F5D9E', '#F0883F', '#12243B']],
+  ['teahouse', 'Teahouse', 'Warm sand and brass, like an old lodge dining room', ['#F6EDDF', '#8A5A2B', '#D98E04', '#3A2A18']],
+  ['forest-trail', 'Forest Trail', 'The green mid-hills in daylight', ['#EFF5EF', '#2F6B3F', '#6FAE3F', '#132318']],
+  ['monsoon', 'Monsoon', 'Wet slate and paddy green, for the rains', ['#EDF1F1', '#37626B', '#7FA653', '#14201F']],
+  ['lakeside-sunset', 'Lakeside Sunset', 'Phewa at dusk: apricot and deep water', ['#FDF0E6', '#B4532A', '#E8934A', '#2A1A14']],
+  ['night-bus', 'Night Bus', 'Dark mode for night journeys and late editing', ['#141024', '#8B6FD4', '#E8A33F', '#EDE7F7']],
+];
+
+const APP_BACKGROUNDS = [
+  ['none', 'Plain', 'Flat colour only'],
+  ['rhododendron', 'Rhododendron', 'Soft lali gurans blooms behind the page'],
+  ['prayer-flags', 'Prayer flags', 'A faint line of bunting across the top'],
+  ['himalaya', 'Himalaya', 'A pale mountain skyline along the bottom'],
+  ['terraced-fields', 'Terraced fields', 'Hill terraces as gentle bands'],
+  ['newar-lattice', 'Newar lattice', 'Carved window screen, very faint'],
+  ['paper-grain', 'Paper grain', 'Lokta paper texture'],
+];
+
+async function openPalettePicker(){
+  let theme;
+  try{ theme = await api('/settings/theme'); }
+  catch(err){ notify(err.message, 'error'); return; }
+  const isAdmin = state.auth?.user?.role === 'ADMIN';
+  const panelPalette = (() => { try{ return localStorage.getItem('bato.admin.palette') || ''; }catch(_){ return ''; } })();
+
   const back = document.createElement('div');
   back.className = 'modal-back';
-  back.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="palette-title">
-      <div class="top-row" style="margin-bottom:4px"><h2 id="palette-title">Appearance</h2>
-        <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-      <p class="hint" style="margin:0">Changes the control panel's colours on this browser. Everyone else keeps their own choice.</p>
-      <div class="palette-grid" role="group" aria-label="Colour palette">
-        ${PALETTES.map(([value, name, note, colours]) => `
-          <button class="palette-card" data-palette-value="${value}" aria-pressed="${current === value}">
-            <strong>${esc(name)}</strong>
-            <div class="swatches" aria-hidden="true">${colours.map((c) => `<i style="background:${c}"></i>`).join('')}</div>
-            <div class="hint" style="margin-top:6px">${esc(note)}</div>
-          </button>`).join('')}
-      </div>
-    </div>`;
+  const paint = () => {
+    back.innerHTML = `
+      <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="palette-title">
+        <div class="top-row" style="margin-bottom:4px"><h2 id="palette-title">Appearance</h2>
+          <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+
+        <h3 style="font-size:17px;margin-top:14px">Batoma’s colours</h3>
+        <p class="hint" style="margin:0">${isAdmin
+          ? 'What every traveller sees in the app. Saved for the whole platform.'
+          : 'Set by an admin for the whole platform.'}</p>
+        <div class="palette-grid" role="group" aria-label="App palette">
+          ${APP_PALETTES.map(([value, name, note, colours]) => `
+            <button class="palette-card" data-app-palette="${value}" aria-pressed="${theme.themePalette === value}" ${isAdmin ? '' : 'disabled'}>
+              <strong>${esc(name)}</strong>
+              <div class="swatches" aria-hidden="true">${colours.map((c) => `<i style="background:${c}"></i>`).join('')}</div>
+              <div class="hint" style="margin-top:6px">${esc(note)}</div>
+            </button>`).join('')}
+        </div>
+
+        <h3 style="font-size:17px;margin-top:18px">Background</h3>
+        <p class="hint" style="margin:0">A Nepali pattern behind the reader app, drawn in the palette's own colours.</p>
+        <div class="palette-grid" role="group" aria-label="App background">
+          ${APP_BACKGROUNDS.map(([value, name, note]) => `
+            <button class="palette-card" data-app-background="${value}" aria-pressed="${theme.themeBackground === value}" ${isAdmin ? '' : 'disabled'}>
+              <strong>${esc(name)}</strong>
+              <div class="hint" style="margin-top:4px">${esc(note)}</div>
+            </button>`).join('')}
+        </div>
+
+        <h3 style="font-size:17px;margin-top:18px">This control panel</h3>
+        <p class="hint" style="margin:0">Only your browser; every editor keeps their own.</p>
+        <div class="palette-grid" role="group" aria-label="Control panel palette">
+          ${PALETTES.map(([value, name, note, colours]) => `
+            <button class="palette-card" data-palette-value="${value}" aria-pressed="${panelPalette === value}">
+              <strong>${esc(name)}</strong>
+              <div class="swatches" aria-hidden="true">${colours.map((c) => `<i style="background:${c}"></i>`).join('')}</div>
+              <div class="hint" style="margin-top:6px">${esc(note)}</div>
+            </button>`).join('')}
+        </div>
+      </div>`;
+  };
+  paint();
+
   const close = () => back.remove();
-  back.addEventListener('click', (e) => {
+  const save = async (body, label) => {
+    try{
+      theme = await api('/settings/theme', { method: 'PATCH', body });
+      paint();
+      notify(`${label} — every traveller sees this now.`);
+    }catch(err){ notify(err.message, 'error'); }
+  };
+  back.addEventListener('click', async (e) => {
     if(e.target === back || e.target.closest('[data-close]')) return close();
-    const card = e.target.closest('[data-palette-value]');
-    if(!card) return;
-    applyPalette(card.dataset.paletteValue);
-    back.querySelectorAll('.palette-card').forEach((c) => c.setAttribute('aria-pressed', String(c === card)));
-    notify(`${card.querySelector('strong').textContent} applied.`);
+    const app = e.target.closest('[data-app-palette]');
+    const bg = e.target.closest('[data-app-background]');
+    const panel = e.target.closest('[data-palette-value]');
+    if(app) return save({ themePalette: app.dataset.appPalette }, `${app.querySelector('strong').textContent} applied`);
+    if(bg) return save({ themeBackground: bg.dataset.appBackground }, `${bg.querySelector('strong').textContent} background applied`);
+    if(panel){
+      applyPalette(panel.dataset.paletteValue);
+      back.querySelectorAll('[data-palette-value]').forEach((c) => c.setAttribute('aria-pressed', String(c === panel)));
+      notify(`${panel.querySelector('strong').textContent} applied to your panel.`);
+    }
   });
   back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
   document.body.appendChild(back);

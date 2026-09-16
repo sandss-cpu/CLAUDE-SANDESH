@@ -3,17 +3,28 @@ import {
   ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsLatitude, IsLongitude, IsOptional,
   IsString, IsUUID, Length, Max, MaxLength, Min,
 } from 'class-validator';
-import { ContentStatus, GuideDirection, GuideStopKind } from '@prisma/client';
+import { ContentStatus, GuideDirection, GuideKind, GuideStopKind } from '@prisma/client';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const blankToUndefined = () => Transform(({ value }) => (value === '' || value === null ? undefined : value));
 
 export class SaveGuideDto {
-  @IsUUID('4', { message: 'Choose the route this guide covers' })
-  routeId: string;
+  @IsEnum(GuideKind, { message: 'Choose a road guide or a place itinerary' })
+  kind: GuideKind;
+
+  /** Required for ROUTE guides; the service refuses one without it. */
+  @blankToUndefined() @IsOptional() @IsUUID('4', { message: 'Choose the route this guide covers' })
+  routeId?: string;
+
+  /** Required for DESTINATION itineraries. */
+  @blankToUndefined() @IsOptional() @IsUUID('4', { message: 'Choose the place this itinerary covers' })
+  destinationId?: string;
 
   @IsEnum(GuideDirection, { message: 'Choose which way the traveller is going' })
   direction: GuideDirection;
+
+  @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(60)
+  dayCount?: number;
 
   @trim() @IsString() @Length(3, 140, { message: 'Title must be 3–140 characters' })
   title: string;
@@ -34,6 +45,10 @@ export class SaveGuideDto {
 export class SaveGuideStopDto {
   @IsEnum(GuideStopKind, { message: 'Choose what kind of stop this is' })
   kind: GuideStopKind;
+
+  /** Which day of an itinerary this belongs to; ignored on route guides. */
+  @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(60)
+  dayNumber?: number;
 
   @trim() @IsString() @Length(2, 140, { message: 'Name must be 2–140 characters' })
   name: string;
@@ -89,8 +104,14 @@ export class GuideStatusDto {
 }
 
 export class JourneyQueryDto {
+  @blankToUndefined() @IsOptional() @IsEnum(GuideKind)
+  kind?: GuideKind;
+
   @blankToUndefined() @IsOptional() @IsUUID('4')
   routeId?: string;
+
+  @blankToUndefined() @IsOptional() @IsUUID('4')
+  destinationId?: string;
 
   @blankToUndefined() @trim() @IsOptional() @IsString() @MaxLength(60)
   from?: string;
@@ -110,4 +131,7 @@ export class AdminGuideQueryDto {
 
   @blankToUndefined() @IsOptional() @IsUUID('4')
   routeId?: string;
+
+  @blankToUndefined() @IsOptional() @IsEnum(GuideKind)
+  kind?: GuideKind;
 }

@@ -37,13 +37,31 @@ runs, linking to a website or an in-app overview page. Each ad can be aimed at c
 routes: a targeted ad wins the slot for travellers on that corridor and never appears on
 others, while an ad with no targets shows everywhere.
 
-**Route guides.** Editors curate a corridor in the control panel: the landmarks,
-viewpoints, food stops, hotels, rest stops, fuel and ATMs along it, in the order
-travellers pass them, with distance, time, prices, opening hours and tips. Travellers
-pick where they are heading on the Trips screen — Kathmandu → Pokhara, Pokhara →
-Kathmandu, or anywhere else a route exists — and read the guide in their direction of
-travel. A guide written once for "both ways" is reversed automatically on the return leg,
-and each guide also lists the magazine stories linked to that route.
+**Trips: road guides and place itineraries.** Editors build both in the control panel,
+adding the routes and places themselves as they go.
+
+- A **road guide** covers a corridor: the landmarks, viewpoints, food stops, hotels, rest
+  stops, fuel and ATMs along it, in the order travellers pass them, with distance, time,
+  prices, opening hours and tips. Travellers pick where they are heading — Kathmandu →
+  Pokhara, Pokhara → Kathmandu, or any route an admin adds — and read it in their
+  direction of travel. A guide written once for "both ways" is reversed automatically on
+  the return leg.
+- A **place itinerary** lays a destination out day by day: "Three days in Pokhara", with
+  each stop filed under its day.
+
+The Trips screen splits into *On the road* and *Places*, and every guide also lists the
+magazine stories linked to that route or destination.
+
+**Appearance, set by an admin.** *Appearance* in the control panel sets Batoma's colours
+and background for every traveller, stored on the server rather than per browser. Eight
+palettes — Prayer Flag, Rhododendron, Himalaya Dawn, Teahouse, Forest Trail, Monsoon,
+Lakeside Sunset and Night Bus — and seven Nepal-inspired backgrounds drawn in CSS, so they
+cost nothing to load: rhododendron blooms, prayer flags, a Himalaya skyline, hill terraces,
+Newar lattice and lokta paper grain. Editors can still pick a separate palette for the
+control panel itself.
+
+**Batoma branding.** The reader's masthead leads with Batoma and the issue; the route, bus
+company and seat sit beneath it in small type, where they belong.
 
 **Reporting and moderation.** Anyone can report a story, comment, article or bus review.
 Three different people reporting a live item hides it until a moderator decides.
@@ -154,7 +172,8 @@ QR test links, to the file:
 the demo seat sticker **`DEMO2024`**. Two more seeds fill the new screens:
 
 ```bash
-npm run seed:guides      # route guides for Kathmandu–Pokhara and Kathmandu–Chitwan
+npm run seed:guides      # road guides for Kathmandu–Pokhara and Kathmandu–Chitwan
+npm run seed:itinerary   # a three-day Pokhara place itinerary
 npm run seed:creators    # an approved demo creator with a journey
 ```
 
@@ -223,7 +242,8 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/fleet` | Owner portal: `companies`, `companies/:id/dashboard`, `…/buses`, `…/reviews`, `…/drivers`, `…/members`, `…/qr`, `…/notifications`; `buses/:id` with `maintenance`, `incidents`, `documents`, `fuel`, `crew`, `qr`, `qr/rotate`, `history`, `archive`; `reviews/:id/reply`, `reviews/:id/report` |
 | `/fleet/admin` | `stats`, `companies`, `companies/:id/verification`, `reminders/run` (admin only) |
 | `/buses` | Public: `search`, `scan/:code`, `companies/:slug`, `:id`, `:id/reviews` |
-| `/guides` | Public: `journeys`, `:id`; editors and admins: `admin` list and detail, create, edit, `:id/status`, `:id/stops`, `:id/stops/reorder`, `admin/stops/:stopId` |
+| `/guides` | Public: `journeys` (road guides and place itineraries), `:id`; editors and admins: `admin` list and detail, create, edit, `:id/status`, `:id/stops`, `:id/stops/reorder`, `admin/stops/:stopId` |
+| `/settings` | Public: `theme`; admins: `PATCH theme` (palette, background, app name) |
 | `/creators` | Public: list, `:handle`, `:handle/journeys/:slug`; signed in: `apply`, `me`, `me/journeys…`, `:handle/follow`; admins: `admin`, `admin/:id` |
 | `/posts` | feed (newest first), `publish`, `:id/vote`, `mine` |
 | `/media` | `upload` |
