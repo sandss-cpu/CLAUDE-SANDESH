@@ -21,6 +21,23 @@ const CATEGORIES = [
   { slug: 'road', name: 'On the Road', nameNe: 'बाटोमा', colorHex: '2F6FD0', sortOrder: 6 },
 ];
 
+/**
+ * Nepal's national emergency numbers.
+ *
+ * These belong in the production seed, not just the demo seed: the safety
+ * directory is the one screen that has to work for a traveller with no
+ * account and no signal, and an empty directory on a fresh deploy would leave
+ * them with nothing. District numbers (hospitals and the like) are added by an
+ * admin afterwards, since they depend on where the service actually runs.
+ */
+const EMERGENCY = [
+  { label: 'Police', phone: '100', category: 'POLICE', isNational: true },
+  { label: 'Ambulance', phone: '102', category: 'AMBULANCE', isNational: true },
+  { label: 'Fire', phone: '101', category: 'FIRE', isNational: true },
+  { label: 'Tourist Police', phone: '1144', category: 'TOURIST_POLICE', isNational: true },
+  { label: 'Traffic Police', phone: '103', category: 'POLICE', isNational: true },
+];
+
 async function main() {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const name = process.env.ADMIN_NAME?.trim() || 'Bato Admin';
@@ -37,6 +54,13 @@ async function main() {
     await prisma.category.upsert({ where: { slug: category.slug }, update: {}, create: category });
   }
   console.log(`Categories ready (${CATEGORIES.length}).`);
+
+  // Matched by label so re-running never duplicates a number.
+  for (const e of EMERGENCY) {
+    const found = await prisma.emergencyNumber.findFirst({ where: { label: e.label } });
+    if (!found) await prisma.emergencyNumber.create({ data: e as any });
+  }
+  console.log(`Emergency numbers ready (${EMERGENCY.length}).`);
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { role: true } });
   if (existing) {

@@ -407,6 +407,17 @@ html[data-theme="night"] .report-error{background:#3A1420;color:#F4B4C1}
 /* ---------- safety ---------- */
 .sos{background:var(--rhodo);color:#fff;border-radius:var(--r-lg);padding:18px;text-align:center;margin-bottom:16px}
 .sos .btn{background:#fff;color:var(--rhodo);margin-top:12px}
+/* Hold-to-send: the fill is the three seconds, so the wait is visible rather than guessed. */
+.sos-hold{position:relative;overflow:hidden;width:100%;touch-action:none;-webkit-user-select:none;user-select:none}
+.sos-fill{position:absolute;inset:0 auto 0 0;width:0;background:color-mix(in srgb, var(--rhodo) 26%, transparent);transition:width .06s linear}
+.sos-label{position:relative}
+.sos-note{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:14px}
+.contact{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.contact b{font-size:14.5px}
+.contact small{color:var(--text-dim);display:block}
+.ec-form{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.ec-form input{flex:1;min-width:120px;padding:11px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface);color:var(--text);font:inherit}
 .num{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
 .num a{font-family:var(--font-display);font-size:19px;font-weight:700;text-decoration:none;color:var(--brand)}
 
@@ -532,6 +543,7 @@ const state = {
   appName: 'Batoma',
   tagline: '',
   auth: null,
+  safety: { numbers: [], contacts: [], loaded: false, sending: false, result: null },
   readTab: 'magazine',
   vlogs: { items: [], loaded: false, loading: false, error: '', demo: false },
   post: null,
@@ -1134,17 +1146,50 @@ const SCREENS = {
 
       <p style="font-size:13px;color:var(--text-dim);margin:14px 0 0">Run buses? <a href="owner.html">Bato for bus owners</a></p>
 
-      <div class="sec-head"><h2>Emergency</h2><span>Works offline</span></div>
+      <div class="sec-head"><h2>Emergency</h2>
+        <span>${state.safety.numbers.length ? 'Saved on this phone' : 'Works offline'}</span></div>
       <div class="sos">
         <strong style="font-size:17px">Need help now?</strong>
         <div style="font-size:14px;opacity:.92;margin-top:4px">
-          Sends your position to your saved contacts. Falls back to a text message with no data.
+          Hold for three seconds. Your position goes to your saved contacts — by text message
+          when there is no data.
         </div>
-        <button class="btn" onclick="toast('Hold 3 seconds to send an SOS')">Send SOS</button>
+        <button class="btn sos-hold" id="sosBtn" oncontextmenu="return false"
+                onpointerdown="sosHoldStart(event)" onpointerup="sosHoldEnd()"
+                onpointercancel="sosHoldEnd()" onpointerleave="sosHoldEnd()">
+          <span class="sos-fill" id="sosFill"></span>
+          <span class="sos-label" id="sosLabel">${state.safety.sending ? 'Sending…' : 'Hold to send SOS'}</span>
+        </button>
       </div>
-      ${DEMO.safety.map(n => `
-        <div class="num"><span>${esc(n.label)}</span>
-          <a href="tel:${n.phone.replace(/\s/g,'')}">${esc(n.phone)}</a></div>`).join('')}
+      ${state.safety.result ? `
+        <div class="sos-note">
+          ${state.safety.result.contactsNotified != null
+            ? `Alert sent to ${state.safety.result.contactsNotified} of ${state.safety.result.totalContacts} saved contact${state.safety.result.totalContacts === 1 ? '' : 's'}.`
+            : ''}
+          ${state.safety.result.advice ? ` ${esc(state.safety.result.advice)}` : ''}
+        </div>` : ''}
+
+      <div class="sec-head"><h2>Who gets the alert</h2><span>${state.safety.contacts.length} saved</span></div>
+      ${state.safety.contacts.length ? state.safety.contacts.map(c => `
+        <div class="contact">
+          <span><b>${esc(c.name)}</b><small>${esc(c.phone)}</small></span>
+          <button class="chip" onclick="removeContact('${esc(c.id)}')">Remove</button>
+        </div>`).join('') : `
+        <p style="font-size:14px;color:var(--text-dim);margin:0">
+          No one yet. An SOS can only reach a person once you add a contact.
+        </p>`}
+      <div class="ec-form">
+        <input id="ecName" placeholder="Name" autocomplete="name" aria-label="Contact name">
+        <input id="ecPhone" placeholder="Phone" inputmode="tel" autocomplete="tel" aria-label="Contact phone">
+        <button class="btn btn-ghost" onclick="addContact()">Add</button>
+      </div>
+
+      <div class="sec-head"><h2>Emergency numbers</h2><span>Tap to call</span></div>
+      ${(state.safety.numbers.length ? state.safety.numbers : DEMO.safety).map(n => `
+        <div class="num">
+          <span>${esc(n.label)}${n.district ? ` <small style="color:var(--text-dim)">· ${esc(n.district)}</small>` : ''}</span>
+          <a href="tel:${String(n.phone).replace(/\s/g,'')}">${esc(n.phone)}</a>
+        </div>`).join('')}
 
       ${slotAd('MORE_SCREEN')}
 
@@ -1299,6 +1344,173 @@ function openBiz(slug){
   state.business = DEMO.businesses.find(b => b.slug === slug);
   go('business');
 }
+/* ---------- safety: emergency numbers, contacts and SOS ---------- */
+
+/**
+ * SOS is the one feature in this app where a mistake costs more than a bad
+ * experience, so it is deliberately hard to fire by accident (a three second
+ * hold) and deliberately hard to silence: if data fails for any reason it
+ * falls through to a text message, which works when nothing else does.
+ */
+const SOS_HOLD_MS = 3000;
+let sosTimer = null, sosRaf = null, sosStarted = 0;
+
+function sosHoldStart(ev){
+  if(ev?.preventDefault) ev.preventDefault();
+  if(state.safety.sending) return;
+  sosStarted = Date.now();
+  const paint = () => {
+    const pct = Math.min(1, (Date.now() - sosStarted) / SOS_HOLD_MS);
+    const fill = $('#sosFill'); if(fill) fill.style.width = `${pct * 100}%`;
+    const label = $('#sosLabel');
+    if(label){
+      label.textContent = pct < 1
+        ? `Keep holding… ${Math.ceil((1 - pct) * SOS_HOLD_MS / 1000)}`
+        : 'Sending…';
+    }
+    if(pct < 1) sosRaf = requestAnimationFrame(paint);
+  };
+  sosRaf = requestAnimationFrame(paint);
+  sosTimer = setTimeout(() => { sosHoldEnd(true); sendSos(); }, SOS_HOLD_MS);
+}
+
+function sosHoldEnd(fired){
+  if(sosTimer){ clearTimeout(sosTimer); sosTimer = null; }
+  if(sosRaf){ cancelAnimationFrame(sosRaf); sosRaf = null; }
+  if(fired) return;            // the send is taking over the button
+  const fill = $('#sosFill'); if(fill) fill.style.width = '0%';
+  const label = $('#sosLabel'); if(label) label.textContent = 'Hold to send SOS';
+}
+
+/** Never rejects: a missing or refused position must not stop the alert. */
+function currentPosition(){
+  if(!navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if(!done){ done = true; resolve(v); } };
+    navigator.geolocation.getCurrentPosition(
+      (p) => finish({ latitude:+p.coords.latitude.toFixed(5), longitude:+p.coords.longitude.toFixed(5) }),
+      () => finish(null),
+      { enableHighAccuracy:true, timeout:6000, maximumAge:60000 },
+    );
+    setTimeout(() => finish(null), 6500);   // some browsers never call back at all
+  });
+}
+
+async function sendSos(){
+  const where = await currentPosition();
+
+  // No signal, no server or no account: the text message is the whole point.
+  if(!state.online || !state.liveApi || !state.auth){ sosBySms(where); return; }
+
+  state.safety.sending = true; render();
+  try{
+    const res = await authed(`${API}/safety/sos`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ...(where || {}), channel:'DATA' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'The server did not accept the alert');
+    state.safety.result = json.data;
+    toast(json.data.contactsNotified
+      ? `SOS sent to ${json.data.contactsNotified} contact${json.data.contactsNotified === 1 ? '' : 's'}`
+      : 'SOS recorded — no contacts to alert yet');
+  }catch(_){
+    toast('Could not send over data — opening a text message');
+    sosBySms(where);
+  }finally{
+    state.safety.sending = false;
+    render();
+  }
+}
+
+function sosBySms(where){
+  const numbers = (state.safety.contacts || []).map(c => c.phone).filter(Boolean);
+  const spot = where
+    ? `https://www.google.com/maps?q=${where.latitude},${where.longitude}`
+    : 'Location unavailable';
+  if(!numbers.length){
+    state.safety.result = { advice:'No emergency contacts saved. Add one, or call a number below.' };
+    toast('No contacts saved — call a number below');
+    render();
+    return;
+  }
+  const body = encodeURIComponent(`EMERGENCY: I need help. Last known position: ${spot}`);
+  location.href = `sms:${numbers.join(',')}?&body=${body}`;
+}
+
+/**
+ * The directory is cached on the phone because it only matters when there is
+ * no connection to fetch it with.
+ */
+async function loadSafety(){
+  try{
+    const cached = JSON.parse(localStorage.getItem('bato.safety') || 'null');
+    if(cached){
+      state.safety.numbers = cached.numbers || [];
+      state.safety.contacts = cached.contacts || [];
+    }
+  }catch(_){}
+
+  if(state.online){
+    try{
+      const res = await fetch(`${API}/safety/directory`, { signal: AbortSignal.timeout(4000) });
+      if(res.ok){ const { data } = await res.json(); state.safety.numbers = data.numbers || []; }
+    }catch(_){}
+    if(state.auth){
+      try{
+        const res = await authed(`${API}/safety/contacts`);
+        if(res.ok){ const { data } = await res.json(); state.safety.contacts = data || []; }
+      }catch(_){}
+    }
+  }
+  state.safety.loaded = true;
+  persistSafety();
+  if(state.screen === 'more') render();
+}
+
+function persistSafety(){
+  try{
+    localStorage.setItem('bato.safety', JSON.stringify({
+      numbers: state.safety.numbers, contacts: state.safety.contacts,
+    }));
+  }catch(_){}
+}
+
+async function addContact(){
+  if(!state.auth){
+    toast('Sign in to save emergency contacts');
+    setTimeout(() => { location.href = `login.html?returnTo=${encodeURIComponent('index.html#more')}`; }, 800);
+    return;
+  }
+  const name = ($('#ecName')?.value || '').trim();
+  const phone = ($('#ecPhone')?.value || '').trim();
+  if(name.length < 2){ toast('Give the contact a name'); return; }
+  if(phone.length < 7){ toast('That phone number looks too short'); return; }
+  try{
+    const res = await authed(`${API}/safety/contacts`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, phone }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'Could not save that contact');
+    state.safety.contacts.push(json.data);
+    persistSafety();
+    toast(`${name} will be alerted`);
+    render();
+  }catch(err){ toast(err.message || 'Could not save that contact'); }
+}
+
+async function removeContact(id){
+  try{
+    const res = await authed(`${API}/safety/contacts/${id}`, { method:'DELETE' });
+    if(!res.ok) throw new Error();
+    state.safety.contacts = state.safety.contacts.filter(c => c.id !== id);
+    persistSafety();
+    render();
+  }catch(_){ toast('Could not remove that contact'); }
+}
+
 /* ---------- route guides: what to see, eat and where to stay on the way ---------- */
 const STOP_ICON = {
   LANDMARK: '🏛', VIEWPOINT: '🌄', FOOD: '🍛', HOTEL: '🛏', REST_STOP: '🚻', FUEL: '⛽',
@@ -2258,6 +2470,9 @@ $('#dismissInstall').onclick = () => {
 
   loadAuth();
   loadTheme();
+  // Fetched at the bus park while there is still signal, because the numbers
+  // are only ever needed once there isn't.
+  loadSafety();
   /**
    * An admin changing the palette expects the app to follow. Re-checking whenever the
    * tab comes back means a reader sees it on their next glance, with no reload and no
