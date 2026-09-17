@@ -292,16 +292,21 @@ unreachable, so the whole flow demos with no backend running.
 
 Real, and worth knowing before you plan work:
 
-1. **Some PWA actions are still toasts only.** Claim coupon and SOS don't call the API
-   yet; sign-in, publishing, photos, voting, reporting and rating a bus (via `bus.html`) do
-2. **Articles cannot link translations.** `Language` is a field on `Article`, not a
+1. **Articles cannot link translations.** `Language` is a field on `Article`, not a
    relationship between versions, so a language toggle needs a schema change
-3. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
-4. **No Bikram Sambat dates** anywhere
-5. **No unit tests** (only the fleet smoke script), and `strictNullChecks` is off
-8. **Company verification has no document upload.** Admins check details by phone or email
-6. **Outstanding `npm audit` advisories** need NestJS 12 and nodemailer 10, both major upgrades
-7. **No Content-Security-Policy on the web app.** The pages use inline scripts
+2. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
+3. **No Bikram Sambat dates** anywhere
+4. **Company verification has no document upload.** Admins check details by phone or email
+5. **Outstanding `npm audit` advisories** need NestJS 11/12, nodemailer 10 and multer 2 —
+   all major upgrades. `npm audit fix` has already taken everything that does not break
+6. **`strictNullChecks` is off.** Unit tests now exist (`npm test`, 77 of them over the
+   pure logic) but they cannot make up for the compiler not checking nulls
+7. **The CSP still allows `'unsafe-inline'` for scripts.** `render.yaml` sets a real
+   policy, but the pages carry one inline script each and 221 inline handlers, so the
+   strongest directive cannot be turned on until those move to delegated listeners
+8. **`normalisePlate` drops Devanagari combining vowel signs**, so "बा" and "ब" produce
+   the same registration key. Pinned by a test; fixing it means re-keying existing rows
+   and changing the migration backfill in step
 
 ## Seeded accounts
 
