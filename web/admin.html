@@ -53,8 +53,34 @@ html[data-palette="slate"]{
   --brand:#3C4A5A; --accent:#C97B2C; --ink:#14181D;
 }
 .palette-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
-.palette-card{border:2px solid var(--line);border-radius:var(--r);padding:10px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;color:inherit}
-.palette-card[aria-pressed="true"]{border-color:var(--brand)}
+.palette-card{border:2px solid var(--line);border-radius:var(--r);padding:10px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;color:inherit;position:relative}
+.palette-card[aria-pressed="true"]{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent)}
+.palette-card[aria-pressed="true"]::after{content:"✓ In use";position:absolute;top:8px;right:10px;font-size:11px;font-weight:700;color:var(--brand)}
+.palette-card:disabled{opacity:.6;cursor:default}
+
+/* A small picture of the traveller app in the chosen palette, so the effect is visible here. */
+.theme-preview{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border-radius:var(--r);padding:14px;margin-top:12px}
+.tp-phone{width:168px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--p-bg);flex:none}
+.tp-mast{background:linear-gradient(135deg,var(--p-brand) 0%,color-mix(in srgb,var(--p-brand) 72%,var(--p-accent)) 100%);color:#fff;padding:10px 12px}
+.tp-mast span{font-size:9px;letter-spacing:.14em;opacity:.85;display:block}
+.tp-mast b{font-family:var(--font-display);font-size:15px;line-height:1.15;display:block;margin-top:2px}
+.tp-body{padding:10px;display:grid;gap:8px}
+.tp-card{background:#fff;border-radius:8px;padding:8px;display:grid;gap:5px}
+.tp-card i{display:block;height:22px;border-radius:5px;background:var(--p-accent);opacity:.75}
+.tp-card span{display:block;height:6px;border-radius:3px;background:var(--p-brand);opacity:.28}
+.tp-card span.short{width:55%}
+.tp-phone[data-bg="rhododendron"] .tp-body{background:
+  radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--p-accent) 26%, transparent) 0 7px, transparent 8px),
+  radial-gradient(circle at 78% 70%, color-mix(in srgb, var(--p-accent) 22%, transparent) 0 8px, transparent 9px)}
+.tp-phone[data-bg="prayer-flags"] .tp-body{background:repeating-linear-gradient(135deg,
+  color-mix(in srgb, var(--p-brand) 16%, transparent) 0 10px, transparent 10px 20px,
+  color-mix(in srgb, var(--p-accent) 16%, transparent) 20px 30px, transparent 30px 40px)}
+.tp-phone[data-bg="himalaya"] .tp-body{background:linear-gradient(160deg, transparent 55%, color-mix(in srgb, var(--p-brand) 16%, transparent) 55.2% 72%, transparent 72.2%)}
+.tp-phone[data-bg="terraced-fields"] .tp-body{background:repeating-linear-gradient(175deg, color-mix(in srgb, var(--p-brand) 12%, transparent) 0 5px, transparent 5px 16px)}
+.tp-phone[data-bg="newar-lattice"] .tp-body{background:
+  repeating-linear-gradient(45deg, color-mix(in srgb, var(--p-brand) 12%, transparent) 0 2px, transparent 2px 12px),
+  repeating-linear-gradient(-45deg, color-mix(in srgb, var(--p-brand) 12%, transparent) 0 2px, transparent 2px 12px)}
+.tp-phone[data-bg="paper-grain"] .tp-body{background:repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 4px)}
 .palette-card strong{display:block;font-size:14px;margin-bottom:6px}
 .swatches{display:flex;gap:4px}
 .swatches i{width:22px;height:22px;border-radius:6px;border:1px solid rgba(0,0,0,.12)}
@@ -2418,6 +2444,8 @@ async function openPalettePicker(){
   const back = document.createElement('div');
   back.className = 'modal-back';
   const paint = () => {
+    const chosen = APP_PALETTES.find(([v]) => v === theme.themePalette) || APP_PALETTES[0];
+    const chosenBg = APP_BACKGROUNDS.find(([v]) => v === theme.themeBackground) || APP_BACKGROUNDS[0];
     back.innerHTML = `
       <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="palette-title">
         <div class="top-row" style="margin-bottom:4px"><h2 id="palette-title">Appearance</h2>
@@ -2427,6 +2455,23 @@ async function openPalettePicker(){
         <p class="hint" style="margin:0">${isAdmin
           ? 'What every traveller sees in the app. Saved for the whole platform.'
           : 'Set by an admin for the whole platform.'}</p>
+
+        <!-- The panel keeps its own colours, so without this an admin clicks a palette and sees nothing change. -->
+        <div class="theme-preview" style="--p-bg:${chosen[3][0]};--p-brand:${chosen[3][1]};--p-accent:${chosen[3][2]}">
+          <div class="tp-phone" data-bg="${esc(theme.themeBackground)}">
+            <div class="tp-mast"><span>BATOMA</span><b>The Prithvi Highway</b></div>
+            <div class="tp-body">
+              <div class="tp-card"><i></i><span></span><span class="short"></span></div>
+              <div class="tp-card"><i></i><span></span><span class="short"></span></div>
+            </div>
+          </div>
+          <div>
+            <strong style="font-size:15px">Now showing: ${esc(chosen[1])}${theme.themeBackground !== 'none' ? ` · ${esc(chosenBg[1])}` : ''}</strong>
+            <div class="hint" style="margin-top:4px">This is how the traveller app looks right now.
+              ${isAdmin ? 'Pick another below and this preview follows.' : ''}</div>
+            <a class="btn btn-sm" style="margin-top:8px" href="index.html" target="_blank" rel="noopener">Open the app ↗</a>
+          </div>
+        </div>
         <div class="palette-grid" role="group" aria-label="App palette">
           ${APP_PALETTES.map(([value, name, note, colours]) => `
             <button class="palette-card" data-app-palette="${value}" aria-pressed="${theme.themePalette === value}" ${isAdmin ? '' : 'disabled'}>

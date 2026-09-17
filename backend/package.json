@@ -17,7 +17,8 @@
     "accounts:test": "ts-node prisma/create-test-accounts.ts",
     "seed:guides": "ts-node prisma/guides-demo.ts",
     "seed:creators": "ts-node prisma/creators-demo.ts",
-    "seed:itinerary": "ts-node prisma/place-itinerary-demo.ts"
+    "seed:itinerary": "ts-node prisma/place-itinerary-demo.ts",
+    "theme:set": "ts-node prisma/set-theme.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

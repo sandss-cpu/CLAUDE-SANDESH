@@ -787,6 +787,8 @@ async function loadTheme(){
     if(t.themeBackground && t.themeBackground !== 'none') document.body.dataset.background = t.themeBackground;
     else delete document.body.dataset.background;
     document.title = `${state.appName} — Nepal Travel Magazine`;
+    // The masthead carries the app name, so repaint it when the name or tagline changes.
+    if($('#eyebrow')) $('#eyebrow').textContent = state.appName;
   };
   // Paint last-known settings at once, so the app never flashes the wrong colours offline.
   try{ paint(JSON.parse(localStorage.getItem('bato.theme.app') || 'null')); }catch(_){}
@@ -2256,6 +2258,13 @@ $('#dismissInstall').onclick = () => {
 
   loadAuth();
   loadTheme();
+  /**
+   * An admin changing the palette expects the app to follow. Re-checking whenever the
+   * tab comes back means a reader sees it on their next glance, with no reload and no
+   * polling while the phone is in a pocket.
+   */
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) loadTheme(); });
+  window.addEventListener('focus', () => loadTheme());
   try{ state.readTab = sessionStorage.getItem('bato.readTab') || 'magazine'; }catch(_){}
   const hashScreen = location.hash.replace('#', '');
   if(NAV.some(([k]) => k === hashScreen)) state.screen = hashScreen;
