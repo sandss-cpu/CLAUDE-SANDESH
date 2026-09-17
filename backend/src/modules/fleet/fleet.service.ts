@@ -332,7 +332,11 @@ export class FleetService {
       const latest = new Map<string, (typeof docs)[number]>();
       for (const d of docs.filter((x) => x.vehicleId === b.id)) {
         const prev = latest.get(d.type);
-        if (!prev || d.expiresAt > prev.expiresAt) latest.set(d.type, d);
+        // An undated document must not displace one that has an expiry, or a
+        // renewal would be hidden behind a row with no date on it.
+        const when = d.expiresAt?.getTime() ?? -Infinity;
+        const held = prev?.expiresAt?.getTime() ?? -Infinity;
+        if (!prev || when > held) latest.set(d.type, d);
       }
       const documents = [...latest.values()]
         .map((d) => ({ id: d.id, type: d.type, number: d.number, expiresAt: d.expiresAt, ...expiry(d.expiresAt, now) }))
@@ -368,10 +372,15 @@ export class FleetService {
     for (const r of rows) {
       const s: ServiceDue = r.service;
       const bus = { busId: r.id, registrationNo: r.registrationNo };
+      // Every state except NO_RECORD comes from a real service record, so both
+      // figures are present — but that is carried in a string the compiler
+      // cannot read, so they are pinned to numbers here.
+      const daysLeft = s.daysLeft ?? 0;
+      const kmLeft = s.kmLeft ?? 0;
       if (s.state === 'OVERDUE') {
-        const late = s.daysLeft < 0 && s.kmLeft < 0
-          ? `${plural(-s.daysLeft, 'day')} and ${(-s.kmLeft).toLocaleString('en')} km overdue`
-          : s.daysLeft < 0 ? `${plural(-s.daysLeft, 'day')} overdue` : `${(-s.kmLeft).toLocaleString('en')} km overdue`;
+        const late = daysLeft < 0 && kmLeft < 0
+          ? `${plural(-daysLeft, 'day')} and ${(-kmLeft).toLocaleString('en')} km overdue`
+          : daysLeft < 0 ? `${plural(-daysLeft, 'day')} overdue` : `${(-kmLeft).toLocaleString('en')} km overdue`;
         items.push({
           ...bus, key: `svc:${r.id}:${isoDay(s.nextDueDate)}:${s.nextDueKm}:OVERDUE`, severity: 'high',
           kind: 'SERVICE_OVERDUE', title: `Service overdue: ${r.registrationNo}`, detail: late,
@@ -381,7 +390,7 @@ export class FleetService {
         items.push({
           ...bus, key: `svc:${r.id}:${isoDay(s.nextDueDate)}:${s.nextDueKm}:DUE_SOON`, severity: 'medium',
           kind: 'SERVICE_DUE', title: `Service due soon: ${r.registrationNo}`,
-          detail: `Due in ${plural(Math.max(0, s.daysLeft), 'day')} or ${Math.max(0, s.kmLeft).toLocaleString('en')} km, whichever comes first`,
+          detail: `Due in ${plural(Math.max(0, daysLeft), 'day')} or ${Math.max(0, kmLeft).toLocaleString('en')} km, whichever comes first`,
           dueDate: s.nextDueDate, daysLeft: s.daysLeft,
         });
       } else if (s.state === 'NO_RECORD') {
@@ -394,12 +403,14 @@ export class FleetService {
       for (const d of r.documents.items) {
         if (d.state !== 'EXPIRED' && d.state !== 'EXPIRING') continue;
         const label = DOCUMENT_LABEL[d.type] ?? 'Document';
+        // EXPIRED and EXPIRING are only reached with a real date behind them.
+        const left = d.daysLeft ?? 0;
         items.push({
           ...bus, key: `doc:${r.id}:${d.type}:${isoDay(d.expiresAt)}:${d.state}`,
           severity: d.state === 'EXPIRED' ? 'high' : 'medium',
           kind: d.state === 'EXPIRED' ? 'DOCUMENT_EXPIRED' : 'DOCUMENT_EXPIRING',
           title: `${label} ${d.state === 'EXPIRED' ? 'expired' : 'expiring'}: ${r.registrationNo}`,
-          detail: d.state === 'EXPIRED' ? `Expired ${plural(-d.daysLeft, 'day')} ago` : `Expires in ${plural(d.daysLeft, 'day')}`,
+          detail: d.state === 'EXPIRED' ? `Expired ${plural(-left, 'day')} ago` : `Expires in ${plural(left, 'day')}`,
           dueDate: d.expiresAt, daysLeft: d.daysLeft,
         });
       }
@@ -414,12 +425,13 @@ export class FleetService {
     for (const d of drivers) {
       const e = expiry(d.licenceExpiresAt, now);
       if (e.state !== 'EXPIRED' && e.state !== 'EXPIRING') continue;
+      const left = e.daysLeft ?? 0;
       items.push({
         key: `lic:${d.id}:${isoDay(d.licenceExpiresAt)}:${e.state}`, driverId: d.id,
         severity: e.state === 'EXPIRED' ? 'high' : 'medium',
         kind: e.state === 'EXPIRED' ? 'LICENCE_EXPIRED' : 'LICENCE_EXPIRING',
         title: `Driving licence ${e.state === 'EXPIRED' ? 'expired' : 'expiring'}: ${d.name}`,
-        detail: e.state === 'EXPIRED' ? `Expired ${plural(-e.daysLeft, 'day')} ago` : `Expires in ${plural(e.daysLeft, 'day')}`,
+        detail: e.state === 'EXPIRED' ? `Expired ${plural(-left, 'day')} ago` : `Expires in ${plural(left, 'day')}`,
         dueDate: d.licenceExpiresAt, daysLeft: e.daysLeft,
       });
     }
@@ -436,6 +448,10 @@ export class FleetService {
         operator: { select: { id: true, name: true, verification: true, isActive: true } },
       },
     });
+    // findUnique can answer null — a bus archived or deleted between the access
+    // check and this read. Without this the lines below dereferenced null and
+    // threw a TypeError, which surfaces as a 500 rather than a 404.
+    if (!bus) throw new NotFoundException('Bus not found');
     const [[row], documents, recentService, counts] = await Promise.all([
       this.summarise([bus]),
       this.prisma.busDocument.findMany({ where: { vehicleId: id }, orderBy: [{ expiresAt: { sort: 'asc', nulls: 'last' } }] }),
@@ -628,7 +644,10 @@ export class FleetService {
     const reviewCount = allTime._count._all;
     const countFor = (stars: number) => distribution.find((d) => d.overall === stars)?._count._all ?? 0;
     const satisfied = countFor(4) + countFor(5);
-    const measured = rows.filter((r) => r.fuel.kmPerLitre);
+    // Kept as plain numbers so the average below needs no null handling.
+    // != null rather than truthiness: a genuine 0 km/l reading is a measurement,
+    // not a missing one.
+    const measured = rows.map((r) => r.fuel.kmPerLitre).filter((v): v is number => v != null);
     const reminders = this.reminders(rows, drivers, now);
 
     // Buses needing attention first, then the least-liked.
@@ -680,7 +699,7 @@ export class FleetService {
         last30CostNpr: fuel30._sum.costNpr ?? 0,
         last30Litres: round1(fuel30._sum.litres ?? 0),
         last30FillUps: fuel30._count._all,
-        fleetKmPerLitre: measured.length ? round1(measured.reduce((n, r) => n + r.fuel.kmPerLitre, 0) / measured.length) : null,
+        fleetKmPerLitre: measured.length ? round1(measured.reduce((n, v) => n + v, 0) / measured.length) : null,
       },
       buses: [...rows].sort((a, b) => attention(b) - attention(a) || (a.rating.average ?? 6) - (b.rating.average ?? 6)),
     };
