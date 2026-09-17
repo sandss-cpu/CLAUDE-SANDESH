@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Batoma — preview &amp; testing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --rhodo:#A82848; --saffron:#F4A024; --teal:#159A8C; --prayer:#2F6FD0;
+  --ink:#1C1A2E; --paper:#FDFAF3; --green:#3E9B4F; --amber:#E5892E;
+  --bg:var(--paper); --surface:#fff; --surface-2:#F6F1E6;
+  --text:var(--ink); --text-dim:#5A5568; --line:#E4DED0;
+  --r:14px; --r-lg:22px;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'Mukta',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141024; --surface:#1E1834; --surface-2:#271F42;
+    --text:#EDE7F7; --text-dim:#A79BC4; --line:#332A52;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px 64px}
+.mast{background:linear-gradient(135deg,var(--rhodo) 0%,color-mix(in srgb,var(--rhodo) 72%,var(--saffron)) 100%);
+  color:#fff;padding:30px 0 34px;margin-bottom:26px}
+.mast .wrap{padding-bottom:0}
+.eyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.9}
+h1{font-family:var(--font-display);font-size:34px;line-height:1.1;margin:6px 0 4px;font-weight:700}
+.mast p{margin:0;opacity:.94;font-size:15px}
+h2{font-family:var(--font-display);font-size:21px;margin:34px 0 4px;font-weight:600}
+h2+.sub{margin:0 0 14px;color:var(--text-dim);font-size:14px}
+
+.status{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.pill{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;font-size:13.5px;font-weight:500}
+.dot{width:9px;height:9px;border-radius:50%;background:#ffffff80;flex:none}
+.dot.on{background:#7CE2A8} .dot.off{background:#FF9AA8}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:17px;display:flex;flex-direction:column;gap:7px}
+.card .ico{font-size:23px}
+.card h3{margin:0;font-family:var(--font-display);font-size:17px;font-weight:600}
+.card p{margin:0;font-size:13.8px;color:var(--text-dim);flex:1}
+.card a.open{align-self:flex-start;margin-top:5px;text-decoration:none;font-weight:600;font-size:14px;
+  color:#fff;background:var(--rhodo);border-radius:10px;padding:9px 15px}
+.card a.open:hover{opacity:.92}
+.tag{align-self:flex-start;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--teal);border:1px solid var(--teal);border-radius:999px;padding:2px 8px}
+.tag.admin{color:var(--prayer);border-color:var(--prayer)}
+.tag.owner{color:var(--amber);border-color:var(--amber)}
+
+.panel{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px}
+ul.checks{margin:0;padding-left:20px}
+ul.checks li{margin-bottom:7px;font-size:14.5px}
+ul.checks small{display:block;color:var(--text-dim);font-size:13px}
+code{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
+.note{border-left:3px solid var(--saffron);padding:11px 14px;background:var(--surface);
+  border-radius:0 var(--r) var(--r) 0;font-size:14px;margin-top:12px}
+footer{margin-top:40px;color:var(--text-dim);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+
+<div class="mast">
+  <div class="wrap">
+    <div class="eyebrow">Batoma</div>
+    <h1>Preview &amp; testing</h1>
+    <p>Every screen in the product, in one place, running on this machine.</p>
+    <div class="status">
+      <span class="pill"><span class="dot" id="dWeb"></span><span id="tWeb">Web server…</span></span>
+      <span class="pill"><span class="dot" id="dApi"></span><span id="tApi">API…</span></span>
+      <span class="pill"><span class="dot" id="dTheme"></span><span id="tTheme">Theme…</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <h2>Screens</h2>
+  <p class="sub">Open any of these. They share one local database, so a change in one shows up in the others.</p>
+  <div class="grid">
+    <div class="card">
+      <span class="ico">📖</span><span class="tag">Traveller</span>
+      <h3>Traveller app</h3>
+      <p>The magazine, trips and guides, vlogs, offers and the emergency screen. This is what a passenger sees after scanning the QR code in a bus.</p>
+      <a class="open" href="index.html">Open</a>
+    </div>
+    <div class="card">
+      <span class="ico">🔑</span><span class="tag">Traveller</span>
+      <h3>Sign in</h3>
+      <p>Email and password, or a phone code. Needed to publish, vote, claim an offer or send an SOS.</p>
+      <a class="open" href="login.html">Open</a>
+    </div>
+    <div class="card">
+      <span class="ico">🚌</span><span class="tag">Traveller</span>
+      <h3>Rate a bus</h3>
+      <p>The page a QR sticker leads to. Find a bus by its number plate and leave a review the company reads anonymously.</p>
+      <a class="open" href="bus.html">Open</a>
+    </div>
+    <div class="card">
+      <span class="ico">★</span><span class="tag">Traveller</span>
+      <h3>Creators</h3>
+      <p>Creator profiles and journeys, and the form to apply for a creator account.</p>
+      <a class="open" href="creator.html">Open</a>
+    </div>
+    <div class="card">
+      <span class="ico">🧰</span><span class="tag owner">Bus owner</span>
+      <h3>Bus owner portal</h3>
+      <p>Register buses, track servicing, documents, drivers, fuel and breakdowns, and read passenger feedback per bus.</p>
+      <a class="open" href="owner.html">Open</a>
+    </div>
+    <div class="card">
+      <span class="ico">⚙️</span><span class="tag admin">Staff</span>
+      <h3>Control panel</h3>
+      <p>Articles, issues, marketing slots, route guides, creators, moderation, bus companies, and the colours every traveller sees.</p>
+      <a class="open" href="admin.html">Open</a>
+    </div>
+  </div>
+
+  <h2>Worth testing</h2>
+  <p class="sub">The parts most likely to surprise you, and what "working" looks like.</p>
+  <div class="panel">
+    <ul class="checks">
+      <li><strong>Emergency SOS</strong> — traveller app → More → hold the button for three seconds.
+        <small>A short press must cancel. With no contact saved it says so rather than pretending to send. Signed out or offline it opens a text message instead.</small></li>
+      <li><strong>Claim an offer</strong> — traveller app → a listing under “Stops on this corridor” → Claim.
+        <small>The code comes from the server. Claiming twice is refused, because each offer is one per traveller.</small></li>
+      <li><strong>Colours</strong> — control panel → Appearance → pick a palette.
+        <small>The preview in the dialog follows immediately; the traveller app picks it up when its tab regains focus.</small></li>
+      <li><strong>Bus reviews reach the owner</strong> — rate a bus, then open the same bus in the owner portal.
+        <small>The company sees the review and the themes, never who wrote it.</small></li>
+      <li><strong>Route guides and itineraries</strong> — traveller app → Trips.
+        <small>Roads are ordered along the corridor; places are grouped by day. Both are set in the control panel.</small></li>
+      <li><strong>Offline</strong> — load the traveller app, then switch off Wi-Fi and reload.
+        <small>It keeps working on cached content. Emergency numbers are saved on the device on purpose.</small></li>
+    </ul>
+    <div class="note">
+      <strong>Test logins are not in this folder.</strong> They live in
+      <code>Bato_Docs/Bato_Test_Accounts.md</code>, kept out of the project and out of GitHub
+      so that real passwords are never published. Staff accounts also ask for an authenticator code.
+    </div>
+  </div>
+
+  <h2>If something is not running</h2>
+  <p class="sub">The launcher starts everything; this is what it starts.</p>
+  <div class="panel">
+    <ul class="checks">
+      <li>Double-click <code>Start_Bato.command</code> in the project folder.
+        <small>It starts the database, applies migrations, loads demo content on first run, then starts both servers.</small></li>
+      <li>The web app must be served from <code>http://localhost:5173</code>.
+        <small>That is the only address the API accepts by default, so another port cannot reach it. Opening the file directly with file:// will not work either.</small></li>
+      <li>API logs are at <code>/tmp/bato_backend.log</code>, web server logs at <code>/tmp/bato_web_server.log</code>.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Batoma — local preview. This page is a testing aid and is not part of what a traveller sees.
+  </footer>
+</div>
+
+<script>
+/* Live checks, so the page says what is actually up rather than assuming. */
+const API = (window.BATO_CONFIG && window.BATO_CONFIG.api) || 'http://localhost:3000/api/v1';
+
+function mark(dot, label, ok, text){
+  document.getElementById(dot).className = 'dot ' + (ok ? 'on' : 'off');
+  document.getElementById(label).textContent = text;
+}
+
+mark('dWeb', 'tWeb', location.protocol !== 'file:' && location.port === '5173',
+  location.port === '5173' ? 'Web server on :5173' : `Served from ${location.host || 'file://'} — use :5173`);
+
+(async () => {
+  try{
+    const res = await fetch(API.replace('/api/v1', '') + '/health', { signal: AbortSignal.timeout(3000) });
+    mark('dApi', 'tApi', res.ok, res.ok ? 'API on :3000' : 'API answered ' + res.status);
+  }catch(_){
+    mark('dApi', 'tApi', false, 'API not running');
+  }
+
+  try{
+    const res = await fetch(API + '/settings/theme', { signal: AbortSignal.timeout(3000) });
+    const json = await res.json();
+    const t = json && json.data;
+    mark('dTheme', 'tTheme', !!t, t ? `Theme: ${t.themePalette} · ${t.themeBackground}` : 'Theme unavailable');
+  }catch(_){
+    mark('dTheme', 'tTheme', false, 'Theme unavailable');
+  }
+})();
+</script>
+</body>
+</html>
