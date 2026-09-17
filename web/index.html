@@ -544,6 +544,9 @@ const state = {
   tagline: '',
   auth: null,
   safety: { numbers: [], contacts: [], loaded: false, sending: false, result: null },
+  biz: { items: [], loaded: false, loading: false },
+  claiming: false,
+  claimed: null,
   readTab: 'magazine',
   vlogs: { items: [], loaded: false, loading: false, error: '', demo: false },
   post: null,
@@ -860,7 +863,7 @@ const SCREENS = {
         ${interleaveAds(more.map(listCard))}` : ''}
 
       <div class="sec-head"><h2>Stops on this corridor</h2><span>Verified</span></div>
-      ${DEMO.businesses.map((b) => bizRow(b)).join('')}
+      ${(state.biz.items.length ? state.biz.items : DEMO.businesses).map((b) => bizRow(b)).join('')}
 
       <div class="sec-head"><h2>Where next?</h2><span>Plan the trip</span></div>
       <a class="btn btn-ghost" onclick="go('trip')">🧭 Road guides and place itineraries</a>
@@ -1093,13 +1096,29 @@ const SCREENS = {
         </div>
       </div>
 
-      <div class="coupon">
-        <strong style="font-size:17px">10% off for Bato readers</strong>
-        <div style="font-size:13.5px;opacity:.9;margin-top:4px">Show this screen when you arrive.</div>
-        <div class="code" id="cCode">TAP TO CLAIM</div>
-        <button class="btn" style="background:#fff;color:var(--rhodo);margin-top:12px"
-                onclick="claim()">Claim this offer</button>
-      </div>
+      ${(b.coupons || []).map(c => `
+        <div class="coupon">
+          <strong style="font-size:17px">${esc(c.discountLabel)}</strong>
+          ${c.description ? `<div style="font-size:13.5px;opacity:.9;margin-top:4px">${esc(c.description)}</div>` : ''}
+          <div class="code">${state.claimed?.couponId === c.id ? esc(state.claimed.code) : 'TAP TO CLAIM'}</div>
+          ${state.claimed?.couponId === c.id ? `
+            <div style="font-size:13px;opacity:.92;margin-top:9px">
+              Show this code at the counter${c.validTo
+                ? ` · valid to ${new Date(c.validTo).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})}`
+                : ''}
+            </div>` : `
+            <button class="btn" style="background:#fff;color:var(--rhodo);margin-top:12px"
+                    onclick="claim('${esc(c.id)}')" ${state.claiming ? 'disabled' : ''}>
+              ${state.claiming ? 'Claiming…' : 'Claim this offer'}
+            </button>`}
+        </div>`).join('')}
+      ${!b.coupons ? `
+        <div class="coupon">
+          <strong style="font-size:17px">10% off for Bato readers</strong>
+          <div style="font-size:13.5px;opacity:.9;margin-top:4px">
+            A sample offer. This is one of the bundled listings, so there is no code to issue.
+          </div>
+        </div>` : ''}
 
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="lead('CALL')">📞 Call</button>
@@ -1340,9 +1359,72 @@ function openArticle(slug){
   state.article = DEMO.articles.find(a => a.slug === slug);
   go('article');
 }
-function openBiz(slug){
-  state.business = DEMO.businesses.find(b => b.slug === slug);
+/* ---------- businesses: live listings, with the bundled ones as the fallback ---------- */
+
+/**
+ * The API returns a category, not a colour or an icon; the bundled demo rows
+ * carry their own. `bizView` maps a live row onto the shape the cards already
+ * render, so one set of markup serves both.
+ */
+const BIZ_ICON = {
+  HOTEL:'🏨', HOMESTAY:'🏡', LODGE:'🛏', RESTAURANT:'🍛', CAFE:'☕', TREKKING_AGENCY:'🥾',
+  ADVENTURE:'🧗', PARAGLIDING:'🪂', RENTAL:'🛵', GUIDE:'🧭', HANDICRAFT:'🧶', TOUR_OPERATOR:'🚐',
+};
+const BIZ_COLOUR = {
+  HOTEL:'var(--prayer)', HOMESTAY:'var(--terracotta)', LODGE:'var(--terracotta)',
+  RESTAURANT:'var(--saffron)', CAFE:'var(--amber)', TREKKING_AGENCY:'var(--teal)',
+  ADVENTURE:'var(--teal)', PARAGLIDING:'var(--prayer)', RENTAL:'var(--dusk)',
+  GUIDE:'var(--teal)', HANDICRAFT:'var(--rhodo)', TOUR_OPERATOR:'var(--dusk)',
+};
+
+function bizView(b){
+  if(!b) return null;
+  if(b.colour) return b;                       // already a bundled demo row
+  return {
+    ...b,
+    cat: b.category,
+    icon: BIZ_ICON[b.category] || '📍',
+    colour: BIZ_COLOUR[b.category] || 'var(--brand)',
+    price: b.priceRange || '',
+    verified: !!b.verifiedAt,
+    about: b.description || '',
+  };
+}
+
+async function loadBusinesses(){
+  if(state.biz.loading || !state.online) return;
+  state.biz.loading = true;
+  try{
+    const res = await fetch(`${API}/businesses?limit=12`, { signal: AbortSignal.timeout(4000) });
+    if(!res.ok) throw new Error('bad status');
+    const { data } = await res.json();
+    state.biz.items = (data.items || []).map(bizView);
+    state.biz.loaded = true;
+    if(state.screen === 'read') render();
+  }catch(_){
+    // Keep the bundled listings: a reader with no signal still sees stops.
+  }finally{
+    state.biz.loading = false;
+  }
+}
+
+async function openBiz(slug){
+  const known = state.biz.items.find(b => b.slug === slug);
+  state.business = known || bizView(DEMO.businesses.find(b => b.slug === slug));
+  state.claimed = null;
   go('business');
+
+  // The detail call is what carries the real offers, so it runs even when the
+  // row came from the list. A bundled slug simply is not found, and the
+  // bundled copy stays on screen.
+  if(!state.online) return;
+  try{
+    const res = await fetch(`${API}/businesses/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(4000) });
+    if(!res.ok) return;
+    const { data } = await res.json();
+    state.business = bizView(data);
+    if(state.screen === 'business') render();
+  }catch(_){}
 }
 /* ---------- safety: emergency numbers, contacts and SOS ---------- */
 
@@ -2389,17 +2471,48 @@ function getPack(i){
   toast(`Downloading ${p.name} — ${p.mb} MB`);
   setTimeout(() => { p.have = true; render(); toast(`${p.name} ready offline`); }, 1400);
 }
-function claim(){
-  const code = Array.from({length:6}, () =>
-    '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*32)]).join('');
-  $('#cCode').textContent = code;
-  toast('Show this code at the counter');
+/**
+ * Claiming issues a real code from the server.
+ *
+ * This used to invent a six-character code in the browser and show it as if it
+ * were an offer, which meant a traveller could arrive at a counter holding a
+ * code no business had ever heard of. The server owns the code, the per-user
+ * limit and the expiry, and its refusals are shown as it words them.
+ */
+async function claim(couponId){
+  if(!couponId){ toast('This is a sample listing — no code to issue'); return; }
+  if(!state.auth){
+    toast('Sign in to claim this offer');
+    setTimeout(() => { location.href = `login.html?returnTo=${encodeURIComponent('index.html#read')}`; }, 800);
+    return;
+  }
+  if(state.claiming) return;
+
+  state.claiming = true; render();
+  try{
+    // Only a live route id is real; the bundled one would not resolve.
+    const body = state.liveApi && state.route?.id ? { routeId: state.route.id } : {};
+    const res = await authed(`${API}/businesses/coupons/${encodeURIComponent(couponId)}/claim`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'Could not claim this offer');
+    state.claimed = { couponId, code: json.data.code };
+    toast('Show this code at the counter');
+  }catch(err){
+    toast(err.message || 'Could not claim this offer');
+  }finally{
+    state.claiming = false; render();
+  }
 }
 function lead(type){
   const msg = { CALL:'Calling…', WHATSAPP:'Opening WhatsApp…', DIRECTIONS:'Opening directions…' };
   toast(msg[type]);
-  if(state.liveApi && state.business){
-    fetch(`${API}/businesses/${state.business.slug}/lead`, {
+  // The endpoint writes businessId straight onto the row, so it needs the id.
+  // Sending the slug meant every call, WhatsApp tap and directions request on a
+  // live listing was dropped — and those leads are what a listing is sold on.
+  if(state.liveApi && state.business?.id){
+    fetch(`${API}/businesses/${state.business.id}/lead`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ type, sessionId: state.session, routeId: state.route?.id }),
     }).catch(()=>{});
@@ -2473,6 +2586,7 @@ $('#dismissInstall').onclick = () => {
   // Fetched at the bus park while there is still signal, because the numbers
   // are only ever needed once there isn't.
   loadSafety();
+  loadBusinesses();
   /**
    * An admin changing the palette expects the app to follow. Re-checking whenever the
    * tab comes back means a reader sees it on their next glance, with no reload and no
