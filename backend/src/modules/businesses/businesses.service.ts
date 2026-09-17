@@ -375,8 +375,13 @@ export class BusinessesService {
   async claimCoupon(couponId: string, userId: string, routeId?: string) {
     return this.prisma.$transaction(async (tx) => {
       // Serialises concurrent claims on this coupon; other coupons are unaffected.
+      //
+      // No ::uuid cast: Prisma maps `String @id` to a text column, so casting the
+      // parameter asked Postgres for a text = uuid operator, which does not exist
+      // (42883). The lock threw, the transaction rolled back, and every claim
+      // failed with "Database request failed".
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM coupons WHERE id = ${couponId}::uuid FOR UPDATE`;
+        SELECT id FROM coupons WHERE id = ${couponId} FOR UPDATE`;
       if (!locked.length) throw new NotFoundException('Offer not available');
 
       const coupon = await tx.coupon.findUnique({
@@ -460,7 +465,7 @@ export class BusinessesService {
         SELECT COALESCE(r.name, 'Direct') AS route, COUNT(*)::bigint AS leads
           FROM business_leads bl
      LEFT JOIN routes r ON r.id = bl."routeId"
-         WHERE bl."businessId" = ${businessId}::uuid AND bl."createdAt" >= ${since}
+         WHERE bl."businessId" = ${businessId} AND bl."createdAt" >= ${since}
       GROUP BY r.name
       ORDER BY leads DESC`,
       this.prisma.coupon.findMany({

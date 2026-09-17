@@ -249,8 +249,8 @@ export class QrService {
           FROM scan_events se
           JOIN qr_codes q ON q.id = se."qrCodeId"
          WHERE se."scannedAt" >= ${since}
-           AND (${params.operatorId ?? null}::uuid IS NULL OR q."operatorId" = ${params.operatorId ?? null}::uuid)
-           AND (${params.routeId ?? null}::uuid IS NULL OR q."routeId" = ${params.routeId ?? null}::uuid)`,
+           AND (${params.operatorId ?? null}::text IS NULL OR q."operatorId" = ${params.operatorId ?? null}::text)
+           AND (${params.routeId ?? null}::text IS NULL OR q."routeId" = ${params.routeId ?? null}::text)`,
       this.prisma.$queryRaw<Array<{ route: string; scans: bigint }>>`
         SELECT COALESCE(r.name, 'Unassigned') AS route, COUNT(*)::bigint AS scans
           FROM scan_events se
