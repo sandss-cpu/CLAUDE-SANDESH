@@ -87,6 +87,16 @@ services:
     buildCommand: >-
       printf 'window.BATO_CONFIG = { api: "%s/api/v1" };\n' "$BATO_API_URL" > config.js
     staticPublishPath: .
+    # Printed stickers open /b/<code> (older ones /r/<code>). Neither is a file: both
+    # are answered by the reader, which reads the code from the path. Never change
+    # these paths once stickers are printed.
+    routes:
+      - type: rewrite
+        source: /b/*
+        destination: /index.html
+      - type: rewrite
+        source: /r/*
+        destination: /index.html
     envVars:
       # https://<your bato-api address>, without a trailing slash
       - key: BATO_API_URL

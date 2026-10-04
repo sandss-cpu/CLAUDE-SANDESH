@@ -1,22 +1,49 @@
 /* ==========================================================================
-   Bato — PWA prototype
-   Talks to the NestJS API when it is reachable, and falls back to bundled
-   demo content otherwise, so the whole flow can be shown with no backend.
+   Batoma reader
+
+   Opened by scanning the QR code on a bus: /b/<code>, or on older stickers
+   /r/<code> and ?c=<code>. It shows that bus's route magazine and keeps the
+   last answer for each code on the phone, so a scan with no signal still
+   shows the right road.
+
+   The bundled demo content is used only when there is no code at all and no
+   API to ask — a laptop demo, or preview.html. It never stands in for a real
+   bus, and nothing here pretends to have done something it has not.
    ========================================================================== */
 
 const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
-const DEMO_QR = 'DEMO2024';
+
+/** Short codes come from slug.util.ts; anything else in the URL is not one. */
+const CODE_RE = /^[A-Z0-9]{4,16}$/;
+/** How long a scan keeps answering for this phone once the URL no longer carries the code. */
+const SCAN_TTL_MS = 12 * 3_600_000;
 
 const state = {
   screen: 'read',
+  /**
+   * Where the content on screen came from:
+   *   loading  — asking the API, nothing to show yet
+   *   live     — the API answered
+   *   cached   — this code's last answer, saved on the phone (no signal)
+   *   offline  — a real code, no signal, and nothing saved for it yet
+   *   inactive — the API says this code has been switched off
+   *   demo     — no code and no API: the bundled sample magazine
+   */
+  mode: 'loading',
+  scanCode: null,
+  issue: null,
+  articles: [],
   article: null,
   business: null,
   online: navigator.onLine,
   packCached: 0,
   packRequested: 0,
+  packReported: false,
+  offlineCount: 0,
   packFailed: 0,
   promptFromSession: 2,
   route: null,
+  vehicle: null,
   operator: null,
   bus: null,
   seat: null,
@@ -28,6 +55,7 @@ const state = {
   trip: null,
   journeys: { items: [], loaded: false, loading: false },
   guide: null,
+  road: null,
   guideFilter: '',
   journeyFilter: '',
   tripTab: 'roads',
@@ -151,11 +179,6 @@ The name means "wish-fulfilling". Devotees who receive what they asked for retur
     { label:'Traffic Police', phone:'103' },
     { label:'Western Regional Hospital, Pokhara', phone:'+977 61 520461' },
   ],
-  packs: [
-    { name:'Gandaki Province', mb:184, have:true },
-    { name:'Bagmati Province', mb:156, have:false },
-    { name:'Annapurna Trekking Region', mb:62, have:false },
-  ],
   trip: {
     title:'3 days in Pokhara', budget:'NPR 9,000 – 19,500',
     days:[
@@ -215,56 +238,160 @@ function rememberScan(busId, token){
   }catch(_){}
 }
 
-/* ---------- API with graceful demo fallback ---------- */
-async function resolveScan(){
+/* ---------- which bus: the code on the sticker ---------- */
+
+/** /b/<code> on current stickers; /r/<code>, ?c= and ?code= on older ones. */
+function scanCodeFromUrl(){
+  const path = location.pathname.match(/^\/(?:b|r)\/([^/]+)\/?$/);
+  const q = new URLSearchParams(location.search);
+  let raw = '';
+  try{ raw = path ? decodeURIComponent(path[1]) : (q.get('c') || q.get('code') || ''); }catch(_){}
+  const code = raw.trim().toUpperCase();
+  return CODE_RE.test(code) ? code : null;
+}
+
+/**
+ * The last scan's answer, kept so that reopening the app (from the home screen,
+ * or after signing in) still shows this bus, and so a scan with no signal shows
+ * the right road instead of a blank screen.
+ */
+function savedScan(){
+  try{ return JSON.parse(localStorage.getItem('bato.scan') || 'null'); }catch(_){ return null; }
+}
+function saveScan(code, data){
+  try{ localStorage.setItem('bato.scan', JSON.stringify({ code, at: Date.now(), data })); }catch(_){}
+}
+function forgetScan(code){
+  try{ if(savedScan()?.code === code) localStorage.removeItem('bato.scan'); }catch(_){}
+}
+
+function cardView(a){
+  return {
+    id: a.id, slug: a.slug, title: a.title, subtitle: a.subtitle || '',
+    cat: a.category?.slug || 'road', catName: a.category?.name || 'On the Road',
+    readMinutes: a.readMinutes, audio: !!a.audioUrl, body: '',
+  };
+}
+
+/** Everything the screens show comes from here, so demo content can only appear in demo mode. */
+const isDemo = () => state.mode === 'demo';
+const articles = () => (isDemo() ? DEMO.articles : state.articles);
+
+function enterDemo(){
+  state.mode = 'demo';
+  state.liveApi = false;
+  state.route = DEMO.route; state.operator = DEMO.operator; state.seat = DEMO.seat;
+  state.issue = DEMO.issue;
+  state.packCached = DEMO.articles.length;
+}
+
+function applyScan(code, data, mode){
+  state.mode = mode;
+  state.liveApi = true;
+  state.scanCode = code;
+  state.route = data.route || null;
+  state.operator = data.operator || null;
+  state.vehicle = data.vehicle || null;
+  state.seat = data.scan?.seatNo || null;
+  state.bus = data.bus || null;
+  state.issue = data.currentIssue || null;
+  state.articles = (data.routeArticles || []).map(cardView);
+  state.biz.items = (data.corridorBusinesses || []).map(bizView);
+  state.biz.loaded = true;
+  if(data.bus?.scanToken) rememberScan(data.bus.id, data.bus.scanToken);
+}
+
+/** The current issue, for a reader with no bus: opened directly, or on a route with nothing programmed yet. */
+async function loadCurrentIssue(){
   try{
-    const res = await fetch(`${API}/qr/r/${DEMO_QR}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ sessionId: state.session }),
-      signal: AbortSignal.timeout(2500),
-    });
-    if(!res.ok) throw new Error('bad status');
+    const res = await fetch(`${API}/magazine/current-issue`, { signal: AbortSignal.timeout(8000) });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const { data } = await res.json();
     state.liveApi = true;
-    state.route = data.route; state.operator = data.operator;
-    state.seat = data.scan?.seatNo;
-    state.bus = data.bus || null;
-    if(data.bus?.scanToken) rememberScan(data.bus.id, data.bus.scanToken);
-    if(data.routeArticles?.length){
-      DEMO.articles = data.routeArticles.map(a => ({
-        id:a.id, slug:a.slug, title:a.title, subtitle:a.subtitle,
-        cat:a.category?.slug || 'road', catName:a.category?.name || 'On the Road',
-        readMinutes:a.readMinutes, audio:!!a.audioUrl, body:'',
-      }));
+    state.issue = state.issue || data?.issue || null;
+    if(!state.articles.length) state.articles = (data?.articles || []).map(cardView);
+    // With a code the scan decides the mode; this only fills the shelves.
+    if(!state.scanCode) state.mode = 'live';
+    return true;
+  }catch(_){
+    return false;
+  }
+}
+
+async function resolveScan(){
+  const fromUrl = scanCodeFromUrl();
+  const saved = savedScan();
+  const recent = saved && Date.now() - saved.at < SCAN_TTL_MS ? saved : null;
+  const code = fromUrl || recent?.code || null;
+  state.scanCode = code;
+
+  if(!code){
+    if(!(await loadCurrentIssue())) enterDemo();
+    paintMast();
+    return;
+  }
+
+  // This code's last answer, whatever its age, paints at once; the network replaces it.
+  const cached = saved?.code === code ? saved.data : null;
+  if(cached){ applyScan(code, cached, 'cached'); render(); }
+
+  try{
+    const res = await fetch(`${API}/qr/r/${encodeURIComponent(code)}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sessionId: state.session }),
+      // Generous without a saved copy: on a weak signal a slow answer beats none.
+      signal: AbortSignal.timeout(cached ? 6000 : 15000),
+    });
+    if(res.status === 404){
+      forgetScan(code);
+      state.mode = 'inactive';
+      state.route = state.operator = state.bus = state.vehicle = null;
+      state.articles = [];
+      await loadCurrentIssue();
+      paintMast();
+      return;
     }
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { data } = await res.json();
+    saveScan(code, data);
+    applyScan(code, data, 'live');
+    if(!state.articles.length) await loadCurrentIssue();
     cachePack(data.offlinePack);
     wireStoreLinks(data.appLinks);
   }catch(_){
-    state.liveApi = false;
-    state.route = DEMO.route; state.operator = DEMO.operator; state.seat = DEMO.seat;
-    state.packCached = DEMO.articles.length;
+    if(!cached) state.mode = 'offline';
   }
   paintMast();
 }
 
-function cachePack(pack){
-  if(!pack) return;
+/**
+ * Hands the offline pack to the service worker. On the very first scan the
+ * worker has only just installed and does not control this page yet, so the
+ * message goes to the active registration instead — posting only to
+ * `controller` silently saved nothing on exactly the scan that matters.
+ */
+async function cachePack(pack){
+  if(!pack || !('serviceWorker' in navigator)) return;
   // Do not claim anything is saved until the service worker confirms it is.
   state.packRequested = pack.articleCount || 0;
-  if(navigator.serviceWorker?.controller){
-    navigator.serviceWorker.controller.postMessage({
-      type:'CACHE_PACK',
-      urls: (pack.articles || [])
-        .flatMap(a => [a.url, a.audioUrl, a.imageUrl])
-        .filter(Boolean),
-    });
-  }
+  state.packReported = false;
+  const urls = (pack.articles || [])
+    .flatMap(a => [a.url, a.audioUrl, a.imageUrl])
+    .filter(Boolean);
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    (navigator.serviceWorker.controller || reg.active)?.postMessage({ type:'CACHE_PACK', urls });
+  }catch(_){}
 }
 
+/** The install banner only ever offers a store that has the app; with none configured it never shows. */
 function wireStoreLinks(links){
   if(!links) return;
+  $('#playLink').hidden = !links.playStoreUrl;
+  $('#iosLink').hidden = !links.appStoreUrl;
   if(links.playStoreUrl) $('#playLink').href = links.playStoreUrl;
   if(links.appStoreUrl)  $('#iosLink').href  = links.appStoreUrl;
+  state.storeLinks = !!(links.playStoreUrl || links.appStoreUrl);
   state.promptFromSession = links.promptInstallFromSession || 2;
 }
 
@@ -277,8 +404,8 @@ function paintMast(){
   const r = state.route;
   const ride = [r ? `On the ${r.name} route` : '', state.operator?.name].filter(Boolean).join(' · ');
   $('#eyebrow').textContent = state.appName || 'Batoma';
-  $('#mastTitle').textContent = DEMO.issue.title;
-  $('#mastSub').textContent = ride || state.tagline || DEMO.issue.strapline;
+  $('#mastTitle').textContent = state.issue?.title || state.appName || 'Batoma';
+  $('#mastSub').textContent = ride || state.tagline || state.issue?.strapline || '';
   $('#seatChip').innerHTML = `Seat<b>${state.seat || '—'}</b>`;
   $('#seatChip').hidden = !state.seat;
 }
@@ -319,7 +446,13 @@ const SCREENS = {
    */
   read(){
     if(state.readTab === 'vlogs') return readTabs() + slotAd('TOP_BANNER', 'banner') + vlogsFeed();
-    const all = DEMO.articles;
+    if(state.mode === 'loading') return readTabs() + `
+      <div class="sec-head"><h2>Opening your magazine…</h2><span></span></div>
+      <div class="skel" style="height:220px;margin-bottom:12px"></div>
+      <div class="skel" style="height:96px;margin-bottom:10px"></div>
+      <div class="skel" style="height:96px"></div>`;
+    const all = articles();
+    const notice = scanNotice();
     const sections = [...new Set(all.map((a) => a.cat))];
     const shown = state.readFilter ? all.filter((a) => a.cat === state.readFilter) : all;
     const [hero, ...rest] = shown;
@@ -327,12 +460,18 @@ const SCREENS = {
     const more = rest.slice(4);
     const sectionName = (slug) => all.find((a) => a.cat === slug)?.catName || slug;
 
-    if(!hero) return readTabs() + slotAd('TOP_BANNER', 'banner') + `
+    if(!hero) return readTabs() + notice + slotAd('TOP_BANNER', 'banner') + (state.readFilter ? `
       <div class="empty"><div class="big">📰</div><h3>Nothing in this section yet</h3>
-        <button class="btn btn-ghost" data-action="setReadFilter" data-cat="">Show every story</button></div>`;
+        <button class="btn btn-ghost" data-action="setReadFilter" data-cat="">Show every story</button></div>` : `
+      <div class="empty"><div class="big">📰</div><h3>No stories to show yet</h3>
+        <p>${state.mode === 'offline' ? 'They will appear as soon as the bus has signal.' : 'The next issue is on its way.'}</p></div>`)
+      + savedStoriesSection();
+
+    const stops = isDemo() ? DEMO.businesses : state.biz.items;
 
     return `
       ${readTabs()}
+      ${notice}
       ${slotAd('TOP_BANNER', 'banner')}
       ${offlineChip()}
       ${sections.length > 1 ? `
@@ -354,8 +493,9 @@ const SCREENS = {
         <div class="sec-head"><h2>More from this issue</h2><span>${more.length} more</span></div>
         ${interleaveAds(more.map(listCard))}` : ''}
 
-      <div class="sec-head"><h2>Stops on this corridor</h2><span>Verified</span></div>
-      ${(state.biz.items.length ? state.biz.items : DEMO.businesses).map((b) => bizRow(b)).join('')}
+      ${stops.length ? `
+        <div class="sec-head"><h2>Stops on this road</h2><span>${stops.length} along the way</span></div>
+        ${stops.map((b) => bizRow(b)).join('')}` : ''}
 
       <div class="sec-head"><h2>Where next?</h2><span>Plan the trip</span></div>
       <a class="btn btn-ghost" data-action="go" data-to="trip">🧭 Road guides and place itineraries</a>
@@ -366,29 +506,39 @@ const SCREENS = {
   article(){
     const a = state.article;
     if(!a) return SCREENS.read();
+    const back = `<button class="chip" data-action="go" data-to="read" style="margin:14px 0 4px">← Back</button>`;
+    if(a.error) return back + `
+      <div class="empty"><div class="big">📄</div><h3>${esc(a.title || 'This story')}</h3>
+        <p>${esc(a.error)}</p>
+        <button class="btn btn-ghost" data-action="openArticle" data-slug="${esc(a.slug)}">Try again</button></div>`;
+    const saved = isSaved(a.slug);
     return `
-      <button class="chip" data-action="go" data-to="read" style="margin:14px 0 4px">← Back</button>
+      ${back}
       <div class="reader">
-        <span class="tag c-${a.cat}">${esc(a.catName)}</span>
+        <span class="tag c-${esc(a.cat || 'road')}">${esc(a.catName || '')}</span>
         <h1>${esc(a.title)}</h1>
-        <div class="standfirst">${esc(a.subtitle)}</div>
+        <div class="standfirst">${esc(a.subtitle || '')}</div>
         ${slotAd('ARTICLE_TOP')}
 
+        ${a.audioUrl ? `
         <div class="listen-bar">
-          <button class="play" id="playBtn" data-action="toggleAudio" aria-label="Play narration">▶</button>
+          <button class="play" id="playBtn" data-action="toggleAudio" aria-label="Play narration">${state.audio.playing ? '❚❚' : '▶'}</button>
           <div class="lbl">
             Listen instead
             <small>Reading on a moving bus is how people get sick</small>
-            <div class="progress"><i id="prog"></i></div>
+            <div class="progress"><i id="prog" style="width:${state.audio.pct}%"></i></div>
           </div>
-        </div>
+        </div>` : ''}
 
-        <div class="article-body">${md(a.body || 'This story is available in the full issue.')}</div>
+        ${a.loading
+          ? '<div class="skel" style="height:18px;margin:18px 0 10px"></div><div class="skel" style="height:18px;margin-bottom:10px"></div><div class="skel" style="height:18px;width:70%"></div>'
+          : `<div class="article-body">${md(a.body || '')}</div>`}
         ${slotAd('ARTICLE_BOTTOM')}
 
         <div class="btn-row">
-          <button class="btn btn-ghost" data-action="saveArticle">☆ Save offline</button>
-          <button class="btn btn-primary" data-action="tripFromArticle">Make this my trip</button>
+          <button class="btn btn-ghost" data-action="saveArticle" aria-pressed="${saved}" ${a.loading ? 'disabled' : ''}>
+            ${saved ? '★ Saved' : '☆ Save for later'}</button>
+          ${isDemo() || planTarget(a) ? `<button class="btn btn-primary" data-action="tripFromArticle">Plan this trip</button>` : ''}
         </div>
         ${a.id ? `<div style="text-align:center;margin:-4px 0 14px">${reportButton('ARTICLE', a.id)}</div>` : ''}
         ${readNext(a)}
@@ -538,42 +688,55 @@ const SCREENS = {
     return state.guide ? guideView(state.guide) : journeysView();
   },
 
+  /**
+   * What is ahead on this road, from the editors' road guide for this route, in the
+   * order this bus passes it. Asks which way the bus is going once, because a
+   * guide read backwards is the wrong way round for half the passengers.
+   */
   map(){
-    return `
-      <div class="sec-head"><h2>Offline maps</h2><span>Download at the bus park</span></div>
-      <div class="offline-chip warn"><span class="dot"></span>
-        <span>Highway coverage drops after Naubise. Download now while you have signal.</span></div>
-      ${DEMO.packs.map((p,i) => `
-        <div class="biz">
-          <div class="sq" style="background:var(--teal);color:#fff">🗺</div>
-          <div style="flex:1">
-            <h4>${esc(p.name)}</h4>
-            <small>${p.mb} MB${p.have ? ' · on this phone' : ''}</small>
-          </div>
-          <button class="chip" data-action="getPack" data-index="${i}">${p.have ? 'Ready' : 'Get'}</button>
-        </div>`).join('')}
+    if(isDemo()) return demoRoadScreen();
+    const r = state.route;
+    if(!r) return `
+      <div class="sec-head"><h2>On the road</h2><span></span></div>
+      <div class="empty"><div class="big">🚌</div><h3>Scan the code on your bus</h3>
+        <p>The QR code on your bus shows the stops ahead on your road, in the order you pass them.</p>
+        <button class="btn btn-ghost" data-action="go" data-to="trip">Browse road guides</button></div>
+      ${slotAd('MAP_SCREEN')}`;
 
-      <div class="sec-head"><h2>On this stretch</h2><span>Next 40 km</span></div>
-      ${[
-        ['🚻','Kurintar rest stop','Toilets, tea, 15 min halt'],
-        ['⛽','Mugling fuel','Fuel and ATM'],
-        ['🏥','Bharatpur Hospital','42 km · emergency'],
-        ['🌄','Bandipur ridge','Turn off at Dumre'],
-      ].map(([i,n,s]) => `
-        <div class="biz">
-          <div class="sq" style="background:var(--surface-2)">${i}</div>
-          <div><h4>${n}</h4><small>${s}</small></div>
-        </div>`).join('')}
-      ${slotAd('MAP_SCREEN')}
-      <p style="font-size:13px;color:var(--text-dim);margin-top:16px">
-        The full map runs in the app, which can hold packs this size. A browser cannot —
-        phones clear that storage when they run low.
-      </p>`;
+    const road = loadRoad();
+    const dir = currentDirection();
+    const chips = `
+      <div class="chips" role="group" aria-label="Which way is your bus going?" style="margin:6px 0 4px">
+        ${['FORWARD', 'REVERSE'].map((d) => `
+          <button class="chip" aria-pressed="${dir === d}" data-action="setDirection" data-direction="${d}">
+            Heading to ${esc(d === 'FORWARD' ? r.endPlace : r.startPlace)}</button>`).join('')}
+      </div>`;
+    let body;
+    if(!dir) body = `<p style="font-size:14.5px;color:var(--text-dim)">Tap where your bus is heading to see the stops in order.</p>`;
+    else if(road.loading) body = '<div class="skel" style="height:96px;margin-top:12px"></div><div class="skel" style="height:96px;margin-top:10px"></div>';
+    else if(road.guide?.stops?.length) body = `
+      ${road.guide.stops.map(stopCard).join('')}
+      <button class="btn btn-ghost" data-action="openJourney" data-id="${esc(road.guide.id)}" data-direction="${esc(dir)}">Open the full road guide</button>`;
+    else if(road.error) body = `<div class="empty"><div class="big">📶</div><h3>No road guide on this phone yet</h3>
+        <p>It will load as soon as the bus has signal.</p></div>`;
+    else body = `<div class="empty"><div class="big">🧭</div><h3>No road guide for this route yet</h3>
+        <p>Batoma's editors are still walking this road.</p></div>`;
+
+    return `
+      <div class="sec-head"><h2>On the road</h2><span>${esc(r.name)}</span></div>
+      ${chips}
+      ${body}
+      ${slotAd('MAP_SCREEN')}`;
   },
 
   business(){
     const b = state.business;
     if(!b) return SCREENS.read();
+    if(b.loading || b.unavailable) return `
+      <button class="chip" data-action="go" data-to="read" style="margin:14px 0 10px">← Back</button>
+      ${b.loading ? '<div class="skel" style="height:220px"></div>' : `
+        <div class="empty"><div class="big">📶</div><h3>Not saved on this phone yet</h3>
+          <p>This listing opens as soon as the bus has signal.</p></div>`}`;
     return `
       <button class="chip" data-action="go" data-to="read" style="margin:14px 0 10px">← Back</button>
       <div class="card">
@@ -604,25 +767,22 @@ const SCREENS = {
               ${state.claiming ? 'Claiming…' : 'Claim this offer'}
             </button>`}
         </div>`).join('')}
-      ${!b.coupons ? `
+      ${isDemo() && !b.coupons ? `
         <div class="coupon">
-          <strong style="font-size:17px">10% off for Bato readers</strong>
+          <strong style="font-size:17px">10% off for Batoma readers</strong>
           <div style="font-size:13.5px;opacity:.9;margin-top:4px">
             A sample offer. This is one of the bundled listings, so there is no code to issue.
           </div>
         </div>` : ''}
 
-      <div class="btn-row">
-        <button class="btn btn-ghost" data-action="lead" data-type="CALL">📞 Call</button>
-        <button class="btn btn-ghost" data-action="lead" data-type="WHATSAPP">💬 WhatsApp</button>
-      </div>
-      <button class="btn btn-brand" data-action="lead" data-type="DIRECTIONS">Directions</button>`;
+      ${contactButtons(b)}`;
   },
 
   more(){
     const theme = document.documentElement.dataset.theme;
     const motion = document.documentElement.dataset.motion === 'off';
     return `
+      ${savedStoriesSection()}
       <div class="sec-head"><h2>Account</h2><span></span></div>
       ${state.auth ? `
         <div class="num"><span>Signed in as ${esc(state.auth.user?.name || 'Traveller')}</span>
@@ -716,7 +876,7 @@ const SCREENS = {
         Stopping movement helps if the road is making you queasy.
       </p>
       <p style="font-size:12px;color:var(--text-dim);margin-top:22px">
-        ${state.liveApi ? 'Connected to the API.' : 'Running on bundled demo content — start the backend to go live.'}
+        ${isDemo() ? 'Showing the sample magazine that comes with the app.' : ''}
       </p>`;
   },
 };
@@ -774,7 +934,7 @@ function setReadFilter(cat){
 
 /** Nobody should reach the end of a story with nowhere to go: same section first, then the rest. */
 function readNext(current){
-  const others = DEMO.articles.filter((a) => a.slug !== current.slug);
+  const others = articles().filter((a) => a.slug !== current.slug);
   if(!others.length) return '';
   const sameSection = others.filter((a) => a.cat === current.cat);
   const picks = [...sameSection, ...others.filter((a) => a.cat !== current.cat)].slice(0, 3);
@@ -784,21 +944,72 @@ function readNext(current){
     <button class="btn btn-ghost" style="margin-top:6px" data-action="go" data-to="read">All stories</button>`;
 }
 
-function offlineChip(){
-  const saved = state.liveApi ? state.packCached : DEMO.articles.length;
+/** What the reader needs to know about this scan before the stories. */
+function scanNotice(){
+  if(state.mode === 'inactive') return `
+    <div class="notice" role="status">
+      <h3>This code is no longer active</h3>
+      <p>The sticker on this bus has been replaced. Find the bus by its number plate to see its
+        ratings, or read the current issue below.</p>
+      <a class="btn btn-primary" href="/bus.html">Find your bus</a>
+    </div>`;
+  if(state.mode === 'offline') return `
+    <div class="notice" role="status">
+      <h3>Waiting for signal</h3>
+      <p>This bus's magazine has not reached your phone yet. It loads by itself as soon as there is signal.</p>
+      <button class="btn btn-ghost" data-action="retryScan">Try again now</button>
+    </div>`;
+  return '';
+}
 
+/**
+ * Only ever says what the service worker has confirmed. Offline, it counts the
+ * stories actually in the cache, because a page reloaded with no signal starts
+ * with no idea what an earlier visit saved.
+ */
+function offlineChip(){
+  const chip = (text, warn) => `<div class="offline-chip${warn ? ' warn' : ''}"><span class="dot"></span><span>${text}</span></div>`;
+  if(isDemo()) return chip(`Sample magazine: ${DEMO.articles.length} stories bundled with the app.`);
+  const saved = Math.max(state.packCached, state.offlineCount);
   if(!state.online){
-    return `<div class="offline-chip warn"><span class="dot"></span>
-      <span>You're offline. Here are the ${saved} stories you already have.</span></div>`;
+    return saved
+      ? chip(`You're offline. ${saved} ${saved === 1 ? 'story is' : 'stories are'} saved on this phone.`, true)
+      : chip("You're offline, and no stories have been saved to this phone yet.", true);
   }
+  if(state.mode === 'cached') return chip('Weak signal: showing what this phone saved on your last scan.', true);
+  if(!state.packRequested) return '';
+  if(!state.packReported) return chip(`Saving ${state.packRequested} stories to this phone for the road…`);
   // Honest about a partial download rather than reporting the requested count.
-  if(state.liveApi && state.packFailed){
-    return `<div class="offline-chip warn"><span class="dot"></span>
-      <span>${saved} of ${state.packRequested} stories saved. Still downloading the rest —
-      stay on this screen while you have signal.</span></div>`;
+  if(state.packFailed){
+    return chip(`${saved} of ${state.packRequested} stories saved. Still downloading the rest —
+      stay on this screen while you have signal.`, true);
   }
-  return `<div class="offline-chip"><span class="dot"></span>
-    <span>Ready to read offline — ${saved} stories saved to this phone.</span></div>`;
+  return chip(`Ready to read offline: ${saved} ${saved === 1 ? 'story' : 'stories'} saved to this phone.`);
+}
+
+async function countOffline(){
+  if(isDemo() || !('caches' in window)) return;
+  let n = 0;
+  for(const a of articles()){
+    try{ if(await caches.match(articleUrl(a.slug))) n++; }catch(_){}
+  }
+  state.offlineCount = n;
+}
+
+const articleUrl = (slug) => `${API}/magazine/articles/${encodeURIComponent(slug)}`;
+
+/* ---------- saved stories: a reading list kept on the phone ---------- */
+function savedStories(){
+  try{ return JSON.parse(localStorage.getItem('bato.saved') || '[]'); }catch(_){ return []; }
+}
+const isSaved = (slug) => savedStories().some((x) => x.slug === slug);
+
+function savedStoriesSection(){
+  const list = savedStories();
+  if(!list.length) return '';
+  return `
+    <div class="sec-head"><h2>Saved stories</h2><span>${list.length} on this phone</span></div>
+    ${list.map(listCard).join('')}`;
 }
 
 function bizRow(b){
@@ -819,7 +1030,7 @@ const NAV = [
   ['read','Read','M4 5h16M4 12h16M4 19h10'],
   ['write','Write','M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z'],
   ['trip','Trips','M9 3v15M15 6v15M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z'],
-  ['map','Maps','M12 21s7-6.4 7-11a7 7 0 10-14 0c0 4.6 7 11 7 11z M12 10a1.6 1.6 0 100-3.2 1.6 1.6 0 000 3.2'],
+  ['map','Road','M12 21s7-6.4 7-11a7 7 0 10-14 0c0 4.6 7 11 7 11z M12 10a1.6 1.6 0 100-3.2 1.6 1.6 0 000 3.2'],
   ['more','More','M4 6h16M4 12h16M4 18h16'],
 ];
 
@@ -845,9 +1056,46 @@ function render(){
 }
 
 /* ---------- actions ---------- */
-function openArticle(slug){
-  state.article = DEMO.articles.find(a => a.slug === slug);
+/**
+ * The shelf only carries titles; the story itself is fetched here. A story fetched
+ * once — on screen, or by the offline pack at the bus park — is answered from the
+ * service worker's cache when there is no signal.
+ */
+async function openArticle(slug){
+  const card = articles().find((a) => a.slug === slug);
+  state.audio.pct = 0;
+  if(isDemo()){ state.article = card; go('article'); return; }
+
+  state.article = { ...(card || { slug, title: '', subtitle: '' }), loading: true };
   go('article');
+  try{
+    const res = await fetch(articleUrl(slug), { signal: AbortSignal.timeout(15000) });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json?.message || 'That story is not available any more.');
+    if(state.article?.slug !== slug) return;
+    state.article = articleView(json.data);
+  }catch(err){
+    if(state.article?.slug !== slug) return;
+    const offline = !state.online || err?.name === 'TimeoutError' || err instanceof TypeError;
+    state.article = {
+      ...state.article, loading: false,
+      error: offline
+        ? 'This story has not been saved to this phone yet. It will open as soon as the bus has signal.'
+        : err.message,
+    };
+  }
+  if(state.screen === 'article') render();
+}
+
+function articleView(a){
+  return {
+    ...cardView(a),
+    body: a.body || '',
+    // Narration may be stored relative to the API host; the player needs a full address.
+    audioUrl: a.audioUrl ? new URL(a.audioUrl, API).href : null,
+    places: a.places || [],
+    routes: a.routes || [],
+  };
 }
 /* ---------- businesses: live listings, with the bundled ones as the fallback ---------- */
 
@@ -881,41 +1129,48 @@ function bizView(b){
   };
 }
 
-async function loadBusinesses(){
-  if(state.biz.loading || !state.online) return;
-  state.biz.loading = true;
-  try{
-    const res = await fetch(`${API}/businesses?limit=12`, { signal: AbortSignal.timeout(4000) });
-    if(!res.ok) throw new Error('bad status');
-    const { data } = await res.json();
-    state.biz.items = (data.items || []).map(bizView);
-    state.biz.loaded = true;
-    if(state.screen === 'read') render();
-  }catch(_){
-    // Keep the bundled listings: a reader with no signal still sees stops.
-  }finally{
-    state.biz.loading = false;
-  }
-}
-
 async function openBiz(slug){
   const known = state.biz.items.find(b => b.slug === slug);
-  state.business = known || bizView(DEMO.businesses.find(b => b.slug === slug));
+  state.business = known || (isDemo() ? bizView(DEMO.businesses.find(b => b.slug === slug)) : { slug, name: '', loading: true });
   state.claimed = null;
   go('business');
+  if(isDemo()) return;
 
-  // The detail call is what carries the real offers, so it runs even when the
-  // row came from the list. A bundled slug simply is not found, and the
-  // bundled copy stays on screen.
-  if(!state.online) return;
+  // The detail carries the offers and contact details. Offline, the service
+  // worker answers with the copy from the last time it was opened, if any.
   try{
-    const res = await fetch(`${API}/businesses/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(4000) });
-    if(!res.ok) return;
+    const res = await fetch(`${API}/businesses/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(8000) });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const { data } = await res.json();
     state.business = bizView(data);
-    if(state.screen === 'business') render();
-  }catch(_){}
+  }catch(_){
+    if(state.business?.loading) state.business = { ...state.business, loading: false, unavailable: true };
+  }
+  if(state.screen === 'business') render();
 }
+
+/** Real links: the phone dialler, WhatsApp, and a map app. A button only appears when there is somewhere to go. */
+function contactButtons(b){
+  if(isDemo()) return `
+    <div class="btn-row">
+      <button class="btn btn-ghost" data-action="lead" data-type="CALL">📞 Call</button>
+      <button class="btn btn-ghost" data-action="lead" data-type="WHATSAPP">💬 WhatsApp</button>
+    </div>
+    <button class="btn btn-brand" data-action="lead" data-type="DIRECTIONS">Directions</button>`;
+  const tel = String(b.phone || '').replace(/[^\d+]/g, '');
+  const wa = String(b.whatsapp || '').replace(/\D/g, '');
+  const waNumber = wa.length === 10 ? `977${wa}` : wa;  // a bare Nepali mobile number needs the country code
+  const hasMap = b.latitude != null && b.longitude != null;
+  const links = [
+    tel && `<a class="btn btn-ghost" href="tel:${esc(tel)}" data-action="lead" data-type="CALL">📞 Call</a>`,
+    waNumber && `<a class="btn btn-ghost" href="https://wa.me/${esc(waNumber)}" target="_blank" rel="noopener" data-action="lead" data-type="WHATSAPP">💬 WhatsApp</a>`,
+  ].filter(Boolean);
+  return `
+    ${links.length ? `<div class="btn-row">${links.join('')}</div>` : ''}
+    ${hasMap ? `<a class="btn btn-brand" target="_blank" rel="noopener" data-action="lead" data-type="DIRECTIONS"
+        href="https://www.google.com/maps/dir/?api=1&amp;destination=${encodeURIComponent(`${b.latitude},${b.longitude}`)}">Directions</a>` : ''}`;
+}
+
 /* ---------- safety: emergency numbers, contacts and SOS ---------- */
 
 /**
@@ -1094,6 +1349,72 @@ const STOP_LABEL = {
 };
 const timeFromStart = (m) => m == null ? '' : m < 60 ? `${m} min in` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''} in`;
 
+/* ---------- direction of travel, remembered for one journey ---------- */
+const DIRECTION_TTL_MS = 12 * 3_600_000;
+
+function currentDirection(){
+  const routeId = state.route?.id;
+  if(!routeId) return null;
+  try{
+    const saved = JSON.parse(localStorage.getItem('bato.direction') || 'null');
+    if(saved && saved.routeId === routeId && Date.now() - saved.at < DIRECTION_TTL_MS) return saved.direction;
+  }catch(_){}
+  return null;
+}
+function setDirection(direction){
+  if(!state.route?.id || !['FORWARD', 'REVERSE'].includes(direction)) return;
+  try{ localStorage.setItem('bato.direction', JSON.stringify({ routeId: state.route.id, direction, at: Date.now() })); }catch(_){}
+  state.road = null;
+  render();
+}
+
+/** The road guide for this route and direction, fetched once; the worker keeps it for offline. */
+function loadRoad(){
+  const routeId = state.route?.id;
+  const direction = currentDirection();
+  const key = `${routeId}:${direction}`;
+  if(state.road?.key === key) return state.road;
+  state.road = { key, loading: !!direction, guide: null, error: false };
+  if(!routeId || !direction) return state.road;
+  (async () => {
+    const road = state.road;
+    try{
+      const list = await fetch(`${API}/guides/journeys?routeId=${encodeURIComponent(routeId)}&kind=ROUTE`,
+        { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+      const journeys = Array.isArray(list.data) ? list.data : [];
+      const pick = journeys.find((j) => j.direction === direction) || journeys.find((j) => j.direction === 'BOTH');
+      if(pick){
+        const one = await fetch(`${API}/guides/${encodeURIComponent(pick.guideId)}?direction=${direction}`,
+          { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+        road.guide = one.data || null;
+      }
+    }catch(_){
+      road.error = true;
+    }finally{
+      road.loading = false;
+      if(state.road === road && state.screen === 'map') render();
+    }
+  })();
+  return state.road;
+}
+
+/** The bundled demo keeps its sample road, so the screen can be shown with no API. */
+function demoRoadScreen(){
+  return `
+    <div class="sec-head"><h2>On the road</h2><span>Sample: Kathmandu → Pokhara</span></div>
+    ${[
+      ['🚻','Kurintar rest stop','Toilets, tea, 15 min halt'],
+      ['⛽','Mugling fuel','Fuel and ATM'],
+      ['🏥','Bharatpur Hospital','42 km · emergency'],
+      ['🌄','Bandipur ridge','Turn off at Dumre'],
+    ].map(([i,n,t]) => `
+      <div class="biz">
+        <div class="sq" style="background:var(--surface-2)">${i}</div>
+        <div><h4>${n}</h4><small>${t}</small></div>
+      </div>`).join('')}
+    ${slotAd('MAP_SCREEN')}`;
+}
+
 function loadJourneys(){
   const j = state.journeys;
   if(j.loaded || j.loading || !state.liveApi || !state.online) return j.items;
@@ -1165,8 +1486,8 @@ function journeyCard(j){
 
 /** The bundled sample itinerary, kept for offline and demo use. */
 function demoTripCard(){
+  if(!isDemo()) return '';
   const t = state.trip || DEMO.trip;
-  if(state.liveApi && state.journeys.items.length) return '';
   return `
     <div class="sec-head"><h2>${esc(t.title)}</h2><span>${esc(t.budget)}</span></div>
     <div class="offline-chip"><span class="dot"></span><span>Saved on this phone. Works with no signal.</span></div>
@@ -1285,22 +1606,7 @@ function stopCard(s){
 }
 
 /** A magazine story linked to this corridor, fetched on demand. */
-async function openRouteArticle(slug){
-  try{
-    const res = await fetch(`${API}/magazine/articles/${encodeURIComponent(slug)}`);
-    const json = await res.json();
-    if(!res.ok) throw new Error(json?.message || 'That story is not available.');
-    const a = json.data;
-    state.article = {
-      slug: a.slug, title: a.title, subtitle: a.subtitle || '', body: a.body || '',
-      cat: a.category?.slug || 'road', catName: a.category?.name || 'On the Road',
-      readMinutes: a.readMinutes, audio: !!a.audioUrl,
-    };
-    go('article');
-  }catch(err){
-    toast(err.message);
-  }
-}
+function openRouteArticle(slug){ return openArticle(slug); }
 
 /* ---------- marketing slots ---------- */
 const AD_LIMITS = {
@@ -1949,17 +2255,62 @@ async function publish(){
     if(state.screen === 'write') render();
   }
 }
-function save(){ toast('Saved to your reading list'); }
-function tripFromArticle(){
-  state.trip = { ...DEMO.trip, title: 'Trip: ' + (state.article?.title.split(':')[0] || 'Bandipur') };
-  toast('Trip created — edit anything');
-  go('trip');
+/** A second tap takes it off the list. Only says "offline" once the worker has the story. */
+async function save(){
+  const a = state.article;
+  if(!a?.slug || a.loading) return;
+  const rest = savedStories().filter((x) => x.slug !== a.slug);
+  if(rest.length !== savedStories().length){
+    try{ localStorage.setItem('bato.saved', JSON.stringify(rest)); }catch(_){}
+    toast('Removed from your saved stories');
+    render();
+    return;
+  }
+  const entry = { slug: a.slug, title: a.title, subtitle: a.subtitle, cat: a.cat, catName: a.catName,
+                  readMinutes: a.readMinutes, audio: !!a.audioUrl };
+  try{ localStorage.setItem('bato.saved', JSON.stringify([entry, ...rest].slice(0, 60))); }
+  catch(_){ toast('This phone has no room left for saved stories'); return; }
+  render();
+  if(isDemo()){ toast('Saved. It comes with the app, so it reads with no signal.'); return; }
+  const ok = await swCache([articleUrl(a.slug), a.audioUrl].filter(Boolean));
+  toast(ok ? 'Saved. You can read it with no signal.' : 'Saved. It will read offline once it has loaded with signal.');
 }
-function getPack(i){
-  const p = DEMO.packs[i];
-  if(p.have){ toast('Already on this phone'); return; }
-  toast(`Downloading ${p.name} — ${p.mb} MB`);
-  setTimeout(() => { p.have = true; render(); toast(`${p.name} ready offline`); }, 1400);
+
+/**
+ * Asks the service worker to keep these addresses and waits for its answer, so
+ * the reader is only told something is offline when it really is.
+ */
+function swCache(urls){
+  return new Promise((resolve) => {
+    if(!('serviceWorker' in navigator) || !urls.length) return resolve(false);
+    const id = `c${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    const done = (ok) => { navigator.serviceWorker.removeEventListener('message', onReply); clearTimeout(timer); resolve(ok); };
+    const onReply = (e) => { if(e.data?.type === 'URLS_CACHED' && e.data.id === id) done(e.data.failed === 0); };
+    const timer = setTimeout(() => done(false), 15000);
+    navigator.serviceWorker.addEventListener('message', onReply);
+    navigator.serviceWorker.ready
+      .then((reg) => (navigator.serviceWorker.controller || reg.active)?.postMessage({ type: 'CACHE_URLS', id, urls }))
+      .catch(() => done(false));
+  });
+}
+
+/** Where "Plan this trip" leads: the article's place, else the end of this road. */
+function planTarget(a){
+  return a?.places?.[0]?.name || state.route?.endPlace || null;
+}
+function tripFromArticle(){
+  if(isDemo()){
+    state.trip = { ...DEMO.trip, title: 'Trip: ' + (state.article?.title.split(':')[0] || 'Bandipur') };
+    toast('Sample trip: edit anything');
+    go('trip');
+    return;
+  }
+  const place = planTarget(state.article);
+  if(!place) return;
+  state.guide = null;
+  state.journeyFilter = place;
+  state.tripTab = state.article?.places?.length ? 'places' : 'roads';
+  go('trip');
 }
 /**
  * Claiming issues a real code from the server.
@@ -1996,14 +2347,13 @@ async function claim(couponId){
   }
 }
 function lead(type){
-  const msg = { CALL:'Calling…', WHATSAPP:'Opening WhatsApp…', DIRECTIONS:'Opening directions…' };
-  toast(msg[type]);
+  if(isDemo()){ toast('Sample listing: there is no one to contact'); return; }
   // The endpoint writes businessId straight onto the row, so it needs the id.
   // Sending the slug meant every call, WhatsApp tap and directions request on a
   // live listing was dropped — and those leads are what a listing is sold on.
-  if(state.liveApi && state.business?.id){
+  if(state.business?.id){
     fetch(`${API}/businesses/${state.business.id}/lead`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'}, keepalive: true,
       body: JSON.stringify({ type, sessionId: state.session, routeId: state.route?.id }),
     }).catch(()=>{});
   }
@@ -2017,23 +2367,42 @@ function rate(btn){
 }
 
 /* ---------- listen mode ---------- */
+let narration = null;
 function toggleAudio(){
   state.audio.playing ? stopAudio() : startAudio();
 }
+function paintPlayButton(){
+  const btn = $('#playBtn');
+  if(!btn) return;
+  btn.textContent = state.audio.playing ? '❚❚' : '▶';
+  btn.setAttribute('aria-label', state.audio.playing ? 'Pause narration' : 'Play narration');
+}
 function startAudio(){
-  state.audio.playing = true;
-  const btn = $('#playBtn'); if(btn) btn.textContent = '❚❚';
-  state.audio.timer = setInterval(() => {
-    state.audio.pct = Math.min(100, state.audio.pct + 1.6);
-    const bar = $('#prog'); if(bar) bar.style.width = state.audio.pct + '%';
-    if(state.audio.pct >= 100) stopAudio();
-  }, 180);
-  toast('Narration playing');
+  const url = state.article?.audioUrl;
+  if(!url) return;
+  if(!narration || narration.src !== url){
+    if(narration) narration.pause();
+    narration = new Audio(url);
+    narration.preload = 'auto';
+    narration.addEventListener('timeupdate', () => {
+      if(!narration.duration) return;
+      state.audio.pct = (narration.currentTime / narration.duration) * 100;
+      const bar = $('#prog'); if(bar) bar.style.width = state.audio.pct + '%';
+    });
+    narration.addEventListener('ended', () => { state.audio.pct = 100; stopAudio(); });
+    narration.addEventListener('error', () => {
+      stopAudio();
+      toast(state.online ? 'This narration could not be played.' : 'This narration has not been saved to this phone yet.');
+    });
+  }
+  narration.play()
+    .then(() => { state.audio.playing = true; paintPlayButton(); })
+    .catch(() => {}); // the error event above says what went wrong
 }
 function stopAudio(){
-  clearInterval(state.audio.timer);
+  if(narration && !narration.paused) narration.pause();
   state.audio.playing = false;
-  const btn = $('#playBtn'); if(btn) btn.textContent = '▶';
+  paintPlayButton();
 }
 
 /* ---------- appearance ---------- */
@@ -2053,6 +2422,7 @@ function toggleMotion(){
 
 /* ---------- install banner ---------- */
 function maybeShowInstall(sessions){
+  if(!state.storeLinks) return;                               // no app in any store yet
   if(sessions < (state.promptFromSession || 2)) return;      // never on the first scan
   if(localStorage.getItem('bato.installDismissed')) return;
   setTimeout(() => $('#installBar').classList.add('show'), 3500);
@@ -2062,9 +2432,20 @@ $('#dismissInstall').onclick = () => {
   localStorage.setItem('bato.installDismissed', '1');
 };
 
+/** What follows any scan answer: count what is really offline, and warm the road guide while there is signal. */
+function afterScan(){
+  // Anything fetched before the API answered was sample data; load the real thing now.
+  if(state.liveApi){ state.vlogs.loaded = false; state.myPosts.loaded = false; }
+  render();
+  countOffline().then(() => { if(state.screen === 'read') render(); });
+  if(state.route && currentDirection()) loadRoad();
+}
+
 /* ---------- what the markup may ask for (see js/actions.js) ---------- */
 Actions.on({
   go: (el) => go(el.dataset.to),
+  retryScan: () => { state.mode = 'loading'; render(); resolveScan().then(afterScan); },
+  setDirection: (el) => setDirection(el.dataset.direction),
   adBack: () => go(state.adReturn || 'read'),
   setReadFilter: (el) => setReadFilter(el.dataset.cat),
   setReadTab: (el) => setReadTab(el.dataset.tab),
@@ -2082,7 +2463,6 @@ Actions.on({
   pickPhotos: () => document.getElementById('photoInput').click(),
   saveDraft: () => saveDraft(),
   publish: () => publish(),
-  getPack: (el) => getPack(Number(el.dataset.index)),
   openBiz: (el) => openBiz(el.dataset.slug),
   claim: (el) => claim(el.dataset.id),
   lead: (el) => lead(el.dataset.type),
@@ -2128,7 +2508,6 @@ Actions.onPress({
   // Fetched at the bus park while there is still signal, because the numbers
   // are only ever needed once there isn't.
   loadSafety();
-  loadBusinesses();
   /**
    * An admin changing the palette expects the app to follow. Re-checking whenever the
    * tab comes back means a reader sees it on their next glance, with no reload and no
@@ -2142,27 +2521,30 @@ Actions.onPress({
 
   const sessions = sessionCount();
 
-  window.addEventListener('online',  () => { state.online = true;  render(); toast('Back online'); });
+  window.addEventListener('online', () => {
+    state.online = true; render(); toast('Back online');
+    // A scan that found no signal finishes itself, without the reader having to ask.
+    if(state.mode === 'offline' || state.mode === 'cached') resolveScan().then(afterScan);
+  });
   window.addEventListener('offline', () => { state.online = false; render(); });
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
     navigator.serviceWorker.addEventListener('message', (e) => {
       if(e.data?.type === 'PACK_CACHED'){
+        state.packReported = true;
         state.packCached = e.data.cached;
         state.packFailed = e.data.failed;
         if(e.data.failed && e.data.firstFailure){
           console.warn('Offline pack incomplete:', e.data.firstFailure);
         }
-        if(state.screen === 'read') render();
+        countOffline().then(() => { if(state.screen === 'read') render(); });
       }
     });
   }
 
   render();
   await resolveScan();
-  // Anything fetched before the API answered was sample data; load the real thing now.
-  if(state.liveApi){ state.vlogs.loaded = false; state.myPosts.loaded = false; }
-  render();
+  afterScan();
   maybeShowInstall(sessions);
 })();

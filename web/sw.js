@@ -5,7 +5,7 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v4';
+const SHELL_CACHE = 'bato-shell-v5';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
@@ -56,22 +56,11 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-/**
- * Pre-cache the offline pack the API hands back on a QR scan.
- *
- * The API sends absolute URLs because a relative path would resolve against
- * this page's origin rather than the API's, and every fetch would 404 into a
- * silently discarded error. Failures are counted and reported so the reader
- * is never told they have offline content when they do not.
- */
-self.addEventListener('message', async (event) => {
-  if (event.data?.type !== 'CACHE_PACK') return;
-
-  const urls = (event.data.urls || []).filter(Boolean);
+/** Fetches and stores each address, counting only real successes. */
+async function cacheAll(urls) {
   const cache = await caches.open(CONTENT_CACHE);
   let cached = 0;
   const failed = [];
-
   for (const url of urls) {
     try {
       // cors mode so a real response is stored, not an opaque one that
@@ -84,15 +73,37 @@ self.addEventListener('message', async (event) => {
       failed.push({ url, reason: String(e && e.message ? e.message : e) });
     }
   }
+  return { cache, cached, failed };
+}
 
-  // Report what is genuinely on disk, not what we were asked to fetch.
-  const verified = (await cache.keys()).length;
+/**
+ * Pre-cache the offline pack the API hands back on a QR scan (CACHE_PACK), or
+ * a few addresses the reader asked to keep, such as a saved story (CACHE_URLS).
+ *
+ * The API sends absolute URLs because a relative path would resolve against
+ * this page's origin rather than the API's, and every fetch would 404 into a
+ * silently discarded error. Failures are counted and reported so the reader
+ * is never told they have offline content when they do not.
+ */
+self.addEventListener('message', (event) => {
+  const type = event.data?.type;
+  if (type !== 'CACHE_PACK' && type !== 'CACHE_URLS') return;
+  const urls = (event.data.urls || []).filter(Boolean);
 
-  event.source?.postMessage({
-    type: 'PACK_CACHED',
-    cached, verified, failed: failed.length, total: urls.length,
-    firstFailure: failed[0] || null,
-  });
+  event.waitUntil((async () => {
+    const { cache, cached, failed } = await cacheAll(urls);
+    if (type === 'CACHE_URLS') {
+      event.source?.postMessage({ type: 'URLS_CACHED', id: event.data.id, cached, failed: failed.length });
+      return;
+    }
+    // Report what is genuinely on disk, not what we were asked to fetch.
+    const verified = (await cache.keys()).length;
+    event.source?.postMessage({
+      type: 'PACK_CACHED',
+      cached, verified, failed: failed.length, total: urls.length,
+      firstFailure: failed[0] || null,
+    });
+  })());
 });
 
 self.addEventListener('fetch', (event) => {

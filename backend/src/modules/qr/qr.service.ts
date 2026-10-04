@@ -28,10 +28,13 @@ export class QrService {
       include: {
         operator: { select: { id: true, name: true, slug: true, logoUrl: true, verification: true, isActive: true } },
         route: true,
-        vehicle: { select: { id: true, plateNo: true, label: true, isActive: true } },
+        vehicle: { select: { id: true, plateNo: true, label: true, isActive: true, routeId: true, route: true } },
       },
     });
-    if (!qr || !qr.isActive) throw new NotFoundException('This code is not active');
+    // An archived bus's stickers stop working until it is restored, as its public profile does.
+    if (!qr || !qr.isActive || (qr.vehicle && !qr.vehicle.isActive)) {
+      throw new NotFoundException('This code is not active');
+    }
 
     // Record the scan. First-scan detection drives the funnel metric in Phase 0.
     // findFirst + index beats count(): we only need existence, not a total,
@@ -60,7 +63,13 @@ export class QrService {
       select: { id: true, number: true, title: true, strapline: true, coverImageUrl: true },
     });
 
-    const routeId = qr.routeId ?? undefined;
+    /**
+     * The bus's route as it is today, not as it was when the sticker was printed: an
+     * owner moving a bus to another road must not leave its QR showing the old one.
+     * Only a seat sticker that was never tied to a bus falls back to its own route.
+     */
+    const route = qr.vehicle ? qr.vehicle.route : qr.route;
+    const routeId = route?.id;
 
     const routeArticles = routeId
       ? await this.prisma.article.findMany({
@@ -85,8 +94,10 @@ export class QrService {
           orderBy: [{ tier: 'desc' }, { verifiedAt: 'desc' }],
           take: 8,
           select: {
-            id: true, slug: true, name: true, category: true, tier: true,
+            id: true, slug: true, name: true, category: true, tier: true, priceRange: true,
             district: true, latitude: true, longitude: true, verifiedAt: true,
+            // Saved with the scan, so Call and WhatsApp work on the road with no signal.
+            phone: true, whatsapp: true,
             photos: { take: 1, select: { url: true } },
           },
         })
@@ -94,7 +105,9 @@ export class QrService {
 
     // A seat sticker on a verified company's bus also lets the passenger review that bus.
     // Signing a token is cheap enough for this path; the rating itself loads on the bus page.
-    const reviewable = !!qr.vehicle?.isActive && qr.operator?.verification === 'VERIFIED' && qr.operator.isActive;
+    // Nothing about a company is public until Batoma has verified it, including its name here.
+    const verified = qr.operator?.verification === 'VERIFIED' && qr.operator.isActive;
+    const reviewable = !!qr.vehicle?.isActive && verified;
     const bus = reviewable
       ? {
           id: qr.vehicle.id, registrationNo: qr.vehicle.plateNo, label: qr.vehicle.label,
@@ -109,10 +122,10 @@ export class QrService {
         isFirstScan,
         scannedAt: new Date().toISOString(),
       },
-      operator: qr.operator && { id: qr.operator.id, name: qr.operator.name, slug: qr.operator.slug, logoUrl: qr.operator.logoUrl },
-      vehicle: qr.vehicle && { id: qr.vehicle.id, plateNo: qr.vehicle.plateNo, label: qr.vehicle.label },
+      operator: verified ? { id: qr.operator.id, name: qr.operator.name, slug: qr.operator.slug, logoUrl: qr.operator.logoUrl } : null,
+      vehicle: verified && qr.vehicle ? { id: qr.vehicle.id, plateNo: qr.vehicle.plateNo, label: qr.vehicle.label } : null,
       bus,
-      route: qr.route,
+      route,
       currentIssue,
       routeArticles,
       corridorBusinesses,

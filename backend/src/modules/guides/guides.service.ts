@@ -69,6 +69,26 @@ export class GuidesService {
       : [guide.direction];
   }
 
+  /**
+   * Stops for the return leg: travel order flipped, and distance and time counted from
+   * the end the traveller set off from. Left as authored, the first stop heading to
+   * Kathmandu read "200 km in".
+   */
+  private reversed<T extends { distanceFromStartKm: number | null; minutesFromStart: number | null }>(
+    stops: T[],
+    route?: { distanceKm: number | null; typicalHours: number | null } | null,
+  ): T[] {
+    const totalKm = route?.distanceKm ?? null;
+    const totalMinutes = route?.typicalHours != null ? Math.round(route.typicalHours * 60) : null;
+    const flip = (value: number | null, total: number | null) =>
+      value == null || total == null ? null : Math.max(0, total - value);
+    return [...stops].reverse().map((s) => ({
+      ...s,
+      distanceFromStartKm: flip(s.distanceFromStartKm, totalKm),
+      minutesFromStart: flip(s.minutesFromStart, totalMinutes),
+    }));
+  }
+
   /** Stops of a place itinerary, gathered into the days an editor put them in. */
   private byDay<T extends { dayNumber: number | null }>(stops: T[]) {
     const days = new Map<number, T[]>();
@@ -138,7 +158,7 @@ export class GuidesService {
     const allowed = this.directionsOf(guide);
     const chosen = direction && allowed.includes(direction) ? direction : allowed[0];
     const isPlace = guide.kind === GuideKind.DESTINATION;
-    const stops = !isPlace && chosen === GuideDirection.REVERSE ? [...guide.stops].reverse() : guide.stops;
+    const stops = !isPlace && chosen === GuideDirection.REVERSE ? this.reversed(guide.stops, guide.route) : guide.stops;
 
     const articles = await this.prisma.article.findMany({
       where: {

@@ -109,10 +109,19 @@ export class BusinessesService {
     return paged(items, total, q);
   }
 
+  /**
+   * A public listing. Fields are listed rather than spread from the row, because the
+   * row also holds the owner's account id and the admin's private verification note;
+   * a switched-off listing is not public at all.
+   */
   async findOne(slug: string) {
-    const b = await this.prisma.business.findUnique({
-      where: { slug },
-      include: {
+    const b = await this.prisma.business.findFirst({
+      where: { slug, isActive: true },
+      select: {
+        id: true, slug: true, name: true, category: true, description: true,
+        district: true, address: true, latitude: true, longitude: true,
+        phone: true, whatsapp: true, viber: true, website: true, priceRange: true,
+        amenities: true, tier: true, verifiedAt: true, createdAt: true,
         photos: { orderBy: { sortOrder: 'asc' } },
         destination: { select: { slug: true, name: true, district: true } },
         coupons: {

@@ -16,7 +16,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | Path | What it is |
 |---|---|
 | `backend/` | NestJS 10 + Prisma 5 + PostgreSQL |
-| `web/index.html` | Single-file installable reader PWA. Offline-first |
+| `web/index.html` + `web/js/reader.js` | Installable reader PWA, opened at `/b/<code>` from a bus sticker. Offline-first. Markup handlers go through `web/js/actions.js` |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
 | `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
@@ -58,6 +58,10 @@ npm run seed:itinerary         # demo place itinerary (three days in Pokhara)
 npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
 ```
+
+Run the web pages with `node scripts/dev-web-server.mjs` (port 5173) from the repo root,
+not `python -m http.server`: stickers open `/b/<code>` and `/r/<code>`, which must be
+rewritten to the reader exactly as `render.yaml` does on the hosted site.
 
 ## Environment traps
 
@@ -161,6 +165,21 @@ against the *page* origin, not the API's. When these were relative, every cached
 fetch 404'd and was silently discarded while the UI still reported "42 stories
 saved". The worker now caches with explicit CORS and counts only verified successes.
 Offline reading is the product's entire reason to exist; do not let it fail quietly.
+
+**The first scan's offline pack goes to the active service worker, not `controller`.**
+On a first visit the worker has only just installed and does not control the page, so
+posting to `navigator.serviceWorker.controller` saved nothing on exactly the scan that
+matters, while the chip said "ready". Post to `(await navigator.serviceWorker.ready).active`.
+
+**Reader URLs are absolute.** The reader is served at `/b/<code>`, so a relative
+`login.html` or `config.js` resolves to `/b/login.html` — which the rewrite answers with
+the reader itself. Use `/login.html`.
+
+**No inline handlers or scripts in pages that have moved to `web/js/`.** Markup uses
+`data-action` / `data-input` / `data-change` / `data-submit` / `data-press`, and the page
+registers what each name does with `Actions.on(...)`. Unregistered names are ignored, so
+markup built from API data cannot call anything else. This is what lets the CSP drop
+`'unsafe-inline'` for scripts.
 
 **`prisma generate` needs network access** to `binaries.prisma.sh`. In restricted
 sandboxes it fails. The workaround used during development was a generated type stub
@@ -267,8 +286,8 @@ with `POST /fleet/admin/reminders/run`.
 
 ## Front end
 
-`web/index.html` is deliberately a single file. It implements the spec's "Prayer
-Flag" design system: three themes (day, **night bus**, **bright sun**), a
+`web/index.html` is the reader's shell and styles; its script is `web/js/reader.js`. It
+implements the spec's "Prayer Flag" design system: three themes (day, **night bus**, **bright sun**), a
 reduced-motion toggle, 17px body text at 1.6 line height, 48px tap targets and
 bottom-anchored navigation. Every one of those is a response to reading on a
 vibrating vehicle at night — treat them as requirements, not preferences.
@@ -285,8 +304,10 @@ colour survives from the previous one, and the backgrounds are gradients and rep
 patterns rather than images, so a night bus on a weak connection pays nothing for them.
 The reader paints the last known theme from `localStorage` before the API answers.
 
-It falls back to bundled demo content mirroring the seed when the API is
-unreachable, so the whole flow demos with no backend running.
+The bundled demo content (mirroring the seed) is used **only** when there is no scanned
+code and no API: a laptop demo, or `preview.html`'s "No bus" link. With a real code the
+reader shows that bus's route, its saved copy when there is no signal, or "Waiting for
+signal" — never another route's stories. See `state.mode` in `reader.js`.
 
 ## Known gaps
 
@@ -310,7 +331,7 @@ Real, and worth knowing before you plan work:
 
 ## Seeded accounts
 
-Demo QR short code: **`DEMO2024`** (Kathmandu–Pokhara, seat 12, Ganapati Deluxe).
+Demo QR short code: **`DEMO2024`** (Kathmandu–Pokhara, seat 12, Ganapati Deluxe), opened at `http://localhost:5173/b/DEMO2024`. It exists only in the demo seed.
 
 Every email account's password is `BatoDemo#2026`. Privileged roles also enrol an
 authenticator on first sign-in.

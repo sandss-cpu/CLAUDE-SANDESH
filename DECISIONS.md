@@ -39,3 +39,36 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
 - **Money is integer paisa** in new tables. Existing fuel, maintenance and repair costs
   are whole-rupee integers; they are left as they are and multiplied by 100 where reports
   combine them with income.
+
+## Step 2: scanning, offline and the reader
+
+- **Demo content only with no code and no API.** The reader runs in one of six modes
+  (`loading`, `live`, `cached`, `offline`, `inactive`, `demo`). Bundled stories,
+  businesses and the sample trip appear only in `demo`. A real code with no signal and
+  nothing saved shows "Waiting for signal", never another route's stories.
+- **The last scan answers for 12 hours** when the URL carries no code: someone who signs
+  in, or reopens the app from the home screen, is still on their bus. Each code's last
+  answer is kept regardless of age, so re-scanning the same sticker with no signal works.
+- **A route with no programmed stories shows the current issue.** Step 3 moves this into
+  the server's content resolution (the DEFAULT level).
+- **Archived buses' codes return "not active"** from `resolve()` too, matching the public
+  profile. **An unverified company is not named on a scan**, but its bus still opens the
+  route magazine: the content is Batoma's, and a freshly registered company's stickers
+  should not show an error.
+- **Offline map packs are hidden, not faked.** Nothing renders tiles and the seeded packs
+  point at example URLs. The tab became **Road**: the road guide for this route in the
+  direction of travel, which is real, editor-written and cached for offline.
+- **Direction of travel is asked once per route and remembered for 12 hours**
+  (`bato.direction`). Step 3 adds the same choice to the masthead and sends it to the
+  server; an active trip will override it.
+- **REVERSE guides count distance from the traveller's start.** Stops are still stored
+  once, in forward order; the service flips distance and time using the route's length.
+  A route with no length shows no distance, rather than a wrong one.
+- **The install banner needs a real store link.** No native app exists yet, so with no
+  `APP_STORE_URL` or `PLAY_STORE_URL` configured it never shows.
+- **Saved stories are a list on the phone** (`bato.saved`), not the server's bookmarks.
+  They work signed out and offline. Syncing them to `/engagement/bookmark` for
+  signed-in readers is listed in GAPS.md with the rest of the engagement UI.
+- **`style-src` keeps `'unsafe-inline'`.** The brief's strict CSP is about scripts; the
+  pages build markup with inline `style` attributes everywhere, and those cannot run
+  code. `script-src` drops `'unsafe-inline'` page by page as each page's handlers move.
