@@ -5,14 +5,14 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v7';
+const SHELL_CACHE = 'bato-shell-v9';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
 const SHELL = [
   '/', '/index.html', '/manifest.json', '/config.js', '/js/actions.js', '/js/reader.js', '/js/admin.js', '/js/admin-programming.js',
   '/login.html', '/admin.html', '/bus.html',
-  '/creator.html', '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js',
+  '/creator.html', '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js', '/owner-actions.js', '/owner-trips.js', '/js/lib/bs-date.js',
 ];
 
 /**

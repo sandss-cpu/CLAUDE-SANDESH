@@ -1,4 +1,4 @@
-/* Bato for bus owners: feedback analytics, crew, company and team, and history exports. */
+/* Batoma for bus owners: feedback analytics, crew, company and team, and history exports. */
 'use strict';
 
 /* ================= feedback ================= */
@@ -9,7 +9,8 @@ SCREENS.feedback = async () => {
   if(f.busId) qs.set('busId', f.busId);
   if(f.rating) qs.set('rating', f.rating);
   if(f.days) qs.set('days', f.days);
-  const data = await api(`/fleet/companies/${state.companyId}/reviews?${qs}`);
+  if(f.driverId) qs.set('driverId', f.driverId);
+  const [data, drivers] = await Promise.all([api(`/fleet/companies/${state.companyId}/reviews?${qs}`), loadDrivers()]);
   const a = data.analytics;
   // The bus filter lists every bus with reviews; remember it from an unfiltered load.
   if(!f.busId) state.feedbackBuses = a.byBus;
@@ -18,14 +19,18 @@ SCREENS.feedback = async () => {
   return `
     ${pageHead('Customer feedback', 'Ratings, reviews and suggestions from passengers. Reviewers are anonymous to you.')}
     <div class="filters">
-      <select aria-label="Bus" onchange="filterFeedback({ busId: this.value })">
+      <select aria-label="Bus" data-change="filterFeedback" data-field="busId">
         <option value="">All buses</option>
         ${busOptions.map((b) => `<option value="${esc(b.busId)}" ${f.busId === b.busId ? 'selected' : ''}>${esc(b.registrationNo)}${b.label ? ` · ${esc(b.label)}` : ''}</option>`).join('')}
       </select>
-      <select aria-label="Period" onchange="filterFeedback({ days: this.value })">
+      <select aria-label="Period" data-change="filterFeedback" data-field="days">
         ${[['', 'All time'], ['30', 'Last 30 days'], ['90', 'Last 3 months'], ['365', 'Last year']].map(([v, l]) => `<option value="${v}" ${String(f.days) === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
-      <select aria-label="Stars" onchange="filterFeedback({ rating: this.value })">
+      <select aria-label="Crew on duty" data-change="filterFeedback" data-field="driverId">
+        <option value="">Any crew</option>
+        ${drivers.filter((d) => d.role !== 'HELPER').map((d) => `<option value="${esc(d.id)}" ${f.driverId === d.id ? 'selected' : ''}>${esc(d.name)} (${esc(DRIVER_ROLE[d.role])})</option>`).join('')}
+      </select>
+      <select aria-label="Stars" data-change="filterFeedback" data-field="rating">
         <option value="">Any rating</option>
         ${[5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${String(f.rating) === String(n) ? 'selected' : ''}>${n} star${n === 1 ? '' : 's'}</option>`).join('')}
       </select>
@@ -44,7 +49,7 @@ SCREENS.feedback = async () => {
       <section class="panel"><div class="panel-head"><h2>By bus</h2><span class="muted small">Lowest rated first</span></div>
         ${a.byBus.length ? `<div class="table-wrap"><table style="min-width:360px">
           <thead><tr><th>Bus</th><th>Rating</th><th>Reviews</th></tr></thead>
-          <tbody>${a.byBus.map((b) => `<tr class="row-link" onclick="go('bus/${esc(b.busId)}/reviews')">
+          <tbody>${a.byBus.map((b) => `<tr class="row-link" data-action="go" data-to="bus/${esc(b.busId)}/reviews">
             <td><span class="plate">${esc(b.registrationNo)}</span> <span class="small">${esc(b.label || '')}</span></td>
             <td><span class="stars">${stars(b.average)}</span> ${b.average.toFixed(1)}</td><td>${b.reviews}</td></tr>`).join('')}</tbody></table></div>`
           : empty('No reviews yet.')}
@@ -65,9 +70,9 @@ SCREENS.feedback = async () => {
       <div class="panel-head"><h2>Reviews (${data.meta.total})</h2><span class="muted small">Newest first</span></div>
       ${data.items.length ? data.items.map((r) => reviewCard(r)).join('') : empty('No reviews match.')}
       ${data.meta.pages > 1 ? `<div class="pager">
-        <button class="btn btn-ghost btn-sm" ${f.page <= 1 ? 'disabled' : ''} onclick="filterFeedback({ page: ${f.page - 1} }, true)">← Newer</button>
+        <button class="btn btn-ghost btn-sm" ${f.page <= 1 ? 'disabled' : ''} data-action="feedbackPage" data-page="${f.page - 1}">← Newer</button>
         <span class="muted small">Page ${f.page} of ${data.meta.pages}</span>
-        <button class="btn btn-ghost btn-sm" ${f.page >= data.meta.pages ? 'disabled' : ''} onclick="filterFeedback({ page: ${f.page + 1} }, true)">Older →</button></div>` : ''}
+        <button class="btn btn-ghost btn-sm" ${f.page >= data.meta.pages ? 'disabled' : ''} data-action="feedbackPage" data-page="${f.page + 1}">Older →</button></div>` : ''}
     </section>`;
 };
 
@@ -96,8 +101,8 @@ async function replyReview(id){
 
 async function reportReview(id){
   const done = await openForm({
-    title: 'Report this review to Bato', submitLabel: 'Send report',
-    intro: 'You can’t delete reviews yourself. A Bato moderator will check this one and remove it if it breaks the rules, for example if it is fake, abusive or about a different bus.',
+    title: 'Report this review to Batoma', submitLabel: 'Send report',
+    intro: 'You can’t delete reviews yourself. A Batoma moderator will check this one and remove it if it breaks the rules, for example if it is fake, abusive or about a different bus.',
     fields: [
       { name: 'reason', label: 'Reason', type: 'select', required: true, full: true, options: [['', 'Choose a reason'], ...REPORT_REASONS] },
       { name: 'detail', label: 'Details for the moderator', type: 'textarea', full: true, maxlength: 1000 },
@@ -119,7 +124,7 @@ SCREENS.crew = async () => {
   const licenceIssues = active.filter((d) => ['EXPIRED', 'EXPIRING'].includes(d.licence.state)).length;
   return `
     ${pageHead('Crew', `${plural(active.length, 'active crew member')}${licenceIssues ? ` · ${plural(licenceIssues, 'licence')} need renewing` : ''}`,
-      canManage() ? `<button class="btn btn-primary" onclick="addDriver()">+ Add crew member</button>` : '')}
+      canManage() ? `<button class="btn btn-primary" data-action="addDriver">+ Add crew member</button>` : '')}
     <section class="panel">
       ${drivers.length ? `<div class="table-wrap"><table>
         <thead><tr><th>Name</th><th>Job</th><th>Phone</th><th>Licence</th><th>Bus</th><th>Breakdowns</th><th>Status</th><th></th></tr></thead>
@@ -132,11 +137,11 @@ SCREENS.crew = async () => {
           <td>${d.buses.length ? d.buses.map((b) => `<a href="#bus/${esc(b.id)}/crew"><span class="plate">${esc(b.registrationNo)}</span></a>`).join(' ') : '<span class="muted">Not assigned</span>'}</td>
           <td>${d.incidents || '—'}</td>
           <td>${d.isActive ? pill(['Active', 'good']) : pill(['Inactive', ''])}</td>
-          <td>${canManage() ? `<button class="link" onclick="editDriver('${esc(d.id)}')">Edit</button>` : ''}</td>
+          <td>${canManage() ? `<button class="link" data-action="editDriver" data-id="${esc(d.id)}">Edit</button>` : ''}</td>
         </tr>`).join('')}</tbody></table></div>`
         : empty('No crew yet. Add your drivers and conductors, then assign them to buses.')}
     </section>
-    <p class="hint">Bato reminds you 30 days before a driving licence expires. Assign crew to a bus from that bus’s Crew tab.</p>`;
+    <p class="hint">Batoma reminds you 30 days before a driving licence expires. Assign crew to a bus from that bus’s Crew tab.</p>`;
 };
 
 const driverFields = (isEdit) => [
@@ -183,7 +188,7 @@ SCREENS.company = async () => {
   const owners = company.members.filter((m) => m.role === 'OWNER').length;
   const detail = (label, value) => `<div class="fact"><b style="font-size:15px">${value ? esc(value) : '<span class="muted">—</span>'}</b>${label}</div>`;
   return `
-    ${pageHead('Company', esc(company.name), isOwner() ? `<button class="btn btn-ghost" onclick="editCompany()">Edit details</button>` : '')}
+    ${pageHead('Company', esc(company.name), isOwner() ? `<button class="btn btn-ghost" data-action="editCompany">Edit details</button>` : '')}
     ${verificationBanner()}
     <div class="grid-2">
       <section class="panel">
@@ -191,21 +196,21 @@ SCREENS.company = async () => {
         <div class="facts">
           ${detail('Name', company.name)}${detail('Registration or PAN', company.registrationNo)}
           ${detail('Phone', company.contactPhone)}${detail('Email', company.contactEmail)}
-          ${detail('Address', company.address)}${detail('Registered on Bato', fmtDay(company.createdAt))}
+          ${detail('Address', company.address)}${detail('Registered on Batoma', fmtDay(company.createdAt))}
         </div>
         ${company.description ? `<p style="margin-top:12px">${esc(company.description)}</p>` : ''}
-        ${company.verifiedAt ? `<p class="hint">Verified by Bato on ${fmtDay(company.verifiedAt)}.</p>` : ''}
+        ${company.verifiedAt ? `<p class="hint">Verified by Batoma on ${fmtDay(company.verifiedAt)}.</p>` : ''}
         ${!isOwner() ? '<p class="hint">Only an owner can change company details.</p>' : ''}
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>Team</h2>${isOwner() ? `<button class="btn btn-primary btn-sm" onclick="addMember()">+ Add member</button>` : ''}</div>
+        <div class="panel-head"><h2>Team</h2>${isOwner() ? `<button class="btn btn-primary btn-sm" data-action="addMember">+ Add member</button>` : ''}</div>
         ${company.members.map((m) => `
           <div class="crew-card">
             <span><b>${esc(m.name)}</b>${m.userId === me ? ' <span class="muted small">(you)</span>' : ''}
               <div class="muted small">${esc(m.email || '')} · since ${fmtDay(m.since)}</div></span>
-            <span class="pills">${pill([m.role === 'OWNER' ? 'Owner' : 'Manager', m.role === 'OWNER' ? 'info' : ''])}
+            <span class="pills">${pill([MEMBER_ROLE[m.role] || m.role, m.role === 'OWNER' ? 'info' : ''])}
               ${(isOwner() && m.userId !== me) || (m.userId === me && !(m.role === 'OWNER' && owners <= 1))
-                ? `<button class="btn btn-ghost btn-sm" onclick="removeMember('${esc(m.userId)}')">${m.userId === me ? 'Leave' : 'Remove'}</button>` : ''}</span>
+                ? `<button class="btn btn-ghost btn-sm" data-action="removeMember" data-id="${esc(m.userId)}">${m.userId === me ? 'Leave' : 'Remove'}</button>` : ''}</span>
           </div>`).join('')}
         <p class="hint"><b>Owners</b> manage everything, including company details, the team and deleting buses.
           <b>Managers</b> handle buses, service, documents, crew, fuel, breakdowns and review replies.</p>
@@ -214,7 +219,7 @@ SCREENS.company = async () => {
     ${qrPanel(qr, {
       heading: 'Company QR code',
       about: 'Put this one at your ticket counter, office or bus park. Scanning it lists all your buses, so passengers can pick the one they rode and review it.',
-      rotate: canManage() ? 'rotateCompanyQr()' : '',
+      rotate: canManage() ? 'rotateCompanyQr' : '',
       live: company.verification === 'VERIFIED',
     })}`;
 };
@@ -224,8 +229,8 @@ async function editCompany(){
   const saved = await openForm({
     title: 'Edit company details', wide: true, submitLabel: 'Save changes',
     intro: c.verification === 'VERIFIED'
-      ? 'Changing the company name or registration number means Bato checks your company again, and your buses are hidden from passengers until then.'
-      : c.verification === 'REJECTED' ? 'Saving sends your company to Bato to be checked again.' : '',
+      ? 'Changing the company name or registration number means Batoma checks your company again, and your buses are hidden from passengers until then.'
+      : c.verification === 'REJECTED' ? 'Saving sends your company to Batoma to be checked again.' : '',
     fields: [
       { name: 'name', label: 'Company or owner name', required: true, full: true, maxlength: 120 },
       { name: 'contactPhone', label: 'Contact phone', type: 'tel', required: true },
@@ -240,7 +245,7 @@ async function editCompany(){
   });
   if(saved){
     state.companies = await api('/fleet/companies');
-    notify(saved.verification === 'PENDING' && c.verification !== 'PENDING' ? 'Saved. Bato will check your company again.' : 'Company details saved.');
+    notify(saved.verification === 'PENDING' && c.verification !== 'PENDING' ? 'Saved. Batoma will check your company again.' : 'Company details saved.');
     renderApp();
   }
 }
@@ -248,10 +253,14 @@ async function editCompany(){
 async function addMember(){
   const saved = await openForm({
     title: 'Add a team member', submitLabel: 'Add to team',
-    intro: 'They need a Bato account with a confirmed email first. Ask them to create one at this page, then enter the same email here.',
+    intro: 'They need a Batoma account with a confirmed email first. Ask them to create one at this page, then enter the same email here.',
     fields: [
       { name: 'email', label: 'Their email', type: 'email', required: true, full: true },
-      { name: 'role', label: 'Role', type: 'select', full: true, options: [['MANAGER', 'Manager: day-to-day records and replies'], ['OWNER', 'Owner: everything, including the team']] },
+      { name: 'role', label: 'Role', type: 'select', full: true, options: [
+        ['MANAGER', 'Manager: day-to-day records and replies'],
+        ['CREW', 'Crew: start and end trips from a phone, nothing else'],
+        ['OWNER', 'Owner: everything, including the team'],
+      ] },
     ],
     values: { role: 'MANAGER' },
     onSubmit: (v) => api(`/fleet/companies/${state.companyId}/members`, { method: 'POST', body: v }),
@@ -301,7 +310,7 @@ async function exportCsv(busId){
   try{
     const h = await api(`/fleet/buses/${busId}/history`);
     const rows = [
-      ['Bato bus service history'],
+      ['Batoma bus service history'],
       ['Company', h.company.name], ['Registration number', h.bus.registrationNo], ['Bus name', h.bus.label],
       ['Type', BUS_TYPE[h.bus.busType] || ''], ['Kilometre reading', h.bus.odometerKm], ['Exported', new Date(h.generatedAt).toLocaleString()],
       [],
@@ -381,7 +390,7 @@ async function printReport(busId){
         h.fuel.logs.map((l) => [fmtDay(l.filledAt), num(l.odometerKm), l.litres, num(l.costNpr), l.fullTank ? 'Full' : 'Partial', l.station]))}
       <h2>Crew</h2>
       ${table(['Name', 'Job', 'Licence', 'From', 'To'], h.crew.map((c) => [c.name, DRIVER_ROLE[c.role], c.licenceNumber, fmtDay(c.startedAt), c.endedAt ? fmtDay(c.endedAt) : 'Current']))}
-      <p class="foot">Generated by Bato for bus owners on ${esc(new Date(h.generatedAt).toLocaleString())}.</p>
+      <p class="foot">Generated by Batoma for bus owners on ${esc(new Date(h.generatedAt).toLocaleString())}.</p>
       <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script>
       </body></html>`);
     w.document.close();

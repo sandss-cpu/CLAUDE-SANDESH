@@ -1,4 +1,4 @@
-/* Bato for bus owners: one bus, with its service history, breakdowns, documents, crew, fuel, reviews and QR code. */
+/* Batoma for bus owners: one bus, with its service history, breakdowns, documents, crew, fuel, reviews and QR code. */
 'use strict';
 
 const daysLeftText = (d) => d == null ? '' : d < 0 ? `${plural(-d, 'day')} ago` : d === 0 ? 'today' : `in ${plural(d, 'day')}`;
@@ -32,13 +32,13 @@ SCREENS.bus = async ({ id, tab }) => {
           ${bus.openIncidents ? pill([`${bus.openIncidents} open breakdown`, 'bad']) : ''}</div>
       </div>
       <div class="actions">
-        ${canManage() && bus.isActive ? `<button class="btn btn-ghost btn-sm" onclick="editBus()">Edit details</button>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="exportCsv('${esc(bus.id)}')">Export CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="printReport('${esc(bus.id)}')">Print history</button>
+        ${canManage() && bus.isActive ? `<button class="btn btn-ghost btn-sm" data-action="editBus">Edit details</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="exportCsv" data-id="${esc(bus.id)}">Export CSV</button>
+        <button class="btn btn-ghost btn-sm" data-action="printReport" data-id="${esc(bus.id)}">Print history</button>
         ${bus.publicUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(bus.publicUrl)}" target="_blank" rel="noopener">Passenger page ↗</a>` : ''}
         ${isOwner() ? (bus.isActive
-          ? `<button class="btn btn-ghost btn-sm" onclick="archiveBus(true)">Archive</button>`
-          : `<button class="btn btn-brand btn-sm" onclick="archiveBus(false)">Restore</button><button class="btn btn-danger btn-sm" onclick="deleteBus()">Delete</button>`) : ''}
+          ? `<button class="btn btn-ghost btn-sm" data-action="archiveBus" data-archived="true">Archive</button>`
+          : `<button class="btn btn-brand btn-sm" data-action="archiveBus" data-archived="false">Restore</button><button class="btn btn-danger btn-sm" data-action="deleteBus">Delete</button>`) : ''}
       </div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Bus records">
@@ -59,7 +59,7 @@ BUS_TABS.overview = async (bus) => {
       <section class="panel">
         <div class="panel-head"><h2>Service</h2>${pill(SERVICE_STATE[s.state])}</div>
         ${s.state === 'NO_RECORD'
-          ? `<p class="muted">No routine service recorded yet. Add the last service and Bato will remind you before the next one is due.</p>`
+          ? `<p class="muted">No routine service recorded yet. Add the last service and Batoma will remind you before the next one is due.</p>`
           : `<div class="facts">
               <div class="fact"><b>${fmtDay(s.lastServicedAt)}</b>Last service, at ${kmText(s.lastServiceKm)}</div>
               <div class="fact"><b>${fmtDay(s.nextDueDate)}</b>Next due by date (${daysLeftText(s.daysLeft)})</div>
@@ -67,7 +67,7 @@ BUS_TABS.overview = async (bus) => {
               <div class="fact"><b>${kmText(bus.odometerKm)}</b>Current reading</div>
             </div>`}
         <p class="hint">Serviced every ${num(bus.serviceIntervalKm)} km or ${bus.serviceIntervalDays} days, whichever comes first.</p>
-        ${canManage() && bus.isActive ? `<button class="btn btn-primary btn-sm" onclick="addService()">+ Add service record</button>` : ''}
+        ${canManage() && bus.isActive ? `<button class="btn btn-primary btn-sm" data-action="addService">+ Add service record</button>` : ''}
       </section>
       <section class="panel">
         <div class="panel-head"><h2>Documents</h2><a class="link" href="#bus/${esc(bus.id)}/documents">Manage</a></div>
@@ -164,7 +164,7 @@ BUS_TABS.service = async (bus) => {
       <div>${pill(SERVICE_STATE[bus.service.state])}
         <span class="muted small">${bus.service.nextDueDate ? `Next service ${fmtDay(bus.service.nextDueDate)} or at ${kmText(bus.service.nextDueKm)}` : ''}
         ${total ? ` · ${npr(total)} spent in total` : ''}</span></div>
-      ${canManage() && bus.isActive ? `<button class="btn btn-primary" onclick="addService()">+ Add service record</button>` : ''}
+      ${canManage() && bus.isActive ? `<button class="btn btn-primary" data-action="addService">+ Add service record</button>` : ''}
     </div>
     <section class="panel">
       ${records.length ? `<ol class="timeline">${records.map((r) => `
@@ -180,11 +180,11 @@ BUS_TABS.service = async (bus) => {
             ${r.note ? `<p>${esc(r.note)}</p>` : ''}
             ${thumbs(r.photos)}
             ${r.nextDueDate || r.nextDueKm ? `<div class="muted small" style="margin-top:6px">Next service set for ${[r.nextDueDate && fmtDay(r.nextDueDate), r.nextDueKm && kmText(r.nextDueKm)].filter(Boolean).join(' or ')}</div>` : ''}
-            ${canManage() ? `<div class="rv-actions"><button class="link" onclick="editService('${esc(r.id)}')">Edit</button>
-              <button class="link" style="color:var(--rhodo)" onclick="deleteService('${esc(r.id)}')">Delete</button></div>` : ''}
+            ${canManage() ? `<div class="rv-actions"><button class="link" data-action="editService" data-id="${esc(r.id)}">Edit</button>
+              <button class="link" style="color:var(--rhodo)" data-action="deleteService" data-id="${esc(r.id)}">Delete</button></div>` : ''}
           </div>
         </li>`).join('')}</ol>`
-      : empty('No service history yet. Add the most recent service so Bato can remind you when the next one is due.')}
+      : empty('No service history yet. Add the most recent service so Batoma can remind you when the next one is due.')}
     </section>`;
 };
 
@@ -241,7 +241,7 @@ BUS_TABS.breakdowns = async (bus) => {
   return `
     <div class="tab-head">
       <span class="muted">Breakdowns and emergency repairs on the road. Major and critical ones take the bus out of service until fixed.</span>
-      ${canManage() && bus.isActive ? `<button class="btn btn-danger" onclick="reportIncident()">Report a breakdown</button>` : ''}
+      ${canManage() && bus.isActive ? `<button class="btn btn-danger" data-action="reportIncident">Report a breakdown</button>` : ''}
     </div>
     <section class="panel">
       ${items.length ? `<ol class="timeline">${items.map((i) => `
@@ -256,7 +256,7 @@ BUS_TABS.breakdowns = async (bus) => {
             <div class="muted small">${[i.odometerKm != null && kmText(i.odometerKm), i.driver && `Driver: ${esc(i.driver.name)}`].filter(Boolean).join(' · ')}</div>
             ${thumbs(i.photos)}
             ${i.status === 'RESOLVED' ? `<div class="reply"><b>Fixed ${fmtDateTime(i.resolvedAt)}${i.repairCostNpr != null ? ` · ${npr(i.repairCostNpr)}` : ''}</b><br>${esc(i.resolutionNote || '')}</div>`
-              : canManage() ? `<div class="rv-actions"><button class="btn btn-brand btn-sm" onclick="resolveIncident('${esc(i.id)}')">Mark as fixed</button></div>` : ''}
+              : canManage() ? `<div class="rv-actions"><button class="btn btn-brand btn-sm" data-action="resolveIncident" data-id="${esc(i.id)}">Mark as fixed</button></div>` : ''}
           </div>
         </li>`).join('')}</ol>` : empty('No breakdowns recorded for this bus.')}
     </section>`;
@@ -306,8 +306,8 @@ BUS_TABS.documents = async (bus) => {
   state.records.documents = docs;
   return `
     <div class="tab-head">
-      <span class="muted">Bato reminds you 30 days before a document expires, and again when it has expired.</span>
-      ${canManage() && bus.isActive ? `<button class="btn btn-primary" onclick="addDocument()">+ Add document</button>` : ''}
+      <span class="muted">Batoma reminds you 30 days before a document expires, and again when it has expired.</span>
+      ${canManage() && bus.isActive ? `<button class="btn btn-primary" data-action="addDocument">+ Add document</button>` : ''}
     </div>
     <section class="panel">
       ${docs.length ? `<div class="table-wrap"><table>
@@ -319,8 +319,8 @@ BUS_TABS.documents = async (bus) => {
             <td>${fmtDay(d.expiresAt)}${d.daysLeft != null ? `<div class="muted small">${daysLeftText(d.daysLeft)}</div>` : ''}</td>
             <td>${pill(EXPIRY[d.state])}</td>
             <td class="nowrap">${d.photoUrl ? `<a class="link" href="${esc(d.photoUrl)}" target="_blank" rel="noopener">Photo</a> ` : ''}
-              ${canManage() ? `<button class="link" onclick="editDocument('${esc(d.id)}')">Edit</button>
-              <button class="link" style="color:var(--rhodo)" onclick="deleteDocument('${esc(d.id)}')">Delete</button>` : ''}</td>
+              ${canManage() ? `<button class="link" data-action="editDocument" data-id="${esc(d.id)}">Edit</button>
+              <button class="link" style="color:var(--rhodo)" data-action="deleteDocument" data-id="${esc(d.id)}">Delete</button>` : ''}</td>
           </tr>`).join('')}</tbody></table></div>`
       : empty('No documents yet. Add the bluebook, insurance, route permit and pollution certificate to get renewal reminders.')}
     </section>`;
@@ -377,10 +377,10 @@ BUS_TABS.crew = async (bus) => {
               <div class="muted small">Since ${fmtDay(c.since)}${c.licenceNumber ? ` · Licence ${esc(c.licenceNumber)}` : ''}</div></span>
             <span class="pills">${c.role === 'DRIVER' && c.licence.state !== 'NONE' ? pill(EXPIRY[c.licence.state]) : ''}
               <a class="btn btn-ghost btn-sm" href="tel:${esc(c.phone.replace(/\s/g, ''))}">Call</a>
-              ${canManage() ? `<button class="btn btn-ghost btn-sm" onclick="unassignCrew('${esc(c.id)}')">Remove</button>` : ''}</span>
+              ${canManage() ? `<button class="btn btn-ghost btn-sm" data-action="unassignCrew" data-id="${esc(c.id)}">Remove</button>` : ''}</span>
           </div>`).join('') : empty('No crew assigned to this bus.')}
         ${canManage() && bus.isActive ? `
-          <form onsubmit="assignCrew(event)" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <form data-submit="assignCrew" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
             <label for="assignDriver" class="sr-only">Crew member</label>
             <select id="assignDriver" style="flex:1;min-width:200px" ${available.length ? '' : 'disabled'}>
               ${available.length ? available.map((d) => `<option value="${esc(d.id)}">${esc(d.name)} · ${DRIVER_ROLE[d.role]}${d.buses.length ? ` (now on ${esc(d.buses[0].registrationNo)})` : ''}</option>`).join('')
@@ -429,7 +429,7 @@ BUS_TABS.fuel = async (bus) => {
   return `
     <div class="tab-head">
       <span class="muted">Mileage is measured between full-tank fill-ups, using the kilometre readings.</span>
-      ${canManage() && bus.isActive ? `<button class="btn btn-primary" onclick="addFuel()">+ Log a fill-up</button>` : ''}
+      ${canManage() && bus.isActive ? `<button class="btn btn-primary" data-action="addFuel">+ Log a fill-up</button>` : ''}
     </div>
     <div class="kpis">
       ${kpi('⛽', 'Mileage', e.kmPerLitre ? `${e.kmPerLitre} km/l` : '—', e.measuredKm ? `Over ${num(e.measuredKm)} measured km` : 'Needs two full-tank fill-ups')}
@@ -452,7 +452,7 @@ BUS_TABS.fuel = async (bus) => {
         <tbody>${data.logs.map((l) => `<tr>
           <td>${fmtDay(l.filledAt)}</td><td>${kmText(l.odometerKm)}</td><td>${num(l.litres)}</td><td>${npr(l.costNpr)}</td>
           <td>${l.litres ? npr(Math.round(l.costNpr / l.litres)) : '—'}</td><td>${l.fullTank ? 'Full' : 'Partial'}</td><td>${esc(l.station || '—')}</td>
-          <td>${canManage() ? `<button class="link" style="color:var(--rhodo)" onclick="deleteFuel('${esc(l.id)}')">Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          <td>${canManage() ? `<button class="link" style="color:var(--rhodo)" data-action="deleteFuel" data-id="${esc(l.id)}">Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : empty('No fill-ups logged yet.')}
     </section>`;
 };
@@ -499,9 +499,9 @@ BUS_TABS.reviews = async (bus) => {
       <div class="panel-head"><h2>Reviews (${data.meta.total})</h2><span class="muted small">Passengers stay anonymous to you</span></div>
       ${data.items.length ? data.items.map((r) => reviewCard(r, { showBus: false })).join('') : empty('No reviews yet for this bus.')}
       ${data.meta.pages > 1 ? `<div class="pager">
-        <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="state.busReviewsPage=${page - 1};renderApp()">← Newer</button>
+        <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} data-action="busReviewsPage" data-page="${page - 1}">← Newer</button>
         <span class="muted small">Page ${page} of ${data.meta.pages}</span>
-        <button class="btn btn-ghost btn-sm" ${page >= data.meta.pages ? 'disabled' : ''} onclick="state.busReviewsPage=${page + 1};renderApp()">Older →</button></div>` : ''}
+        <button class="btn btn-ghost btn-sm" ${page >= data.meta.pages ? 'disabled' : ''} data-action="busReviewsPage" data-page="${page + 1}">Older →</button></div>` : ''}
     </section>`;
 };
 window.addEventListener('hashchange', () => { state.busReviewsPage = 1; });
@@ -514,7 +514,7 @@ BUS_TABS.qr = async (bus) => {
   return qrPanel(qr, {
     heading: 'This bus’s QR code',
     about: 'Print it and stick it inside the bus where passengers can see it: on the back of seats, near the door, or by the ticket window. Scanning it opens this bus’s page, where passengers can read and leave reviews. It is one way in; passengers can also find the bus by searching its registration number.',
-    rotate: canManage() && bus.isActive ? 'rotateBusQr()' : '',
+    rotate: canManage() && bus.isActive ? 'rotateBusQr' : '',
     live: bus.isActive && state.company.verification === 'VERIFIED',
   });
 };
@@ -534,10 +534,10 @@ function qrPanel(qr, { heading, about, rotate, live }){
             <div class="fact"><b>${live ? pill(['Working', 'good']) : pill(['Paused', 'warn'])}</b>${live ? 'Opens for passengers' : 'Starts working once verified and active'}</div>
           </div>
           <div class="modal-actions" style="margin-top:0">
-            <button class="btn btn-primary" onclick="printSticker()">Print sticker</button>
-            <button class="btn btn-ghost" onclick="downloadSvg()">Download image</button>
-            <button class="btn btn-ghost" onclick="copyLink()">Copy link</button>
-            ${rotate ? `<button class="btn btn-ghost" onclick="${rotate}">Replace sticker</button>` : ''}
+            <button class="btn btn-primary" data-action="printSticker">Print sticker</button>
+            <button class="btn btn-ghost" data-action="downloadSvg">Download image</button>
+            <button class="btn btn-ghost" data-action="copyLink">Copy link</button>
+            ${rotate ? `<button class="btn btn-ghost" data-action="${rotate}">Replace sticker</button>` : ''}
           </div>
           <p class="hint">If a sticker is damaged or copied somewhere it shouldn't be, replace it: the old code stops working at once.</p>
         </div>
@@ -572,7 +572,7 @@ function printSticker(){
       @media print{body{padding:0}@page{margin:10mm}}
     </style></head><body>
     ${[1, 2].map(() => `<div class="sticker">
-      <div class="brand">Bato</div>
+      <div class="brand">Batoma</div>
       <div class="flags"><i style="background:#2F6FD0"></i><i style="background:#eee"></i><i style="background:#E8455F"></i><i style="background:#3E9B4F"></i><i style="background:#F4A024"></i></div>
       <p class="cta">How was your ride? Scan to rate this bus</p>
       <p class="ne">यो बसको समीक्षा गर्न स्क्यान गर्नुहोस्</p>

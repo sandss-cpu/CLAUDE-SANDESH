@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Bato for bus owners</title>
+<title>Batoma for bus owners</title>
 <meta name="description" content="Manage your buses, service records, documents, crew, fuel and passenger reviews in one place.">
 <meta name="theme-color" content="#1C1A2E">
 <meta name="referrer" content="no-referrer">
@@ -187,6 +187,16 @@ tr.row-link{cursor:pointer}tr.row-link:hover td{background:var(--surface-2)}
 .word b{margin-left:4px;color:var(--text-dim)}
 
 /* ---------- buses ---------- */
+.duty-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.duty-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:14px 16px;display:grid;gap:8px}
+.duty-card.on{border-color:var(--brand);border-width:2px}
+.duty-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.duty-state{margin:0;font-size:16px}
+.duty-dirs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.duty-btn{min-height:52px;font-size:16px;width:100%}
+.rv-crew{margin-top:6px}
+.rv-crew span{opacity:.8}
+.nowrap{white-space:nowrap}
 .bus-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
 .bus-card{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);
   overflow:hidden;text-align:left;cursor:pointer;color:inherit;font:inherit;padding:0;text-decoration:none}
@@ -253,9 +263,13 @@ tr.row-link{cursor:pointer}tr.row-link:hover td{background:var(--surface-2)}
   <aside class="side" id="side"></aside>
   <div class="content"><main id="main" tabindex="-1"></main></div>
 </div>
+<script src="/js/actions.js"></script>
+<script src="/js/lib/bs-date.js"></script>
 <script src="owner-core.js"></script>
 <script src="owner-screens.js"></script>
 <script src="owner-bus.js"></script>
 <script src="owner-more.js"></script>
+<script src="owner-trips.js"></script>
+<script src="owner-actions.js"></script>
 </body>
 </html>

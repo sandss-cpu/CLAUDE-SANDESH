@@ -1,4 +1,4 @@
-/* Bato for bus owners: session, API, shared UI helpers, sign-in, navigation. */
+/* Batoma for bus owners: session, API, shared UI helpers, sign-in, navigation. */
 'use strict';
 
 const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
@@ -37,6 +37,7 @@ const DOC_TYPE = {
   POLLUTION_CERTIFICATE: 'Pollution certificate', FITNESS_CERTIFICATE: 'Fitness certificate', TAX_CLEARANCE: 'Tax clearance', OTHER: 'Other document',
 };
 const DRIVER_ROLE = { DRIVER: 'Driver', CONDUCTOR: 'Conductor', HELPER: 'Helper' };
+const MEMBER_ROLE = { OWNER: 'Owner', MANAGER: 'Manager', CREW: 'Crew' };
 const VERIFICATION = {
   VERIFIED: ['Verified', 'good'], PENDING: ['Waiting for verification', 'warn'], REJECTED: ['Not approved', 'bad'], SUSPENDED: ['Suspended', 'bad'],
 };
@@ -73,6 +74,15 @@ const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.g
 const dayIso = (d) => d ? String(d).slice(0, 10) : '';
 const nowLocal = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const isOwner = () => state.company?.role === 'OWNER';
+/** Crew accounts (conductors) see only the duty screen; the API refuses them everything else. */
+const isCrew = () => state.company?.role === 'CREW';
+/** "4 Oct 2026 · 18 Asoj 2083": owners read both calendars. */
+const fmtDayBs = (d) => {
+  if(!d) return '';
+  const bs = window.BsDate?.formatBs(d);
+  return bs ? `${fmtDay(d)} · ${bs}` : fmtDay(d);
+};
+const fmtTime = (d) => d ? new Date(d).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
 const canManage = () => ['OWNER', 'MANAGER'].includes(state.company?.role);
 const empty = (text) => `<div class="empty">${esc(text)}</div>`;
 
@@ -142,7 +152,7 @@ async function api(path, { method = 'GET', body } = {}){
     });
   }catch(err){
     if(err.silent) throw err;
-    throw new Error('Bato is not reachable. Check your internet connection and try again.');
+    throw new Error('Batoma is not reachable. Check your internet connection and try again.');
   }
   return readJson(res);
 }
@@ -152,7 +162,7 @@ async function publicPost(path, body){
   try{
     res = await fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   }catch(_){
-    throw new Error('Bato is not reachable. Check your internet connection and try again.');
+    throw new Error('Batoma is not reachable. Check your internet connection and try again.');
   }
   return readJson(res);
 }
@@ -348,9 +358,9 @@ const pageHead = (title, sub, actions = '') => `
 function verificationBanner(){
   const c = state.company;
   if(!c || c.verification === 'VERIFIED') return '';
-  const note = c.verificationNote ? ` Note from Bato: ${esc(c.verificationNote)}` : '';
+  const note = c.verificationNote ? ` Note from Batoma: ${esc(c.verificationNote)}` : '';
   if(c.verification === 'PENDING'){
-    return `<div class="banner warn" role="status"><span aria-hidden="true">⏳</span><div><b>Bato is verifying ${esc(c.name)}</b>
+    return `<div class="banner warn" role="status"><span aria-hidden="true">⏳</span><div><b>Batoma is verifying ${esc(c.name)}</b>
       You can add buses and records now. Passengers see your buses, and their QR codes start working, once you are verified, usually within two working days.${note}</div></div>`;
   }
   if(c.verification === 'REJECTED'){
@@ -358,13 +368,13 @@ function verificationBanner(){
       Update your company details and they will be checked again.${note} <a href="#company">Open company details</a></div></div>`;
   }
   return `<div class="banner bad" role="alert"><span aria-hidden="true">⏸</span><div><b>${esc(c.name)} is suspended</b>
-    Your buses are hidden from passengers and their QR codes are paused. Contact Bato support.${note}</div></div>`;
+    Your buses are hidden from passengers and their QR codes are paused. Contact Batoma support.${note}</div></div>`;
 }
 
-function kpi(icon, label, value, detail, onclick, tone = ''){
+function kpi(icon, label, value, detail, to, tone = ''){
   const inner = `<div class="k-label"><span aria-hidden="true">${icon}</span>${esc(label)}</div>
     <div class="k-value">${value}</div><div class="k-detail">${detail}</div>`;
-  return onclick ? `<button class="kpi ${tone}" onclick="${onclick}">${inner}</button>` : `<div class="kpi ${tone}">${inner}</div>`;
+  return to ? `<button class="kpi ${tone}" data-action="go" data-to="${esc(to)}">${inner}</button>` : `<div class="kpi ${tone}">${inner}</div>`;
 }
 
 function distribution(dist){
@@ -390,21 +400,21 @@ const AUTH_VIEWS = {
   signin: (l) => `
     <h2>Sign in</h2>
     <p class="muted">Manage your buses, records and passenger feedback.</p>
-    <form onsubmit="authSignIn(event)" novalidate>
+    <form data-submit="authSignIn" novalidate>
       <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" inputmode="email" required value="${esc(l.email)}"></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Signing in…' : 'Sign in'}</button>
     </form>
     <div class="auth-links">
-      <button class="link" onclick="authGo('forgot')">Forgot password?</button>
-      <button class="link" onclick="authGo('register')">New to Bato? Create an account</button>
+      <button class="link" data-action="authGo" data-step="forgot">Forgot password?</button>
+      <button class="link" data-action="authGo" data-step="register">New to Batoma? Create an account</button>
     </div>
     <p class="muted small" style="margin-top:22px">Travelling rather than running buses? <a href="login.html">Traveller sign-in</a> · <a href="bus.html">Rate a bus</a></p>`,
   register: (l) => `
     <h2>Create your owner account</h2>
     <p class="muted">Free for individual owners and bus companies. We'll email you a link to confirm your address.</p>
-    <form onsubmit="authRegister(event)" novalidate>
+    <form data-submit="authRegister" novalidate>
       <div class="field"><label for="name">Your name</label><input id="name" autocomplete="name" required minlength="2" maxlength="60" value="${esc(l.name)}"></div>
       <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" required value="${esc(l.email)}"></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required>
@@ -412,58 +422,58 @@ const AUTH_VIEWS = {
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Creating account…' : 'Create account'}</button>
     </form>
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Already have an account? Sign in</button></div>`,
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Already have an account? Sign in</button></div>`,
   sent: (l) => `
     <h2>Check your inbox</h2>
     <p class="muted">If <strong>${esc(l.email)}</strong> can be used, a confirmation link is on its way. Check spam too.</p>
     ${devLinkCard(l)}${authAlerts(l)}
-    <button class="btn btn-ghost" onclick="authResend()" ${l.busy ? 'disabled' : ''}>Send the link again</button>
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Back to sign in</button></div>`,
+    <button class="btn btn-ghost" data-action="authResend" ${l.busy ? 'disabled' : ''}>Send the link again</button>
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Back to sign in</button></div>`,
   forgot: (l) => `
     <h2>Reset your password</h2>
-    <form onsubmit="authForgot(event)" novalidate>
+    <form data-submit="authForgot" novalidate>
       <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required value="${esc(l.email)}"></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Sending…' : 'Send reset link'}</button>
     </form>
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Back to sign in</button></div>`,
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Back to sign in</button></div>`,
   forgotSent: (l) => `
     <h2>Check your inbox</h2>
     <p class="muted">If an account uses <strong>${esc(l.email)}</strong>, a reset link is on its way. It expires in 1 hour.</p>
     ${devLinkCard(l)}
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Back to sign in</button></div>`,
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Back to sign in</button></div>`,
   reset: (l) => `
     <h2>Choose a new password</h2>
     <p class="muted">You'll be signed out on every other device.</p>
-    <form onsubmit="authReset(event)" novalidate>
+    <form data-submit="authReset" novalidate>
       <div class="field"><label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Saving…' : 'Save new password'}</button>
     </form>`,
   mfa: (l) => `
     <h2>Authenticator code</h2>
-    <p class="muted">This account can also manage Bato itself, so it needs the 6-digit code from your authenticator app.</p>
-    <form onsubmit="authMfa(event)" novalidate>
+    <p class="muted">This account can also manage Batoma itself, so it needs the 6-digit code from your authenticator app.</p>
+    <form data-submit="authMfa" novalidate>
       <div class="field"><label for="code">6-digit code</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Checking…' : 'Sign in'}</button>
     </form>
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Use a different account</button></div>`,
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Use a different account</button></div>`,
   mfaSetup: () => `
     <h2>Set up your authenticator first</h2>
-    <p class="muted">This account can manage Bato itself. Set up an authenticator app once in the control panel, then sign in here.</p>
+    <p class="muted">This account can manage Batoma itself. Set up an authenticator app once in the control panel, then sign in here.</p>
     <a class="btn btn-primary" href="admin.html">Open the control panel</a>
-    <div class="auth-links"><button class="link" onclick="authGo('signin')">Use a different account</button></div>`,
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Use a different account</button></div>`,
   working: (l) => `<h2>${esc(l.notice || 'One moment…')}</h2><div class="spinner" role="status" aria-label="Loading"></div>`,
   linkFailed: (l) => `
     <h2>That link didn't work</h2>
     <div class="error" role="alert">${esc(l.error)}</div>
-    <button class="btn btn-primary" onclick="authGo('signin')">Back to sign in</button>`,
+    <button class="btn btn-primary" data-action="authGo" data-step="signin">Back to sign in</button>`,
 };
 
 function authAlerts(l){
   return `${l.error ? `<div class="error" role="alert">${esc(l.error)}
-      ${l.errorCode === 'EMAIL_NOT_VERIFIED' ? '<div><button class="link" type="button" onclick="authResend()">Send the confirmation link again</button></div>' : ''}</div>` : ''}
+      ${l.errorCode === 'EMAIL_NOT_VERIFIED' ? '<div><button class="link" type="button" data-action="authResend">Send the confirmation link again</button></div>' : ''}</div>` : ''}
     ${l.notice ? `<div class="ok" role="status">${esc(l.notice)}</div>` : ''}`;
 }
 function devLinkCard(l){
@@ -479,7 +489,7 @@ function showAuth(){
     <div class="auth">
       <section class="auth-brand">
         <div>
-          <div class="logo">Bato<span>for bus owners</span></div>
+          <div class="logo">Batoma<span>for bus owners</span></div>
           <h1>Your whole fleet, and what passengers think of it.</h1>
           <ul>
             <li><b>🚌</b><span>Register every bus by its registration number, from one bus to hundreds.</span></li>
@@ -578,9 +588,10 @@ async function finishSignIn(data){
 
 /* ---------- companies and navigation ---------- */
 const NAV = [
-  ['dashboard', 'Dashboard', '▦'], ['buses', 'Buses', '🚌'], ['feedback', 'Feedback', '★'],
+  ['dashboard', 'Dashboard', '▦'], ['buses', 'Buses', '🚌'], ['trips', 'Trips', '🧭'], ['feedback', 'Feedback', '★'],
   ['crew', 'Crew', '👤'], ['reminders', 'Reminders', '🔔'], ['company', 'Company', '🏢'],
 ];
+const CREW_NAV = [['duty', 'Duty', '🚌']];
 
 async function bootApp(){
   $('#auth-view').hidden = true;
@@ -593,7 +604,7 @@ async function bootApp(){
     if(err.silent) return;
     $('#main').innerHTML = `<div class="panel" style="max-width:520px;margin:40px auto">
       <h2>Couldn't load your account</h2><div class="error" role="alert">${esc(err.message)}</div>
-      <div class="modal-actions"><button class="btn btn-primary" onclick="bootApp()">Try again</button><button class="btn btn-ghost" onclick="signOut()">Sign out</button></div></div>`;
+      <div class="modal-actions"><button class="btn btn-primary" data-action="bootApp">Try again</button><button class="btn btn-ghost" data-action="signOut">Sign out</button></div></div>`;
     return;
   }
   const saved = localStorage.getItem(COMPANY_KEY);
@@ -607,7 +618,15 @@ async function selectCompany(id, navigate = true){
   localStorage.setItem(COMPANY_KEY, id);
   state.drivers = null; state.records = {};
   state.buses = { q: '', status: '', archived: false, page: 1 };
-  state.feedback = { busId: '', rating: '', days: '', page: 1 };
+  state.feedback = { busId: '', rating: '', days: '', driverId: '', page: 1 };
+  // A crew account only ever sees the duty screen, which carries what it needs.
+  const listed = state.companies.find((c) => c.id === id);
+  if(listed?.role === 'CREW'){
+    state.company = listed;
+    renderShell();
+    go('duty');
+    return;
+  }
   try{
     state.company = await api(`/fleet/companies/${id}`);
   }catch(err){
@@ -639,32 +658,32 @@ function renderShell(){
   const companyBox = state.companies.length ? `
     <div class="company-box">
       <label for="companySelect" class="sr-only">Company</label>
-      <select id="companySelect" onchange="switchCompany(this.value)">
+      <select id="companySelect" data-change="switchCompany">
         ${state.companies.map((x) => `<option value="${esc(x.id)}" ${x.id === state.companyId && screen !== 'onboard' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
         <option value="__new" ${screen === 'onboard' ? 'selected' : ''}>+ Register another company</option>
       </select>
-      ${c ? `<div class="who"><span>${c.role === 'OWNER' ? 'Owner' : 'Manager'}</span><span>${pill(VERIFICATION[c.verification])}</span></div>` : ''}
+      ${c ? `<div class="who"><span>${MEMBER_ROLE[c.role] || c.role}</span><span>${pill(VERIFICATION[c.verification])}</span></div>` : ''}
     </div>` : '';
   $('#side').innerHTML = `
     <div class="side-top">
-      <a class="logo" href="#dashboard">Bato<span>for bus owners</span></a>
+      <a class="logo" href="#${isCrew() ? 'duty' : 'dashboard'}">Batoma<span>for bus owners</span></a>
       ${companyBox}
     </div>
     ${c ? `<nav aria-label="Owner portal">
-      ${NAV.map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') ? 'aria-current="page"' : ''}>
+      ${(isCrew() ? CREW_NAV : NAV).map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') ? 'aria-current="page"' : ''}>
         <span class="ico" aria-hidden="true">${icon}</span>${label}
         ${key === 'reminders' && state.unread ? `<span class="badge" aria-label="${state.unread} unread">${state.unread}</span>` : ''}</a>`).join('')}
     </nav>` : ''}
     <div class="side-foot">
       <span>${esc(state.auth?.user?.name || '')}</span>
       <a href="bus.html" target="_blank" rel="noopener">Passenger bus page ↗</a>
-      <button onclick="toggleTheme()">${document.documentElement.dataset.theme === 'night' ? '☀ Light mode' : '🌙 Dark mode'}</button>
-      <button onclick="signOut()">Sign out</button>
+      <button data-action="toggleTheme">${document.documentElement.dataset.theme === 'night' ? '☀ Light mode' : '🌙 Dark mode'}</button>
+      <button data-action="signOut">Sign out</button>
     </div>`;
   if(window.innerWidth <= 900 && c){
     const nav = $('#side nav');
     if(nav && !$('#side .mobile-out')){
-      nav.insertAdjacentHTML('beforeend', `<a href="#" class="mobile-out" onclick="event.preventDefault();signOut()"><span class="ico" aria-hidden="true">⎋</span>Sign out</a>`);
+      nav.insertAdjacentHTML('beforeend', `<a href="#" class="mobile-out" data-action="signOut"><span class="ico" aria-hidden="true">⎋</span>Sign out</a>`);
     }
   }
 }
@@ -690,6 +709,7 @@ async function renderApp(){
   let { screen, id, tab } = parseHash();
   if(!state.company && screen !== 'onboard'){ if(!state.companies.length){ location.hash = '#onboard'; return; } }
   if(!SCREENS[screen]) screen = 'dashboard';
+  if(isCrew()) screen = 'duty';
   renderShell();
   const main = $('#main');
   const seq = ++renderSeq;
@@ -705,7 +725,7 @@ async function renderApp(){
     main.innerHTML = `<div class="panel" style="max-width:560px;margin:30px auto">
       <h2>${err.status === 404 ? 'Not found' : 'Something went wrong'}</h2>
       <div class="error" role="alert">${esc(err.message)}</div>
-      <div class="modal-actions"><button class="btn btn-primary" onclick="renderApp()">Try again</button><a class="btn btn-ghost" href="#dashboard">Dashboard</a></div></div>`;
+      <div class="modal-actions"><button class="btn btn-primary" data-action="renderApp">Try again</button><a class="btn btn-ghost" href="#dashboard">Dashboard</a></div></div>`;
   }
 }
 window.addEventListener('hashchange', () => { if(state.auth) renderApp(); });

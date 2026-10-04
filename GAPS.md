@@ -52,6 +52,14 @@ than a week.
 - **Articles could not be put on a route from the control panel at all.** The article form
   had no corridor field, so only the seed ever linked one. Route programming is that tool.
 
+## Done in step 4
+
+- The duty log: trips, crew accounts and the conductor's duty screen; reviews put against
+  the crew on duty; owners see the crew on each review and can filter by crew member.
+- Bikram Sambat dates beside AD on the Trips and Duty screens.
+- The owner portal's inline handlers moved to data attributes, and it calls itself Batoma.
+- Scripts are now served `no-cache` on Render too, not only pages.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
@@ -59,7 +67,7 @@ than a week.
 | Gap | Step | Effort |
 |---|---|---|
 | One QR per bus, magazine first; `bus.html?code=` redirect; stickers as PDF/PNG/SVG; seat-sticker minting UI (`/qr/batch`, `/qr/stats` have no UI) | 5 | L |
-| Review attribution to trip and crew; driver scorecards and appraisals | 4, 6 | L |
+| Driver scorecards and appraisals (review attribution to trip and crew is done) | 6 | L |
 | Income records | 7 | L |
 | Reading UI: summaries, "In brief", "Keep reading", the stops timeline | 8 | L |
 | **No business owner area in the web app.** `/businesses/mine`, `/:id/dashboard`, coupon creation and redemption, and review replies have no page. | 9 (`business.html`) | M |
@@ -67,12 +75,12 @@ than a week.
 | "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |
 | Moderation audit trail (`/moderation/audit` has no UI) | 10 (security events view) | S |
 | Traveller account: data export and deletion (`DELETE /users/me` has no UI) | 10 | M |
-| Inline scripts and handlers in `bus.html`, `login.html`, `creator.html` and the owner portal (CLAUDE.md known gap 7; the reader and control panel are done) | 4–10 | M |
+| Inline scripts and handlers in `bus.html`, `login.html` and `creator.html` (CLAUDE.md known gap 7; the reader, control panel and owner portal are done) | 5–10 | M |
 | Google Fonts on every app page (a third party on each visit, and a CSP exception) | 9–10 (self-hosted) | S |
 | Development logs print recipients' email addresses (`[MAIL DISABLED] to …`) | 10 (log redaction) | S |
 | Sign-in, owner portal, admin and emails still say "Bato" | 3–11, as each is touched | S |
 | `API_PUBLIC_URL` must equal the origin the reader calls once `/api` is proxied through the app domain. Offline packs are cached under the address the API reports, and the reader looks stories up under its own. | 11 | S |
-| BS dates; `strictNullChecks`; company verification documents (CLAUDE.md known gaps 3, 6 and 4) | 4, 10 | M |
+| `strictNullChecks`; company verification documents (CLAUDE.md known gaps 6 and 4; BS dates are done) | 10 | M |
 
 ### Not in the Phase 3 brief (owner's call)
 

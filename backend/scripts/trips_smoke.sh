@@ -81,6 +81,7 @@ ok "an arrival reading below the departure one is refused" 400 "$(call POST "/fl
 ok "ending with a reading" 201 "$(call POST "/fleet/trips/$T3/end" "$CREW" "{\"endOdometerKm\":$((ODOMETER + 210))}")"
 ok "moves the bus's odometer on" $((ODOMETER + 210)) "$(sql "select \"odometerKm\" from vehicles where id='$BUS'")"
 ok "and gives the trip's distance" 200 "$(call GET "/fleet/trips/$T3" "$OWNER" >/dev/null; get "data['km']")"
+ok "clearing a reading stores nothing, not zero" None "$(call PATCH "/fleet/trips/$T3" "$MANAGER" '{"startOdometerKm":""}' >/dev/null; get "data['startOdometerKm']")"
 
 echo "== corrections and the 48-hour lock"
 B="{\"departAt\":\"$(iso -7300)\"}"

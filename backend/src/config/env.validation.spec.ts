@@ -98,3 +98,13 @@ describe('otpMayBeReturnedInResponse', () => {
     expect(otpMayBeReturnedInResponse('development', true)).toBe(false);
   });
 });
+
+describe('validateEnv — rate limits', () => {
+  it('lets a local test run switch them off', () => {
+    expect(() => validateEnv({ ...base, THROTTLE_DISABLED: 'true' })).not.toThrow();
+  });
+
+  it('refuses to start in production with them switched off', () => {
+    expect(() => validateEnv(prod({ THROTTLE_DISABLED: 'true' }))).toThrow(/THROTTLE_DISABLED/);
+  });
+});

@@ -39,6 +39,10 @@ export function validateEnv(config: Record<string, unknown>) {
 
   // ---- production-only, and non-negotiable ----
   if (isProd) {
+    // Rate limits are what stand between sign-in and a password-guessing script.
+    if (/^(1|true|yes)$/i.test(str('THROTTLE_DISABLED') ?? '')) {
+      errors.push('THROTTLE_DISABLED is for local test runs only; remove it in production');
+    }
     // Phone login is optional in production; when it is on, a real gateway is
     // mandatory, because without one the login code is returned in the API
     // response, which is full account takeover.

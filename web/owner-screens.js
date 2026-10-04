@@ -1,4 +1,4 @@
-/* Bato for bus owners: onboarding, dashboard, reminders, bus list and bus registration. */
+/* Batoma for bus owners: onboarding, dashboard, reminders, bus list and bus registration. */
 'use strict';
 
 /* ================= onboarding ================= */
@@ -8,27 +8,27 @@ SCREENS.onboard = async () => {
   return `
     <div class="onboard">
       ${pageHead(again ? 'Register another company' : `Welcome, ${esc(state.auth?.user?.name || '')}`,
-        again ? 'Each company has its own buses, crew and team.' : 'Start by telling Bato about your company. An individual owner with one bus registers the same way.')}
-      <form class="panel" onsubmit="registerCompany(event)" novalidate>
+        again ? 'Each company has its own buses, crew and team.' : 'Start by telling Batoma about your company. An individual owner with one bus registers the same way.')}
+      <form class="panel" data-submit="registerCompany" novalidate>
         <div class="form-grid" style="margin-top:0">
           ${fieldHtml({ name: 'name', label: 'Company or owner name', required: true, full: true, placeholder: 'e.g. Himalayan Express Travels', maxlength: 120 })}
           ${fieldHtml({ name: 'contactPhone', label: 'Contact phone', type: 'tel', required: true, placeholder: '98XXXXXXXX' })}
           ${fieldHtml({ name: 'contactEmail', label: 'Contact email', type: 'email', placeholder: 'office@example.com' })}
-          ${fieldHtml({ name: 'registrationNo', label: 'Company registration or PAN number', hint: 'Optional, but it helps Bato verify you faster.', maxlength: 40 })}
+          ${fieldHtml({ name: 'registrationNo', label: 'Company registration or PAN number', hint: 'Optional, but it helps Batoma verify you faster.', maxlength: 40 })}
           ${fieldHtml({ name: 'address', label: 'Office address', placeholder: 'e.g. Gongabu Bus Park, Kathmandu', maxlength: 200 })}
           ${fieldHtml({ name: 'description', label: 'About your service', type: 'textarea', full: true, placeholder: 'Routes you run and the kind of buses', maxlength: 1000 })}
         </div>
         <div class="error" id="onboardError" role="alert" hidden></div>
         <div class="modal-actions">
           <button class="btn btn-primary" type="submit">Register company</button>
-          ${again ? `<button class="btn btn-ghost" type="button" onclick="selectCompany(state.companies[0].id)">Cancel</button>` : `<button class="btn btn-ghost" type="button" onclick="signOut()">Sign out</button>`}
+          ${again ? `<button class="btn btn-ghost" type="button" data-action="selectFirstCompany">Cancel</button>` : `<button class="btn btn-ghost" type="button" data-action="signOut">Sign out</button>`}
         </div>
       </form>
       <div class="panel">
         <h2 style="font-size:17px;margin-bottom:6px">What happens next</h2>
         <ol class="muted" style="margin:0;padding-left:20px">
           <li>Add your buses by registration number. Each one gets its own QR code straight away.</li>
-          <li>Bato checks your company, usually within two working days.</li>
+          <li>Batoma checks your company, usually within two working days.</li>
           <li>Once verified, passengers can find your buses, scan the QR codes and leave reviews.</li>
         </ol>
       </div>
@@ -71,7 +71,7 @@ function reminderTarget(r){
 function reminderList(items, emptyText = 'Nothing needs attention. Every bus is serviced and every document is valid.'){
   if(!items.length) return empty(emptyText);
   return items.map((r) => `
-    <button class="rem" onclick="go('${esc(reminderTarget(r))}')">
+    <button class="rem" data-action="go" data-to="${esc(reminderTarget(r))}">
       <span class="dot ${r.severity}" aria-label="${r.severity === 'high' ? 'Urgent' : r.severity === 'medium' ? 'Soon' : 'To do'}"></span>
       <span><b>${esc(r.title)}</b><span>${esc(r.detail)}</span></span>
     </button>`).join('');
@@ -82,7 +82,7 @@ function reviewCard(r, { showBus = true } = {}){
   state.records.reviews[r.id] = r;
   const parts = PARTS.filter(([k]) => r[k]).map(([k, l]) => `${l} ${r[k]}`).join(' · ');
   const moderation = r.moderation === 'PENDING' ? pill(['Held for a moderator', 'warn'])
-    : r.moderation === 'REJECTED' ? pill(['Hidden by Bato', 'bad']) : '';
+    : r.moderation === 'REJECTED' ? pill(['Hidden by Batoma', 'bad']) : '';
   return `
     <article class="review">
       <div class="rv-top">
@@ -94,13 +94,23 @@ function reviewCard(r, { showBus = true } = {}){
       ${showBus && r.bus ? `<a class="rv-bus" href="#bus/${esc(r.bus.id)}/reviews"><span class="plate">${esc(r.bus.registrationNo)}</span>${esc(r.bus.label || '')}</a>` : ''}
       ${r.comment ? `<p>${esc(r.comment)}</p>` : ''}
       ${parts ? `<div class="muted small" style="margin-top:4px">${esc(parts)}</div>` : ''}
+      ${crewLine(r.crew)}
       ${r.suggestion ? `<div class="suggest"><b>Suggestion (only you see this):</b> ${esc(r.suggestion)}</div>` : ''}
       ${r.ownerReply ? `<div class="reply"><b>Your public reply</b> · ${fmtDay(r.ownerRepliedAt)}<br>${esc(r.ownerReply)}</div>` : ''}
       <div class="rv-actions">
-        ${canManage() ? `<button class="link" onclick="replyReview('${esc(r.id)}')">${r.ownerReply ? 'Edit reply' : 'Reply'}</button>` : ''}
-        <button class="link" onclick="reportReview('${esc(r.id)}')">Report to Bato</button>
+        ${canManage() ? `<button class="link" data-action="replyReview" data-id="${esc(r.id)}">${r.ownerReply ? 'Edit reply' : 'Reply'}</button>` : ''}
+        <button class="link" data-action="reportReview" data-id="${esc(r.id)}">Report to Batoma</button>
       </div>
     </article>`;
+}
+
+/** Which crew the review is about, from the duty log; never who wrote it. */
+function crewLine(crew){
+  if(!crew) return '';
+  if(crew.source === 'UNKNOWN') return '<div class="muted small rv-crew">Crew unknown: no trip or assignment covers this ride</div>';
+  const who = [crew.driver && `Driver ${esc(crew.driver.name)}`, crew.conductor && `Conductor ${esc(crew.conductor.name)}`].filter(Boolean).join(' · ');
+  const from = crew.source === 'TRIP' && crew.trip ? `trip of ${fmtDayBs(crew.trip.departAt)}, ${fmtTime(crew.trip.departAt)}` : 'crew assigned to the bus';
+  return `<div class="muted small rv-crew">${who || 'No driver recorded'} <span>(${from})</span></div>`;
 }
 
 function satisfactionBlock(s){
@@ -138,8 +148,8 @@ function performanceTable(rows){
   return `<div class="table-wrap"><table>
     <thead><tr><th>Bus</th><th>Status</th><th>Rating</th><th>Satisfied</th><th>Service</th><th>Documents</th><th>Breakdowns</th><th>Fuel</th><th>Driver</th></tr></thead>
     <tbody>${rows.map((b) => `
-      <tr class="row-link" onclick="go('bus/${esc(b.id)}')">
-        <td><a href="#bus/${esc(b.id)}" onclick="event.stopPropagation()"><span class="plate">${esc(b.registrationNo)}</span></a><div class="small">${esc(b.label || '')}</div></td>
+      <tr class="row-link" data-action="go" data-to="bus/${esc(b.id)}">
+        <td><a href="#bus/${esc(b.id)}" data-action="follow"><span class="plate">${esc(b.registrationNo)}</span></a><div class="small">${esc(b.label || '')}</div></td>
         <td>${pill(BUS_STATUS[b.status])}</td>
         <td>${ratingCell(b.rating)}</td>
         <td>${b.rating.satisfaction != null ? `${b.rating.satisfaction}%` : '—'}</td>
@@ -163,20 +173,20 @@ SCREENS.dashboard = async () => {
   const attention = t.serviceOverdue + t.documentsExpired + t.openIncidents;
   return `
     ${pageHead('Dashboard', `${esc(d.company.name)} · ${fmtDay(new Date())}`,
-      canManage() ? `<button class="btn btn-primary" onclick="newBus()">+ Register a bus</button>` : '')}
+      canManage() ? `<button class="btn btn-primary" data-action="newBus">+ Register a bus</button>` : '')}
     ${verificationBanner()}
     ${!t.buses ? `<div class="panel" style="text-align:center;padding:30px">
         <div style="font-size:40px" aria-hidden="true">🚌</div><h2>Register your first bus</h2>
-        <p class="muted">Add it by its registration number. Bato creates its QR code and starts tracking service, documents and reviews.</p>
-        ${canManage() ? '<button class="btn btn-primary" onclick="newBus()">+ Register a bus</button>' : ''}</div>` : ''}
+        <p class="muted">Add it by its registration number. Batoma creates its QR code and starts tracking service, documents and reviews.</p>
+        ${canManage() ? '<button class="btn btn-primary" data-action="newBus">+ Register a bus</button>' : ''}</div>` : ''}
     <div class="kpis">
-      ${kpi('🚌', 'Buses registered', t.buses, `${t.byStatus.ACTIVE} on the road · ${t.byStatus.IN_MAINTENANCE} in maintenance · ${t.byStatus.OFF_ROAD} off road`, "go('buses')")}
-      ${kpi('★', 'Passenger rating', s.average != null ? s.average.toFixed(1) : '—', s.reviews ? `${plural(s.reviews, 'review')} · ${s.last30Reviews} in the last 30 days` : 'No reviews yet', "go('feedback')")}
-      ${kpi('😊', 'Satisfied passengers', s.satisfiedPercent != null ? `${s.satisfiedPercent}%` : '—', 'Rated their ride 4 or 5 stars', "go('feedback')")}
-      ${kpi('⚠', 'Needs attention', attention, `${t.serviceOverdue} overdue service · ${t.documentsExpired} expired documents · ${t.openIncidents} open breakdowns`, "go('reminders')", attention ? 'alert' : '')}
-      ${kpi('🔧', 'Due soon', t.serviceDueSoon + t.documentsExpiring, `${plural(t.serviceDueSoon, 'service')} · ${plural(t.documentsExpiring, 'document')} expiring within 30 days`, "go('reminders')")}
+      ${kpi('🚌', 'Buses registered', t.buses, `${t.byStatus.ACTIVE} on the road · ${t.byStatus.IN_MAINTENANCE} in maintenance · ${t.byStatus.OFF_ROAD} off road`, 'buses')}
+      ${kpi('★', 'Passenger rating', s.average != null ? s.average.toFixed(1) : '—', s.reviews ? `${plural(s.reviews, 'review')} · ${s.last30Reviews} in the last 30 days` : 'No reviews yet', 'feedback')}
+      ${kpi('😊', 'Satisfied passengers', s.satisfiedPercent != null ? `${s.satisfiedPercent}%` : '—', 'Rated their ride 4 or 5 stars', 'feedback')}
+      ${kpi('⚠', 'Needs attention', attention, `${t.serviceOverdue} overdue service · ${t.documentsExpired} expired documents · ${t.openIncidents} open breakdowns`, 'reminders', attention ? 'alert' : '')}
+      ${kpi('🔧', 'Due soon', t.serviceDueSoon + t.documentsExpiring, `${plural(t.serviceDueSoon, 'service')} · ${plural(t.documentsExpiring, 'document')} expiring within 30 days`, 'reminders')}
       ${kpi('⛽', 'Fuel, last 30 days', npr(d.fuel.last30CostNpr), `${num(d.fuel.last30Litres)} L${d.fuel.fleetKmPerLitre ? ` · ${d.fuel.fleetKmPerLitre} km/l average` : ''}`)}
-      ${kpi('👤', 'Drivers', t.drivers, `${t.crew} crew in total · ${plural(t.busesWithoutDriver, 'bus', 'buses')} without a driver`, "go('crew')")}
+      ${kpi('👤', 'Drivers', t.drivers, `${t.crew} crew in total · ${plural(t.busesWithoutDriver, 'bus', 'buses')} without a driver`, 'crew')}
     </div>
     <div class="grid-2">
       <section class="panel"><div class="panel-head"><h2>Reminders</h2><a class="link" href="#reminders">See all (${d.reminders.length})</a></div>
@@ -189,7 +199,7 @@ SCREENS.dashboard = async () => {
         ${d.recentReviews.length ? d.recentReviews.slice(0, 4).map((r) => reviewCard(r)).join('') : empty('No reviews yet.')}</section>
       <section class="panel"><div class="panel-head"><h2>Open breakdowns</h2></div>
         ${d.openIncidents.length ? d.openIncidents.map((i) => `
-          <button class="rem" onclick="go('bus/${esc(i.bus.id)}/breakdowns')">
+          <button class="rem" data-action="go" data-to="bus/${esc(i.bus.id)}/breakdowns">
             <span class="dot ${i.severity === 'MINOR' ? 'medium' : 'high'}"></span>
             <span><b>${esc(INCIDENT_KIND[i.kind])} · ${esc(i.bus.plateNo)}</b>
               <span>${esc(i.description)}${i.location ? ` · ${esc(i.location)}` : ''} · ${fmtDateTime(i.occurredAt)}</span></span>
@@ -209,8 +219,8 @@ SCREENS.reminders = async () => {
   state.unread = n.unread;
   renderShell();
   return `
-    ${pageHead('Reminders', 'What needs doing across your fleet, and updates from Bato.',
-      n.unread ? `<button class="btn btn-ghost" onclick="markAllRead()">Mark all as read</button>` : '')}
+    ${pageHead('Reminders', 'What needs doing across your fleet, and updates from Batoma.',
+      n.unread ? `<button class="btn btn-ghost" data-action="markAllRead">Mark all as read</button>` : '')}
     ${verificationBanner()}
     <div class="grid-2">
       <section class="panel"><div class="panel-head"><h2>Needs attention (${d.reminders.length})</h2></div>
@@ -219,7 +229,7 @@ SCREENS.reminders = async () => {
       </section>
       <section class="panel"><div class="panel-head"><h2>Updates</h2>${n.unread ? `<span class="pill info">${n.unread} unread</span>` : ''}</div>
         ${n.items.length ? n.items.map((x) => `
-          <button class="rem" onclick="go('${x.vehicle ? `bus/${esc(x.vehicle.id)}` : 'dashboard'}')">
+          <button class="rem" data-action="go" data-to="${x.vehicle ? `bus/${esc(x.vehicle.id)}` : 'dashboard'}">
             <span class="dot ${x.readAt ? '' : 'high'}" aria-label="${x.readAt ? 'Read' : 'Unread'}"></span>
             <span><b style="${x.readAt ? 'font-weight:600' : ''}">${esc(x.title)}</b><span>${esc(x.body)} · ${fmtDateTime(x.createdAt)}</span></span>
           </button>`).join('') : empty('No updates yet.')}
@@ -247,23 +257,23 @@ SCREENS.buses = async () => {
   const data = await api(`/fleet/companies/${state.companyId}/buses?${qs}`);
   return `
     ${pageHead('Buses', `${plural(data.meta.total, f.archived ? 'archived bus' : 'bus', f.archived ? 'archived buses' : 'buses')}${f.q || f.status ? ' match' : ''}`,
-      canManage() ? `<button class="btn btn-primary" onclick="newBus()">+ Register a bus</button>` : '')}
+      canManage() ? `<button class="btn btn-primary" data-action="newBus">+ Register a bus</button>` : '')}
     ${verificationBanner()}
-    <form class="filters" role="search" onsubmit="event.preventDefault(); filterBuses({ q: this.elements.q.value.trim() })">
+    <form class="filters" role="search" data-submit="searchBuses">
       <input name="q" type="search" placeholder="Search by registration number or bus name" value="${esc(f.q)}" aria-label="Search buses">
-      <select aria-label="Status" onchange="filterBuses({ status: this.value })">
+      <select aria-label="Status" data-change="filterBuses" data-field="status">
         <option value="">All statuses</option>
         ${Object.entries(BUS_STATUS).map(([k, [l]]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
-      <label class="check"><input type="checkbox" ${f.archived ? 'checked' : ''} onchange="filterBuses({ archived: this.checked })"> Archived</label>
+      <label class="check"><input type="checkbox" ${f.archived ? 'checked' : ''} data-change="filterBuses" data-field="archived"> Archived</label>
       <button class="btn btn-ghost" type="submit">Search</button>
     </form>
     ${data.items.length ? `<div class="bus-grid">${data.items.map(busCard).join('')}</div>`
       : empty(f.q || f.status || f.archived ? 'No buses match.' : 'No buses yet. Register your first bus by its registration number.')}
     ${data.meta.pages > 1 ? `<div class="pager">
-      <button class="btn btn-ghost btn-sm" ${data.meta.page <= 1 ? 'disabled' : ''} onclick="filterBuses({ page: ${data.meta.page - 1} }, true)">← Previous</button>
+      <button class="btn btn-ghost btn-sm" ${data.meta.page <= 1 ? 'disabled' : ''} data-action="busesPage" data-page="${data.meta.page - 1}">← Previous</button>
       <span class="muted small">Page ${data.meta.page} of ${data.meta.pages}</span>
-      <button class="btn btn-ghost btn-sm" ${data.meta.page >= data.meta.pages ? 'disabled' : ''} onclick="filterBuses({ page: ${data.meta.page + 1} }, true)">Next →</button></div>` : ''}`;
+      <button class="btn btn-ghost btn-sm" ${data.meta.page >= data.meta.pages ? 'disabled' : ''} data-action="busesPage" data-page="${data.meta.page + 1}">Next →</button></div>` : ''}`;
 };
 
 function filterBuses(patch, keepPage){
@@ -291,7 +301,7 @@ function busCard(b){
 function busFields(routes, isEdit){
   return [
     { name: 'registrationNo', label: 'Registration number', required: true, placeholder: 'e.g. BA 1 KHA 2345', maxlength: 30,
-      hint: 'As written on the number plate. A bus can only be registered on Bato once.' },
+      hint: 'As written on the number plate. A bus can only be registered on Batoma once.' },
     { name: 'label', label: 'Bus name', placeholder: 'e.g. Everest Deluxe 01', maxlength: 60 },
     { name: 'busType', label: 'Type', type: 'select', options: [['', 'Choose a type'], ...Object.entries(BUS_TYPE)] },
     { name: 'seatCount', label: 'Seats', type: 'number', min: 1, max: 120 },

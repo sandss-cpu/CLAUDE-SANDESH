@@ -355,6 +355,15 @@ export class AdminCompanyQueryDto {
 
 /** On an edit, an empty field clears the value, which is different from leaving it out. */
 const blankToNull = () => Transform(({ value }) => (value === '' ? null : value));
+/**
+ * A number that may be cleared. It reads the raw request value: the validation pipe's
+ * implicit conversion has already turned "" into 0 by the time `value` arrives, so
+ * clearing an odometer reading recorded 0 km.
+ */
+const nullableNumber = () => Transform(({ obj, key }) => {
+  const raw = obj[key];
+  return raw === '' || raw === null ? null : raw === undefined ? undefined : Number(raw);
+});
 
 /**
  * Two taps on the duty screen: the bus, then confirm. The crew defaults to whoever is
@@ -403,10 +412,10 @@ export class UpdateTripDto {
   @blankToNull() @IsOptional() @IsUUID('4') conductorId?: string | null;
   @blankToNull() @IsOptional() @IsUUID('4') helperId?: string | null;
 
-  @blankToNull() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  @nullableNumber() @IsOptional() @IsInt() @Min(0) @Max(5_000_000)
   startOdometerKm?: number | null;
 
-  @blankToNull() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  @nullableNumber() @IsOptional() @IsInt() @Min(0) @Max(5_000_000)
   endOdometerKm?: number | null;
 
   /** Cancelling keeps the record (and any reviews on it) but takes it out of every report. */

@@ -151,6 +151,14 @@ services:
       - path: /config.js
         name: Cache-Control
         value: no-cache
+      # Scripts revalidate too: a page from a new deploy running an old script (or the
+      # other way round) breaks in ways nobody can reproduce.
+      - path: /*.js
+        name: Cache-Control
+        value: no-cache
+      - path: /js/*
+        name: Cache-Control
+        value: no-cache
       - path: /manifest.json
         name: Cache-Control
         value: no-cache

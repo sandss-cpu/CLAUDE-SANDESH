@@ -21,7 +21,8 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
 | `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
-| `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order |
+| `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order. `owner-actions.js` registers what its markup may ask for; `owner-trips.js` is the duty log and the crew's duty screen |
+| `web/js/lib/bs-date.js` | Bikram Sambat dates, generated from `backend/src/common/utils/bs-date.ts` by `scripts/sync-web-libs.mjs`; never edit it by hand |
 | `web/config.js` | API address; overwritten by the Render static-site build |
 | `render.yaml` | Deployment blueprint (Postgres, API with uploads disk, static site) |
 
@@ -59,7 +60,9 @@ npm run seed:guides            # demo road guides
 npm run seed:itinerary         # demo place itinerary (three days in Pokhara)
 npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
-bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming (restart the API first)
+bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming
+bash scripts/trips_smoke.sh ../Bato_Test_Accounts.md         # duty log (run the API with THROTTLE_DISABLED=true)
+node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts
 npm test                       # unit tests over the pure logic, including content-for
 ```
 
@@ -148,6 +151,12 @@ when a signed-in user should be recognised but anonymous access is still allowed
   pure function that decides the shelf (unit-tested); the scan, the offline pack and the
   admin preview all call it. Editors and admins change programming; moderators can read it.
   `RouteNotice` is a road alert for a route and direction
+- **trips** (in `fleet`): the duty log. A `Trip` is one run of one bus in one direction with
+  its crew; one per bus at a time (`trip_one_in_progress`). `TripsService.crewAt()` puts a
+  review against the crew on duty at the moment of the scan; `directionNow()` tells the
+  scan which way the bus is going. Members with the CREW role can only use the `DUTY`
+  level (the duty screen); trips lock 48 hours after departure and owners reopen them
+  with a reason
 - **audit**: `AuditService.record()` writes the append-only `AuditEvent` for admin,
   finance and security changes, in the caller's transaction. Programming's history is read
   from it
@@ -205,9 +214,9 @@ stamped rows 5h45 in the future, and a test that cleaned up "everything created 
 started" deleted them. Use `CURRENT_TIMESTAMP AT TIME ZONE 'UTC'` in migrations, and clean
 up test data by who created it, not only by when.
 
-**Smoke scripts share the sign-in rate limit** (five sign-ins per 15 minutes per address).
-Running `programming_smoke.sh` and `fleet_smoke.sh` back to back fails with 429s; restart
-the API between them, which clears the in-memory throttle.
+**Smoke scripts sign in more often than the rate limit allows** (five sign-ins per 15
+minutes per address). Run the API with `THROTTLE_DISABLED=true` for local test runs;
+production refuses to start with it set.
 
 **`prisma generate` needs network access** to `binaries.prisma.sh`. In restricted
 sandboxes it fails. The workaround used during development was a generated type stub

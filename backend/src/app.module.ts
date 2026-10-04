@@ -40,7 +40,12 @@ import { SettingsModule } from './modules/settings/settings.module';
   imports: [
     // Refuses to start on an unsafe configuration rather than starting quietly.
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 120 }],
+      // Local test runs sign in many accounts back to back; production refuses to boot
+      // with this set (env.validation.ts), so it can only ever switch limits off locally.
+      skipIf: () => process.env.NODE_ENV !== 'production' && /^(1|true|yes)$/i.test(process.env.THROTTLE_DISABLED ?? ''),
+    }),
     // Drives the nightly subscription expiry job.
     ScheduleModule.forRoot(),
     ServeStaticModule.forRoot({
