@@ -8,7 +8,6 @@
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND="$ROOT/backend"
-WEB="$ROOT/web"
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -94,7 +93,9 @@ fi
 # pages cannot call the API from any other port.
 if ! up http://localhost:5173/preview.html; then
   step "Starting the web server…"
-  (cd "$WEB" && nohup python3 -m http.server 5173 > /tmp/bato_web_server.log 2>&1 &)
+  # Node rather than python -m http.server: sticker links (/b/<code>) need a rewrite to
+  # the reader, and macOS refuses the system Python access to a copy kept on the Desktop.
+  (cd "$ROOT" && nohup node scripts/dev-web-server.mjs > /tmp/bato_web_server.log 2>&1 &)
   sleep 1
 fi
 

@@ -13,7 +13,10 @@ PSQL=${PSQL:-"$HOME/Applications/Postgres.app/Contents/Versions/16/bin/psql"}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 R="$HERE/_resp.json"
 export PGPASSWORD=${PGPASSWORD:-travel}
-sql(){ "$PSQL" -U travel -h localhost -d travel_magazine -tAc "$1"; }
+# The database the API itself uses, so checks never read one copy's data and write another's.
+PGDATABASE=${PGDATABASE:-$(sed -n 's#^DATABASE_URL=.*/\([^/?"]*\)?.*#\1#p' "$HERE/../.env" 2>/dev/null)}
+PGDATABASE=${PGDATABASE:-travel_magazine}
+sql(){ "$PSQL" -U travel -h localhost -d "$PGDATABASE" -tAc "$1"; }
 
 pass=0; fail=0
 ok(){
@@ -212,6 +215,9 @@ ok "owner cannot mint seat stickers" 403 "$(call POST /qr/batch "$OWNER" "$B")"
 ok "old anonymous feedback route gone" 404 "$(call POST /operators/feedback "" '{}')"
 ok "pending owner sees status" PENDING "$(call GET /fleet/companies "$PENDING" >/dev/null; get "data[0]['verification']")"
 PCID=$(get "data[0]['id']")
+# The admin checks below move this company to VERIFIED and back to PENDING. Whatever state
+# someone left it in by hand is put back at the end.
+PC_STATE=$(sql "select verification || '|' || coalesce(\"verificationNote\", '') from operators where id='$PCID'")
 
 echo "== admin"
 B="{\"email\":\"tester.admin@bato.test\",\"password\":\"$(pw tester.admin@bato.test)\"}"
@@ -245,7 +251,8 @@ ok "delete throwaway bus" 200 "$(call DELETE /fleet/buses/$SB "$OWNER")"
 sql "delete from reports where detail='smoke test' or \"targetId\"='$RV';
      delete from moderation_entries where note='smoke test';
      delete from fleet_notifications where \"operatorId\"='$PCID' and \"createdAt\" >= '$START';
-     update operators set \"verificationNote\"=null where id='$PCID';" >/dev/null
+     update operators set verification='${PC_STATE%%|*}', \"verificationNote\"=nullif(\$note\$${PC_STATE#*|}\$note\$, '')
+      where id='$PCID';" >/dev/null
 
 rm -f "$R"
 echo

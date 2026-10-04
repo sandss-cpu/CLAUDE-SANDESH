@@ -3,3 +3,5 @@ dist
 .env
 uploads
 *.log
+.bato_seeded
+scripts/_resp.json
