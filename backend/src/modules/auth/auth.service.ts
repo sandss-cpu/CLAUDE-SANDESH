@@ -3,7 +3,7 @@ import {
   Injectable, Logger, NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { EmailTokenType, Role, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
@@ -383,7 +383,7 @@ export class AuthService {
     return { id: u.id, name: u.name, phone: u.phone, email: u.email, role: u.role, language: u.language };
   }
 
-  private scopedToken(sub: string, scope: string, expiresIn: string) {
+  private scopedToken(sub: string, scope: string, expiresIn: JwtSignOptions['expiresIn']) {
     return this.jwt.signAsync({ sub, scope }, { expiresIn });
   }
 
