@@ -136,7 +136,7 @@ export class OperatorsService {
 
     const [articles, businesses, feedback] = await Promise.all([
       this.prisma.article.findMany({
-        where: { status: 'PUBLISHED', routeLinks: { some: { routeId } } },
+        where: { status: 'PUBLISHED', placements: { some: { scope: 'ROUTE', routeId } } },
         select: {
           id: true, slug: true, title: true, coverImageUrl: true, readMinutes: true,
         },

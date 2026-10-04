@@ -215,6 +215,7 @@ model User {
   operatorLinks     OperatorAdmin[]
   busReviews        RideFeedback[]
   creatorProfile    CreatorProfile?   @relation("CreatorUser")
+  placementsMade    ContentPlacement[] @relation("PlacementAuthor")
 
   @@index([role])
   @@map("users")
@@ -298,7 +299,8 @@ model Route {
 
   vehicles        Vehicle[]
   qrCodes         QrCode[]
-  articleLinks    ArticleRoute[]
+  placements      ContentPlacement[]
+  notices         RouteNotice[]
   businessTargets BusinessRouteTarget[]
   adTargets       AdRouteTarget[]
   guides          RouteGuide[]
@@ -359,6 +361,7 @@ model Operator {
   admins        OperatorAdmin[]
   drivers       Driver[]
   notifications FleetNotification[]
+  placements    ContentPlacement[]
 
   @@index([verification])
   @@map("operators")
@@ -416,6 +419,7 @@ model Vehicle {
   fuelLogs     FuelLog[]
   assignments  DriverAssignment[]
   notifications FleetNotification[]
+  placements   ContentPlacement[]
 
   @@unique([operatorId, plateNo])
   @@index([operatorId, isActive])
@@ -529,23 +533,120 @@ model Article {
   sourcePost Post?     @relation("ElevatedPost", fields: [sourcePostId], references: [id])
   sponsor    Business? @relation(fields: [sponsorBusinessId], references: [id])
 
-  routeLinks   ArticleRoute[]
+  placements   ContentPlacement[]
   destinations ArticleDestination[]
 
   @@index([status, publishedAt])
   @@map("articles")
 }
 
-/// Route-aware content: which corridors an article belongs to.
-model ArticleRoute {
-  articleId String
-  routeId   String
-  sortOrder Int    @default(0)
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  route     Route   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+// ------------------------- CONTENT PROGRAMMING -------------------------
 
-  @@id([articleId, routeId])
-  @@map("article_routes")
+/// How widely a placement applies. A bus sees, in order: its own placements, its
+/// company's, its route's for its direction, its route's for both directions, then
+/// the DEFAULT list and the current issue. See programming/content-for.ts.
+enum PlacementScope {
+  DEFAULT
+  ROUTE
+  OPERATOR
+  VEHICLE
+}
+
+/// One article placed in front of travellers: on every bus, on a route, on one
+/// company's buses or on one bus. Which columns are set is checked in SQL
+/// (placement_target); one article sits in a slot once (placement_slot, an
+/// expression index Prisma cannot describe).
+model ContentPlacement {
+  id          String         @id @default(uuid())
+  articleId   String
+  scope       PlacementScope
+  /// Required for ROUTE. On OPERATOR and VEHICLE it narrows the placement to that
+  /// road, so a story chosen for one journey stops when the bus moves to another.
+  routeId     String?
+  operatorId  String?
+  vehicleId   String?
+  direction   GuideDirection @default(BOTH)
+  position    Int            @default(0)
+  /// The lead story for its slot. Pinning one unpins the rest of the slot.
+  isPinned    Boolean        @default(false)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  /// 0 = Sunday … 6 = Saturday, in Asia/Kathmandu. Empty means every day. For a window
+  /// that runs past midnight, the day is the one the window opened on.
+  daysOfWeek  Int[]          @default([])
+  /// "HH:MM" in Asia/Kathmandu. timeFrom later than timeTo runs past midnight (night buses).
+  timeFrom    String?
+  timeTo      String?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  article   Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  route     Route?    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  operator  Operator? @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("PlacementAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([scope, routeId, direction])
+  @@index([operatorId])
+  @@index([vehicleId])
+  @@index([articleId])
+  @@map("content_placements")
+}
+
+enum NoticeSeverity {
+  INFO
+  WARNING
+  DANGER
+}
+
+/// A road alert shown at the top of the reader for one route and direction:
+/// a landslide, a closure, festival traffic.
+model RouteNotice {
+  id          String         @id @default(uuid())
+  routeId     String
+  direction   GuideDirection @default(BOTH)
+  severity    NoticeSeverity @default(INFO)
+  title       String
+  titleNe     String?
+  body        String?
+  bodyNe      String?
+  startsAt    DateTime       @default(now())
+  endsAt      DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([routeId, startsAt])
+  @@map("route_notices")
+}
+
+/// Append-only record of admin, finance and security changes: who did what, to which
+/// row, and what it looked like before and after. No foreign keys, so the history
+/// outlives what it describes. routeId and operatorId are copied in so a route's or a
+/// company's history can be read without joining through rows that may be gone.
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  before     Json?
+  after      Json?
+  routeId    String?
+  operatorId String?
+  ipHash     String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([routeId, createdAt])
+  @@index([operatorId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_events")
 }
 
 model Destination {

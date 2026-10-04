@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ContentStatus, Prisma } from '@prisma/client';
+import { ContentStatus, PlacementScope, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { readMinutes, uniqueSlug } from '../../common/utils/slug.util';
@@ -29,7 +29,7 @@ export class MagazineService {
       ...(q.issueId ? { issueId: q.issueId } : {}),
       ...(q.language ? { language: q.language } : {}),
       ...(q.featuredOnly ? { isFeatured: true } : {}),
-      ...(q.routeId ? { routeLinks: { some: { routeId: q.routeId } } } : {}),
+      ...(q.routeId ? { placements: { some: { scope: PlacementScope.ROUTE, routeId: q.routeId } } } : {}),
       ...(q.destinationSlug
         ? { destinations: { some: { destination: { slug: q.destinationSlug } } } }
         : {}),
@@ -65,7 +65,10 @@ export class MagazineService {
         author: { select: { id: true, name: true, avatarUrl: true, homeDistrict: true } },
         issue: { select: { id: true, number: true, title: true } },
         sponsor: { select: { id: true, slug: true, name: true, category: true } },
-        routeLinks: { include: { route: { select: { id: true, code: true, name: true } } } },
+        placements: {
+          where: { scope: PlacementScope.ROUTE },
+          select: { route: { select: { id: true, code: true, name: true } } },
+        },
         destinations: {
           include: {
             destination: {
@@ -86,9 +89,10 @@ export class MagazineService {
 
     return {
       ...article,
-      routes: article.routeLinks.map((r) => r.route),
+      // One entry per route, though an article may be placed there for each direction.
+      routes: [...new Map(article.placements.map((p) => [p.route.id, p.route])).values()],
       places: article.destinations.map((d) => d.destination),
-      routeLinks: undefined,
+      placements: undefined,
       destinations: undefined,
       counts: { reactions, comments },
     };
@@ -177,7 +181,7 @@ export class MagazineService {
       include: {
         category: { select: { id: true, slug: true, name: true } },
         issue: { select: { id: true, number: true, title: true } },
-        routeLinks: { select: { routeId: true } },
+        placements: { where: { scope: PlacementScope.ROUTE }, select: { routeId: true, direction: true } },
         destinations: { select: { destinationId: true } },
       },
     });
@@ -225,8 +229,8 @@ export class MagazineService {
         isSponsored: dto.isSponsored ?? false,
         isFeatured: dto.isFeatured ?? false,
         sponsorBusinessId: dto.sponsorBusinessId,
-        routeLinks: dto.routeIds?.length
-          ? { create: dto.routeIds.map((routeId) => ({ routeId })) }
+        placements: dto.routeIds?.length
+          ? { create: dto.routeIds.map((routeId, position) => ({ scope: PlacementScope.ROUTE, routeId, position, createdById: authorId })) }
           : undefined,
         destinations: dto.destinationIds?.length
           ? { create: dto.destinationIds.map((destinationId) => ({ destinationId })) }
@@ -239,15 +243,7 @@ export class MagazineService {
     const existing = await this.prisma.article.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Article not found');
 
-    if (dto.routeIds) {
-      await this.prisma.articleRoute.deleteMany({ where: { articleId: id } });
-      if (dto.routeIds.length) {
-        await this.prisma.articleRoute.createMany({
-          data: dto.routeIds.map((routeId) => ({ articleId: id, routeId })),
-          skipDuplicates: true,
-        });
-      }
-    }
+    if (dto.routeIds) await this.syncRoutes(id, dto.routeIds);
 
     return this.prisma.article.update({
       where: { id },
@@ -268,6 +264,34 @@ export class MagazineService {
             ? new Date()
             : undefined,
       },
+    });
+  }
+
+  /**
+   * "On these routes" from the article API, kept for callers that set routes in one go.
+   * Routes no longer listed lose the article in every direction; new ones get it for
+   * both directions at the end of their list. Pins and schedules on routes that stay
+   * are left alone — Route programming is where those are managed.
+   */
+  private async syncRoutes(articleId: string, routeIds: string[]) {
+    const current = await this.prisma.contentPlacement.findMany({
+      where: { articleId, scope: PlacementScope.ROUTE }, select: { routeId: true },
+    });
+    const have = new Set(current.map((p) => p.routeId));
+    const want = new Set(routeIds);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.contentPlacement.deleteMany({
+        where: { articleId, scope: PlacementScope.ROUTE, routeId: { notIn: [...want] } },
+      });
+      for (const routeId of want) {
+        if (have.has(routeId)) continue;
+        const last = await tx.contentPlacement.aggregate({
+          where: { scope: PlacementScope.ROUTE, routeId, direction: 'BOTH' }, _max: { position: true },
+        });
+        await tx.contentPlacement.create({
+          data: { articleId, scope: PlacementScope.ROUTE, routeId, position: (last._max.position ?? -1) + 1 },
+        });
+      }
     });
   }
 
@@ -324,8 +348,8 @@ export class MagazineService {
           categoryId: dto.categoryId,
           issueId: dto.issueId,
           sourcePostId: post.id,
-          routeLinks: dto.routeIds?.length
-            ? { create: dto.routeIds.map((routeId) => ({ routeId })) }
+          placements: dto.routeIds?.length
+            ? { create: dto.routeIds.map((routeId) => ({ scope: PlacementScope.ROUTE, routeId, createdById: editorId })) }
             : undefined,
         },
       });

@@ -223,7 +223,7 @@ By late morning, air heated on the Terai plains is drawn north through the gorge
         publishedAt: new Date(),
         isFeatured: (a as any).isFeatured ?? false,
         readMinutes: Math.max(1, Math.round(a.body.split(/\s+/).length / 200)),
-        routeLinks: { create: a.routeIds.map((routeId) => ({ routeId })) },
+        placements: { create: a.routeIds.map((routeId, position) => ({ scope: 'ROUTE' as const, routeId, position })) },
         destinations: (a as any).destinationIds?.length
           ? { create: (a as any).destinationIds.map((destinationId: string) => ({ destinationId })) }
           : undefined,

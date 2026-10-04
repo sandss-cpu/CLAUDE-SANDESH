@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  ContentStatus, GuideDirection, GuideKind, Prisma, RouteGuide,
+  ContentStatus, GuideDirection, GuideKind, PlacementScope, Prisma, RouteGuide,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
@@ -165,7 +165,7 @@ export class GuidesService {
         status: ContentStatus.PUBLISHED,
         ...(isPlace
           ? { destinations: { some: { destinationId: guide.destinationId } } }
-          : { routeLinks: { some: { routeId: guide.routeId } } }),
+          : { placements: { some: { scope: PlacementScope.ROUTE, routeId: guide.routeId } } }),
       },
       orderBy: [{ isFeatured: 'desc' }, { publishedAt: 'desc' }],
       take: 6,

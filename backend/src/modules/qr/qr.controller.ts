@@ -16,7 +16,7 @@ export class QrController {
   @Public()
   @Post('r/:code')
   resolve(@Param('code') code: string, @Body() dto: ResolveScanDto, @Ip() ip: string) {
-    return this.qr.resolve(code, dto.sessionId, ip);
+    return this.qr.resolve(code, dto, ip);
   }
 
   @Public()

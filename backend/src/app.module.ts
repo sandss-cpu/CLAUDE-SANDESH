@@ -8,6 +8,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
 import { PrismaModule } from './common/prisma/prisma.module';
+import { AuditModule } from './common/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -27,6 +28,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { SafetyModule } from './modules/safety/safety.module';
 import { MediaModule } from './modules/media/media.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ProgrammingModule } from './modules/programming/programming.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdsModule } from './modules/ads/ads.module';
 import { FleetModule } from './modules/fleet/fleet.module';
@@ -46,6 +48,7 @@ import { SettingsModule } from './modules/settings/settings.module';
       serveRoot: '/static',
     }),
     PrismaModule,
+    AuditModule,
     AuthModule,
     UsersModule,
     QrModule,
@@ -65,6 +68,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     GuidesModule,
     CreatorsModule,
     SettingsModule,
+    ProgrammingModule,
     HealthModule,
   ],
   providers: [
