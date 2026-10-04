@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { needsReview } from '../../common/utils/content-filter';
 import { ModerationService } from '../moderation/moderation.service';
+import { TripsService } from './trips.service';
 import { FleetAccessService, parseDate } from './fleet-access.service';
 import { ownerReviewView } from './fleet.service';
 import { OwnerReportDto, ReviewListQueryDto, SubmitReviewDto } from './dto/fleet.dto';
@@ -26,7 +27,7 @@ const REPEAT_WINDOW_MS = 20 * 3_600_000;
  */
 const MAX_ANONYMOUS_PER_NETWORK_PER_BUS = 25;
 
-interface ScanClaims { sub: string; scope: string; vid?: string; oid?: string }
+interface ScanClaims { sub: string; scope: string; vid?: string; oid?: string; iat?: number }
 
 const excerpt = (s: string | null | undefined, max = 160) =>
   !s ? '' : s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
@@ -54,6 +55,7 @@ export class BusReviewsService {
     private config: ConfigService,
     private moderation: ModerationService,
     private access: FleetAccessService,
+    private trips: TripsService,
   ) {}
 
   private hashIp(ip: string) {
@@ -257,6 +259,8 @@ export class BusReviewsService {
     const bus = await this.publicBus(busId);
 
     let qrCodeId: string | null = null;
+    // When the passenger was on the bus: the scan, if they scanned; otherwise now.
+    let rideAt = new Date();
     if (dto.scanToken) {
       const claims = await this.readScanToken(dto.scanToken);
       const matches = claims && (claims.vid ? claims.vid === busId : claims.oid === bus.operatorId);
@@ -267,6 +271,7 @@ export class BusReviewsService {
         });
       }
       qrCodeId = claims.sub;
+      if (claims.iat) rideAt = new Date(claims.iat * 1000);
     }
 
     let userId: string | null = null;
@@ -309,9 +314,12 @@ export class BusReviewsService {
     }
 
     const held = needsReview(dto.comment, dto.suggestion);
+    // The crew on duty is decided here, from the duty log, never taken from the passenger.
+    const crew = await this.trips.crewAt(busId, rideAt);
     const review = await this.prisma.rideFeedback.create({
       data: {
         vehicleId: busId, routeId: bus.routeId, sessionId: dto.sessionId ?? null, userId, ipHash, qrCodeId,
+        tripId: crew.tripId, driverId: crew.driverId, conductorId: crew.conductorId,
         overall: dto.overall, cleanliness: dto.cleanliness, driving: dto.driving, punctuality: dto.punctuality,
         staff: dto.staff, comment: dto.comment, suggestion: dto.suggestion, tripDate,
         moderation: held ? ModerationStatus.PENDING : ModerationStatus.APPROVED,

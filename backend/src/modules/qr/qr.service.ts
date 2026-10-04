@@ -5,6 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { shortCode } from '../../common/utils/slug.util';
 import { CreateQrBatchDto, ResolveScanDto } from './dto/qr.dto';
 import { BusReviewsService } from '../fleet/bus-reviews.service';
+import { TripsService } from '../fleet/trips.service';
 import { PROGRAMME_CARD, ProgrammingService } from '../programming/programming.service';
 import { Prisma } from '@prisma/client';
 
@@ -17,6 +18,7 @@ export class QrService {
     private config: ConfigService,
     private busReviews: BusReviewsService,
     private programming: ProgrammingService,
+    private trips: TripsService,
   ) {}
 
   /**
@@ -70,8 +72,9 @@ export class QrService {
      */
     const route = qr.vehicle ? qr.vehicle.route : qr.route;
     const routeId = route?.id;
-    // The traveller's choice of direction, until a driver's trip log can say (Feature 5).
-    const direction = dto.direction ?? null;
+    // A trip the crew started says which way the bus is going; otherwise the traveller's tap does.
+    const tripDirection = qr.vehicle ? await this.trips.directionNow(qr.vehicle.id) : null;
+    const direction = tripDirection ?? dto.direction ?? null;
 
     const [programme, notices, corridorBusinesses] = await Promise.all([
       this.programming.programmeFor({
@@ -122,6 +125,8 @@ export class QrService {
       bus,
       route,
       direction,
+      /** TRIP when the crew's duty log decided it, so the reader does not ask. */
+      directionSource: tripDirection ? 'TRIP' : direction ? 'TRAVELLER' : null,
       currentIssue: programme.issue,
       /** The lead story first, then up to twelve more: this bus's shelf. */
       routeArticles: shelf,

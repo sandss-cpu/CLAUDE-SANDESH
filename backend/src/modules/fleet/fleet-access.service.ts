@@ -4,8 +4,12 @@ import { OperatorMemberRole } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
 
-/** VIEW: any member. MANAGE: day-to-day records. OWN: company details, team and deleting buses. */
-export type AccessLevel = 'VIEW' | 'MANAGE' | 'OWN';
+/**
+ * DUTY: start and end trips — every member, including CREW (conductors).
+ * VIEW: read the company's records. MANAGE: day-to-day records. Both are owners and managers.
+ * OWN: company details, team, deleting buses and reopening locked trips — owners only.
+ */
+export type AccessLevel = 'DUTY' | 'VIEW' | 'MANAGE' | 'OWN';
 
 /**
  * Company membership is the only thing that grants access to fleet records;
@@ -42,6 +46,10 @@ export class FleetAccessService {
   private require(role: OperatorMemberRole, level: AccessLevel) {
     if (level === 'OWN' && role !== OperatorMemberRole.OWNER) {
       throw new ForbiddenException('Only a company owner can do this.');
+    }
+    // A crew account exists to log trips from a phone; everything else stays with the office.
+    if (role === OperatorMemberRole.CREW && level !== 'DUTY') {
+      throw new ForbiddenException('Crew accounts can only start and end trips.');
     }
   }
 

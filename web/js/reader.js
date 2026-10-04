@@ -304,6 +304,11 @@ function applyScan(code, data, mode){
   state.biz.items = (data.corridorBusinesses || []).map(bizView);
   state.biz.loaded = true;
   if(data.bus?.scanToken) rememberScan(data.bus.id, data.bus.scanToken);
+  // The crew's trip log knows which way the bus is going; nobody needs to be asked.
+  state.directionFromTrip = data.directionSource === 'TRIP';
+  if(state.directionFromTrip && data.route?.id){
+    try{ localStorage.setItem('bato.direction', JSON.stringify({ routeId: data.route.id, direction: data.direction, at: Date.now() })); }catch(_){}
+  }
 }
 
 /** The current issue, for a reader with no bus: opened directly, or on a route with nothing programmed yet. */
@@ -453,6 +458,10 @@ function paintDirectionChips(){
   if(!r || isDemo()){ box.innerHTML = ''; return; }
   const dir = currentDirection();
   const target = (d) => (d === 'FORWARD' ? r.endPlace : r.startPlace);
+  if(dir && state.directionFromTrip){
+    box.innerHTML = `<span class="dir-chip on" role="status">Heading to ${esc(target(dir))}</span>`;
+    return;
+  }
   box.innerHTML = dir && !state.changingDirection
     ? `<button class="dir-chip on" data-action="changeDirection" aria-label="Heading to ${esc(target(dir))}. Change direction">
          Heading to ${esc(target(dir))} <span aria-hidden="true">· change</span></button>`

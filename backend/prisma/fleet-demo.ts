@@ -26,6 +26,8 @@ export const FLEET_ACCOUNTS = [
     access: 'Owner of Shrestha Yatayat (verified, 1 bus)' },
   { key: 'PENDING_OWNER', label: 'New owner awaiting verification', email: 'owner.pending@bato.test', name: 'Test New Owner',
     access: 'Owner of Pokhara Night Riders (not yet verified: its buses are hidden from passengers until an admin verifies it)' },
+  { key: 'FLEET_CREW', label: 'Conductor (crew account)', email: 'crew.fleet@bato.test', name: 'Test Conductor',
+    access: 'Crew at Himalayan Express Travels: the duty screen only — start and end trips on any of its buses' },
   { key: 'TRAVELLER', label: 'Traveller', email: 'traveller@bato.test', name: 'Test Traveller',
     access: 'Passenger account: find buses, leave reviews, vlog, vote and report' },
 ] as const;
@@ -90,7 +92,7 @@ interface BusSpec {
 interface CompanySpec {
   slug: string; name: string; phone: string; email: string; address: string; registrationNo: string; description: string;
   verification: 'VERIFIED' | 'PENDING';
-  members: Array<[userKey: string, role: 'OWNER' | 'MANAGER']>;
+  members: Array<[userKey: string, role: 'OWNER' | 'MANAGER' | 'CREW']>;
   crew?: Array<{ name: string; phone: string; role: 'DRIVER' | 'CONDUCTOR' | 'HELPER'; licence?: string; licenceExpiresInDays?: number; bus?: number }>;
   buses: BusSpec[];
 }
@@ -108,7 +110,7 @@ const COMPANIES: CompanySpec[] = [
     email: 'info@himalayan-express.test', address: 'Gongabu New Bus Park, Kathmandu', registrationNo: 'PAN 601234567',
     description: 'Tourist deluxe and sleeper services between Kathmandu, Pokhara, Chitwan and Lumbini.',
     verification: 'VERIFIED',
-    members: [['FLEET_OWNER', 'OWNER'], ['FLEET_MANAGER', 'MANAGER']],
+    members: [['FLEET_OWNER', 'OWNER'], ['FLEET_MANAGER', 'MANAGER'], ['FLEET_CREW', 'CREW']],
     crew: [
       { name: 'Ram Bahadur Thapa', phone: '9841000001', role: 'DRIVER', licence: '03-06-00123456', licenceExpiresInDays: 400, bus: 0 },
       { name: 'Hari Gurung', phone: '9841000002', role: 'DRIVER', licence: '03-06-00223344', licenceExpiresInDays: 12, bus: 1 },

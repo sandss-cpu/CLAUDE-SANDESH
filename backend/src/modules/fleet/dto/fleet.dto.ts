@@ -348,3 +348,89 @@ export class AdminCompanyQueryDto {
   @blankToUndefined() @IsOptional() @IsEnum(OperatorVerification) status?: OperatorVerification;
   @blankToUndefined() @IsOptional() @IsString() @MaxLength(60) q?: string;
 }
+
+// ---------------- trips ----------------
+
+/** On an edit, an empty field clears the value, which is different from leaving it out. */
+const blankToNull = () => Transform(({ value }) => (value === '' ? null : value));
+
+/**
+ * Two taps on the duty screen: the bus, then confirm. The crew defaults to whoever is
+ * assigned to the bus and the departure to now, so only the direction is required.
+ */
+export class StartTripDto {
+  @IsIn(['FORWARD', 'REVERSE'], { message: 'Choose which way the bus is going' })
+  direction: 'FORWARD' | 'REVERSE';
+
+  @blankToUndefined() @IsOptional() @IsDateString({}, { message: 'Departure is not a valid date and time' })
+  departAt?: string;
+
+  @blankToUndefined() @IsOptional() @IsUUID('4', { message: 'Choose the driver from your crew' })
+  driverId?: string;
+
+  @blankToUndefined() @IsOptional() @IsUUID('4', { message: 'Choose the conductor from your crew' })
+  conductorId?: string;
+
+  @blankToUndefined() @IsOptional() @IsUUID('4', { message: 'Choose the helper from your crew' })
+  helperId?: string;
+
+  @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  startOdometerKm?: number;
+}
+
+export class EndTripDto {
+  @blankToUndefined() @IsOptional() @IsDateString({}, { message: 'Arrival is not a valid date and time' })
+  arriveAt?: string;
+
+  @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  endOdometerKm?: number;
+}
+
+/** Owners and managers correcting a trip within 48 hours of departure. */
+export class UpdateTripDto {
+  @IsOptional() @IsIn(['FORWARD', 'REVERSE'])
+  direction?: 'FORWARD' | 'REVERSE';
+
+  @blankToUndefined() @IsOptional() @IsDateString({}, { message: 'Departure is not a valid date and time' })
+  departAt?: string;
+
+  @blankToNull() @IsOptional() @IsDateString({}, { message: 'Arrival is not a valid date and time' })
+  arriveAt?: string | null;
+
+  @blankToNull() @IsOptional() @IsUUID('4') driverId?: string | null;
+  @blankToNull() @IsOptional() @IsUUID('4') conductorId?: string | null;
+  @blankToNull() @IsOptional() @IsUUID('4') helperId?: string | null;
+
+  @blankToNull() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  startOdometerKm?: number | null;
+
+  @blankToNull() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(5_000_000)
+  endOdometerKm?: number | null;
+
+  /** Cancelling keeps the record (and any reviews on it) but takes it out of every report. */
+  @IsOptional() @IsIn(['COMPLETED', 'CANCELLED'])
+  status?: 'COMPLETED' | 'CANCELLED';
+}
+
+export class UnlockTripDto {
+  @trim() @IsString() @Length(5, 300, { message: 'Say why the trip needs changing (5–300 characters)' })
+  reason: string;
+}
+
+export class TripListQueryDto {
+  /** Kathmandu calendar days, inclusive. */
+  @blankToUndefined() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Dates are YYYY-MM-DD' })
+  from?: string;
+
+  @blankToUndefined() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Dates are YYYY-MM-DD' })
+  to?: string;
+
+  @blankToUndefined() @IsOptional() @IsUUID('4') vehicleId?: string;
+  @blankToUndefined() @IsOptional() @IsUUID('4') driverId?: string;
+
+  @blankToUndefined() @IsOptional() @IsIn(['IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
+  status?: 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+  @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500)
+  page?: number;
+}

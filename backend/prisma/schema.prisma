@@ -301,6 +301,7 @@ model Route {
   qrCodes         QrCode[]
   placements      ContentPlacement[]
   notices         RouteNotice[]
+  trips           Trip[]
   businessTargets BusinessRouteTarget[]
   adTargets       AdRouteTarget[]
   guides          RouteGuide[]
@@ -320,9 +321,11 @@ enum OperatorVerification {
   SUSPENDED
 }
 
+/// CREW can only start and end trips (conductors on the duty screen); OWNER and MANAGER as before.
 enum OperatorMemberRole {
   OWNER
   MANAGER
+  CREW
 }
 
 enum BusStatus {
@@ -362,6 +365,7 @@ model Operator {
   drivers       Driver[]
   notifications FleetNotification[]
   placements    ContentPlacement[]
+  trips         Trip[]
 
   @@index([verification])
   @@map("operators")
@@ -420,6 +424,7 @@ model Vehicle {
   assignments  DriverAssignment[]
   notifications FleetNotification[]
   placements   ContentPlacement[]
+  trips        Trip[]
 
   @@unique([operatorId, plateNo])
   @@index([operatorId, isActive])
@@ -1349,6 +1354,11 @@ model RideFeedback {
   ipHash      String?
   /// Set when the review came from scanning the sticker on that bus.
   qrCodeId    String?
+  /// Set by the server when the review is written: the trip running at the moment of the
+  /// scan, else the crew assigned then, else nobody ("crew unknown"). Never sent by the client.
+  tripId      String?
+  driverId    String?
+  conductorId String?
   overall     Int
   cleanliness Int?
   driving     Int?
@@ -1362,13 +1372,18 @@ model RideFeedback {
   ownerRepliedAt DateTime?
   createdAt   DateTime @default(now())
 
-  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  route   Route?   @relation(fields: [routeId], references: [id])
-  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  qrCode  QrCode?  @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  route     Route?   @relation(fields: [routeId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  qrCode    QrCode?  @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
+  trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  driver    Driver?  @relation("ReviewDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  conductor Driver?  @relation("ReviewConductor", fields: [conductorId], references: [id], onDelete: SetNull)
 
   @@index([vehicleId, createdAt])
   @@index([vehicleId, moderation, createdAt])
+  @@index([driverId, createdAt])
+  @@index([tripId])
   @@map("ride_feedback")
 }
 
@@ -1584,6 +1599,11 @@ model Driver {
   operator    Operator           @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   assignments DriverAssignment[]
   incidents   BusIncident[]
+  tripsDriven    Trip[]          @relation("TripDriver")
+  tripsConducted Trip[]          @relation("TripConductor")
+  tripsHelped    Trip[]          @relation("TripHelper")
+  reviewsAsDriver    RideFeedback[] @relation("ReviewDriver")
+  reviewsAsConductor RideFeedback[] @relation("ReviewConductor")
 
   @@index([operatorId, isActive])
   @@map("drivers")
@@ -1603,6 +1623,60 @@ model DriverAssignment {
   @@index([vehicleId, endedAt])
   @@index([driverId, endedAt])
   @@map("driver_assignments")
+}
+
+enum TripStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// How the crew got onto the trip: chosen by hand, or taken from who was assigned to the bus.
+enum TripSource {
+  MANUAL
+  ASSIGNMENT_DEFAULT
+}
+
+/// One run of one bus in one direction, and who crewed it. It is what lets a passenger's
+/// review be put against the driver who was actually at the wheel, and what tells the
+/// reader which way the bus is going.
+model Trip {
+  id              String         @id @default(uuid())
+  /// Copied from the bus, so access checks and company reports need no join.
+  operatorId      String
+  vehicleId       String
+  routeId         String?
+  /// FORWARD or REVERSE (checked in SQL): a run always goes one way.
+  direction       GuideDirection
+  departAt        DateTime
+  arriveAt        DateTime?
+  driverId        String?
+  conductorId     String?
+  helperId        String?
+  source          TripSource     @default(MANUAL)
+  status          TripStatus     @default(IN_PROGRESS)
+  startOdometerKm Int?
+  endOdometerKm   Int?
+  createdById     String?
+  /// Trips lock 48 hours after departure; an owner can reopen one, with a reason, for a day.
+  unlockedUntil   DateTime?
+  unlockReason    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  operator  Operator       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  route     Route?         @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  driver    Driver?        @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  conductor Driver?        @relation("TripConductor", fields: [conductorId], references: [id], onDelete: SetNull)
+  helper    Driver?        @relation("TripHelper", fields: [helperId], references: [id], onDelete: SetNull)
+  reviews   RideFeedback[]
+
+  @@index([vehicleId, departAt])
+  @@index([vehicleId, status])
+  @@index([operatorId, departAt])
+  @@index([driverId, departAt])
+  @@map("trips")
 }
 
 model FuelLog {

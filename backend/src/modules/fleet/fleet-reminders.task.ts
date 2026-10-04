@@ -75,7 +75,8 @@ export class FleetRemindersTask {
 
   private async emailDigest(operator: { id: string; name: string }, items: Reminder[]) {
     const members = await this.prisma.operatorAdmin.findMany({
-      where: { operatorId: operator.id, user: { emailVerifiedAt: { not: null } } },
+      // Office mail: owners and managers, not crew accounts.
+      where: { role: { in: ['OWNER', 'MANAGER'] }, operatorId: operator.id, user: { emailVerifiedAt: { not: null } } },
       select: { user: { select: { email: true, name: true } } },
     });
     if (!members.length) return false;

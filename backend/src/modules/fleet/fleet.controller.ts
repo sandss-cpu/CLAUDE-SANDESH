@@ -4,10 +4,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FleetService } from './fleet.service';
 import { FleetRecordsService } from './fleet-records.service';
 import { BusReviewsService } from './bus-reviews.service';
+import { TripsService } from './trips.service';
 import {
   AddMemberDto, ArchiveBusDto, AssignDriverDto, BusListQueryDto, CreateBusDto, CreateCompanyDto, DocumentDto,
   DriverDto, FuelDto, IncidentDto, MaintenanceDto, OwnerReportDto, ReplyDto, ResolveIncidentDto,
   ReviewListQueryDto, UpdateBusDto, UpdateCompanyDto,
+  EndTripDto, StartTripDto, TripListQueryDto, UnlockTripDto, UpdateTripDto,
 } from './dto/fleet.dto';
 
 /**
@@ -20,7 +22,41 @@ export class FleetController {
     private fleet: FleetService,
     private records: FleetRecordsService,
     private reviews: BusReviewsService,
+    private trips: TripsService,
   ) {}
+
+  // ---- trips: the duty log (crew accounts can start and end them) ----
+
+  @Get('companies/:cid/duty')
+  duty(@Param('cid') cid: string, @CurrentUser('id') uid: string) { return this.trips.duty(cid, uid); }
+
+  @Get('companies/:cid/trips')
+  listTrips(@Param('cid') cid: string, @Query() q: TripListQueryDto, @CurrentUser('id') uid: string) {
+    return this.trips.list(cid, q, uid);
+  }
+
+  @Post('buses/:id/trips')
+  startTrip(@Param('id') id: string, @Body() dto: StartTripDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.trips.start(id, dto, uid, ip);
+  }
+
+  @Get('trips/:tid')
+  trip(@Param('tid') tid: string, @CurrentUser('id') uid: string) { return this.trips.one(tid, uid); }
+
+  @Post('trips/:tid/end')
+  endTrip(@Param('tid') tid: string, @Body() dto: EndTripDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.trips.end(tid, dto, uid, ip);
+  }
+
+  @Patch('trips/:tid')
+  updateTrip(@Param('tid') tid: string, @Body() dto: UpdateTripDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.trips.update(tid, dto, uid, ip);
+  }
+
+  @Post('trips/:tid/unlock')
+  unlockTrip(@Param('tid') tid: string, @Body() dto: UnlockTripDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.trips.unlock(tid, dto, uid, ip);
+  }
 
   // ---- companies ----
 
