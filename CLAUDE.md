@@ -46,8 +46,10 @@ and `npx tsc` then silently downloads an unrelated package named `tsc`. Run
 
 Health check is at `/health`, deliberately outside the `api/v1` prefix.
 
-There is **no unit test suite**. `scripts/fleet_smoke.sh <accounts file>` runs 113 API
-checks against a running local API, using the accounts from `npm run accounts:test`.
+`npm test` runs the unit tests over the pure logic. `scripts/fleet_smoke.sh <accounts file>`
+runs 113 API checks against a running local API, using the accounts from
+`npm run accounts:test`; `scripts/programming_smoke.sh` adds route programming. New smoke
+scripts source `scripts/smoke_lib.sh` for the shared helpers.
 Write request bodies into a variable before `"$(call …)"`: macOS's bash 3.2 mangles
 escaped quotes written directly inside command substitution.
 
@@ -57,6 +59,8 @@ npm run seed:guides            # demo road guides
 npm run seed:itinerary         # demo place itinerary (three days in Pokhara)
 npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
+bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming (restart the API first)
+npm test                       # unit tests over the pure logic, including content-for
 ```
 
 Run the web pages with `node scripts/dev-web-server.mjs` (port 5173) from the repo root,
@@ -105,7 +109,7 @@ when a signed-in user should be recognised but anonymous access is still allowed
 
 `auth` `users` `qr` `magazine` `posts` `engagement` `places` `itineraries`
 `businesses` `operators` `moderation` `safety` `media` `admin` `ads` `fleet` `guides`
-`creators` `health`
+`creators` `programming` `health`, plus the global `common/audit`
 
 - **auth**: every sign-in method ends in `completeSignIn()`, which blocks suspended
   accounts and sends privileged roles to the authenticator step. Add new methods
@@ -137,6 +141,16 @@ when a signed-in user should be recognised but anonymous access is still allowed
 - **creators**: `CreatorProfile` is only public once an admin sets `APPROVED`;
   `CreatorJourney` groups the creator's own `Post` rows through `CreatorJourneyPost`, so
   entries keep their votes, comments and moderation state rather than being copies
+
+- **programming**: what each bus shows. `ContentPlacement` puts an article on the DEFAULT
+  list, a route, a company's buses or one bus, for one direction or both, pinned, with
+  optional dates, days and a daily window in Asia/Kathmandu. `content-for.ts` is the one
+  pure function that decides the shelf (unit-tested); the scan, the offline pack and the
+  admin preview all call it. Editors and admins change programming; moderators can read it.
+  `RouteNotice` is a road alert for a route and direction
+- **audit**: `AuditService.record()` writes the append-only `AuditEvent` for admin,
+  finance and security changes, in the caller's transaction. Programming's history is read
+  from it
 
 `qr.resolve()` is the centre of the product. One unauthenticated call returns the
 operator, route, corridor-specific articles, corridor-targeted businesses, the
@@ -180,6 +194,20 @@ the reader itself. Use `/login.html`.
 registers what each name does with `Actions.on(...)`. Unregistered names are ignored, so
 markup built from API data cannot call anything else. This is what lets the CSP drop
 `'unsafe-inline'` for scripts.
+
+**`placement_slot` and the `placement_*` CHECK constraints are invisible to Prisma.**
+They live in the migration's SQL only. `prisma migrate dev` does not drop them today, but
+read any generated migration before applying it, and never "fix" drift by removing them.
+
+**Timestamps written by SQL defaults take the server's time zone.** This Mac's Postgres runs
+in Asia/Kathmandu; Prisma writes UTC. A migration backfill that used `CURRENT_TIMESTAMP`
+stamped rows 5h45 in the future, and a test that cleaned up "everything created after I
+started" deleted them. Use `CURRENT_TIMESTAMP AT TIME ZONE 'UTC'` in migrations, and clean
+up test data by who created it, not only by when.
+
+**Smoke scripts share the sign-in rate limit** (five sign-ins per 15 minutes per address).
+Running `programming_smoke.sh` and `fleet_smoke.sh` back to back fails with 429s; restart
+the API between them, which clears the in-memory throttle.
 
 **`prisma generate` needs network access** to `binaries.prisma.sh`. In restricted
 sandboxes it fails. The workaround used during development was a generated type stub

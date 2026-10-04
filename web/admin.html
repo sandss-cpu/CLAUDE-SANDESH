@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bato — Control Panel</title>
+<title>Batoma — Control Panel</title>
 <meta name="theme-color" content="#5B3FA8">
 <script src="/config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -129,6 +129,53 @@ label{display:block;font-size:12.5px;font-weight:700;color:var(--text-dim);margi
 .login-tabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .devcode,.secret{font-family:ui-monospace,Menlo,monospace;font-size:18px;font-weight:700;color:var(--brand);word-break:break-all}
 .back{display:block;margin-bottom:16px;color:var(--text-dim);font-size:13.5px;text-decoration:none}
+
+/* ---------- route programming ---------- */
+.prog-filters select{min-width:200px}
+.prog-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:18px;align-items:start}
+@media (max-width:1100px){.prog-grid{grid-template-columns:1fr}}
+.prog-list h3,.prog-side h3{font-size:17px;margin:0 0 12px}
+.prog-add{margin-bottom:14px}
+.prog-results{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.prog-results li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line)}
+.prog-results li:first-child{border-top:none}
+.prog-rows{list-style:none;margin:0;padding:0}
+.prog-row{display:flex;align-items:center;gap:10px;padding:10px 8px;border-top:1px solid var(--line);background:var(--surface)}
+.prog-row:first-child{border-top:none}
+.prog-row.lead{background:var(--surface-2);border-radius:10px}
+.prog-row.dragging{opacity:.45}
+.prog-row .grip{width:18px;color:var(--text-dim);cursor:grab;font-size:18px;flex:none}
+.prog-row[draggable="false"] .grip,.prog-row:not([draggable]) .grip{cursor:default}
+.prog-what{flex:1;min-width:0}
+.prog-row{flex-wrap:wrap}
+.prog-row .row-actions{flex-wrap:wrap}
+/* On a phone the title gets the row; the buttons wrap underneath it. */
+@media (max-width:700px){
+  .prog-what{flex-basis:calc(100% - 28px)}
+  .prog-row .row-actions{width:100%;padding-left:28px}
+  .prog-filters select{min-width:0;width:100%}
+}
+.prog-what strong{display:block}
+.prog-when{color:var(--brand);font-weight:600}
+.pill.lead-pill{background:var(--accent);color:#1C1A2E}
+.prog-at{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.prog-at label{width:100%;margin:0}
+.prog-preview{list-style:none;margin:10px 0 0;padding:0}
+.prog-preview li{padding:8px 0;border-top:1px solid var(--line)}
+.prog-preview li:first-child{border-top:none}
+.prog-preview li.prog-lead strong{font-size:18px}
+.prog-preview .pill{margin-right:6px}
+.pill.level-VEHICLE{background:#F3E8FF;color:#5B3FA8}
+.pill.level-OPERATOR{background:#E3F1FA;color:#1F5E8C}
+.pill.level-ROUTE_DIRECTION{background:#E4F3E7;color:#2D7A3E}
+.pill.level-ROUTE_BOTH{background:#EEF6EF;color:#3E6B47}
+.notice-preview{border-left:4px solid var(--amber);background:var(--surface-2);padding:8px 12px;border-radius:8px;margin:8px 0}
+.notice-preview.sev-DANGER,.prog-notices li.sev-DANGER{border-left-color:#C62E45}
+.notice-preview.sev-INFO,.prog-notices li.sev-INFO{border-left-color:var(--brand)}
+.prog-notices,.prog-history{list-style:none;margin:10px 0 0;padding:0}
+.prog-notices li{border-left:4px solid var(--amber);padding:8px 12px;margin-bottom:10px;background:var(--surface-2);border-radius:8px}
+.prog-history li{padding:8px 0;border-top:1px solid var(--line)}
+.prog-history li:first-child{border-top:none}
 
 /* ---------- shell ---------- */
 #shell{display:none;min-height:100vh}
@@ -267,5 +314,6 @@ tr:last-child td{border-bottom:none}
 
 <script src="/js/actions.js"></script>
 <script src="/js/admin.js"></script>
+<script src="/js/admin-programming.js"></script>
 </body>
 </html>

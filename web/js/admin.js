@@ -136,7 +136,7 @@ const LOGIN_VIEWS = {
   email(){
     const l = state.login;
     return `
-      <h1>Bato control panel</h1>
+      <h1>Batoma control panel</h1>
       <p class="sub">Editors, moderators and admins sign in, then confirm with an authenticator app.</p>
       ${loginTabs('email')}
       <form data-submit="loginSubmitEmail">
@@ -152,7 +152,7 @@ const LOGIN_VIEWS = {
   phone(){
     const l = state.login;
     return `
-      <h1>Bato control panel</h1>
+      <h1>Batoma control panel</h1>
       <p class="sub">Editors, moderators and admins sign in with their phone, then an authenticator app.</p>
       ${loginTabs('phone')}
       <form data-submit="loginSubmitPhone">
@@ -395,6 +395,7 @@ const SECTIONS = [
   ['articles', 'Articles', ['EDITOR', 'ADMIN']],
   ['issues', 'Issues', ['EDITOR', 'ADMIN']],
   ['guides', 'Route guides', ['EDITOR', 'ADMIN']],
+  ['programming', 'Route programming', ['EDITOR', 'MODERATOR', 'ADMIN']],
   ['creators', 'Creators', ['EDITOR', 'ADMIN']],
   ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
   ['users', 'Users', ['MODERATOR', 'ADMIN']],
@@ -408,7 +409,7 @@ function visibleSections(){
 function renderSidebar(){
   const role = state.auth?.user?.role;
   $('#sidebar').innerHTML = `
-    <h1>Bato</h1>
+    <h1>Batoma</h1>
     <div class="who">${esc(state.auth?.user?.name || '')} · ${esc(role || '')}</div>
     <nav>
       ${visibleSections().map(([key, label]) => {
@@ -1249,8 +1250,8 @@ function adForm(ad){
                             aria-label="Open the advertiser's website">
                 Open the advertiser's website</label>
               <label><input type="radio" name="ad-link" value="OVERVIEW" ${link === 'OVERVIEW' ? 'checked' : ''} data-change="toggleAdLink"
-                            aria-label="Show an overview page inside Bato">
-                Show an overview page inside Bato</label>
+                            aria-label="Show an overview page inside Batoma">
+                Show an overview page inside Batoma</label>
             </fieldset>
             <div id="ad-external-fields">
               <label for="ad-url">Website link</label>
@@ -1452,7 +1453,7 @@ async function screenFleet(){
     <div class="top-row"><h2>Bus companies</h2>
       <a class="btn btn-sm" href="owner.html" target="_blank" rel="noopener">Owner portal ↗</a></div>
     <div class="stat-grid">
-      <div class="stat"><b>${stats.buses.registered}</b><span>Buses registered with Bato · ${stats.buses.active} active</span></div>
+      <div class="stat"><b>${stats.buses.registered}</b><span>Buses registered with Batoma · ${stats.buses.active} active</span></div>
       <div class="stat"><b>${stats.companies.total}</b><span>Companies · ${stats.companies.verified} verified</span></div>
       <div class="stat"><b>${stats.companies.pending}</b><span>Waiting for verification</span></div>
       <div class="stat"><b>${stats.reviews.total}</b><span>Bus reviews${stats.reviews.average != null ? ` · ${stats.reviews.average}★ average` : ''}</span></div>

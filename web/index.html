@@ -172,6 +172,19 @@ html[data-theme="sun"] .mast{background:#3A2270}
   text-align:center;line-height:1.3;white-space:nowrap
 }
 .seat b{display:block;font-size:16px}
+.dir-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.dir-chips:empty{display:none}
+.dir-ask{font-size:13px;opacity:.85;font-weight:600}
+.dir-chip{min-height:var(--tap);padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.4);
+  background:rgba(255,255,255,.14);color:#fff;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer}
+.dir-chip.on{background:#fff;color:var(--brand);border-color:#fff}
+.dir-chip span{font-weight:500;opacity:.75}
+.road-notice{border-radius:var(--r);padding:12px 14px;margin:14px 0 4px;border:1px solid var(--line);
+  border-left:5px solid var(--amber);background:var(--surface)}
+.road-notice.DANGER{border-left-color:#C62E45;background:color-mix(in srgb,#C62E45 9%,var(--surface))}
+.road-notice.INFO{border-left-color:var(--brand)}
+.road-notice strong{display:block;font-size:16px}
+.road-notice p{margin:4px 0 0;font-size:14.5px;color:var(--text-dim)}
 
 /* ---------- offline state: friendly, never an error ---------- */
 .notice{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
@@ -483,6 +496,7 @@ html[data-theme="night"] .toast{background:var(--surface-2);border:1px solid var
       </div>
       <div class="seat" id="seatChip">Seat<b>—</b></div>
     </div>
+    <div class="dir-chips" id="dirChips"></div>
   </div>
   <div class="flags" style="margin-top:16px" aria-hidden="true">
     <i style="background:#2F6FD0"></i><i style="background:#FDFAF3"></i>

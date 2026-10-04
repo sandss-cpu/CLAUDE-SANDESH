@@ -138,17 +138,31 @@ export class ProgrammingService {
 
   // =================================================================== admin: lists
 
-  /** The placements in one list, in order, with enough of each article to show it. */
+  /**
+   * The placements in one list, in the order a traveller sees them: the same tie-breaks
+   * as content-for (featured, then newest), so dragging starts from what the reader shows.
+   */
   async list(q: SlotQueryDto) {
     const slot = await this.checkedSlot(q);
     const items = await this.prisma.contentPlacement.findMany({
       where: this.slotWhere(slot),
       select: {
         ...PLACEMENT_FIELDS, createdAt: true,
-        article: { select: { id: true, slug: true, title: true, status: true, readMinutes: true, category: { select: { name: true } } } },
+        article: {
+          select: {
+            id: true, slug: true, title: true, status: true, readMinutes: true, isFeatured: true, publishedAt: true,
+            category: { select: { name: true } },
+          },
+        },
       },
-      orderBy: [{ isPinned: 'desc' }, { position: 'asc' }, { createdAt: 'asc' }],
     });
+    const when = (d: Date | null) => d?.getTime() ?? 0;
+    items.sort((a, b) =>
+      Number(b.isPinned) - Number(a.isPinned)
+      || a.position - b.position
+      || Number(b.article.isFeatured) - Number(a.article.isFeatured)
+      || when(b.article.publishedAt) - when(a.article.publishedAt)
+      || a.id.localeCompare(b.id));
     return { slot, items };
   }
 

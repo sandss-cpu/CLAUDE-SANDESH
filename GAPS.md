@@ -44,14 +44,20 @@ than a week.
 | 18 | Scanning an unverified company's bus showed the company's name. | Hidden until Batoma verifies the company, as everywhere else. |
 | 19 | The installed app was called "Bato". | "Batoma". |
 
+## Done in step 3
+
+- Route programming: direction, schedules, company and bus overrides, notices, history and
+  the traveller preview (Feature 1).
+- The masthead reads "Batoma · Kathmandu → Pokhara", with the direction chip.
+- **Articles could not be put on a route from the control panel at all.** The article form
+  had no corridor field, so only the seed ever linked one. Route programming is that tool.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| Route programming: direction, schedule, operator and bus overrides | 3 | L |
-| Masthead "Batoma · A → B" and the direction chip on the Read screen (the Road tab already asks) | 3 | S |
 | One QR per bus, magazine first; `bus.html?code=` redirect; stickers as PDF/PNG/SVG; seat-sticker minting UI (`/qr/batch`, `/qr/stats` have no UI) | 5 | L |
 | Review attribution to trip and crew; driver scorecards and appraisals | 4, 6 | L |
 | Income records | 7 | L |
@@ -61,7 +67,7 @@ than a week.
 | "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |
 | Moderation audit trail (`/moderation/audit` has no UI) | 10 (security events view) | S |
 | Traveller account: data export and deletion (`DELETE /users/me` has no UI) | 10 | M |
-| Inline scripts and handlers in `admin.html`, `bus.html`, `login.html`, `creator.html` and the owner portal (CLAUDE.md known gap 7) | 3–10 | M |
+| Inline scripts and handlers in `bus.html`, `login.html`, `creator.html` and the owner portal (CLAUDE.md known gap 7; the reader and control panel are done) | 4–10 | M |
 | Google Fonts on every app page (a third party on each visit, and a CSP exception) | 9–10 (self-hosted) | S |
 | Development logs print recipients' email addresses (`[MAIL DISABLED] to …`) | 10 (log redaction) | S |
 | Sign-in, owner portal, admin and emails still say "Bato" | 3–11, as each is touched | S |

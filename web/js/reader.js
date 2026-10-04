@@ -32,7 +32,10 @@ const state = {
   mode: 'loading',
   scanCode: null,
   issue: null,
+  /** This bus's shelf (lead first), then the rest of its programme for "More from this issue". */
   articles: [],
+  more: [],
+  notices: [],
   article: null,
   business: null,
   online: navigator.onLine,
@@ -296,6 +299,8 @@ function applyScan(code, data, mode){
   state.bus = data.bus || null;
   state.issue = data.currentIssue || null;
   state.articles = (data.routeArticles || []).map(cardView);
+  state.more = (data.moreArticles || []).map(cardView);
+  state.notices = data.notices || [];
   state.biz.items = (data.corridorBusinesses || []).map(bizView);
   state.biz.loaded = true;
   if(data.bus?.scanToken) rememberScan(data.bus.id, data.bus.scanToken);
@@ -336,9 +341,11 @@ async function resolveScan(){
   if(cached){ applyScan(code, cached, 'cached'); render(); }
 
   try{
+    // The direction this phone chose for this route, if it chose one in the last 12 hours.
+    const direction = currentDirection(cached?.route?.id);
     const res = await fetch(`${API}/qr/r/${encodeURIComponent(code)}`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ sessionId: state.session }),
+      body: JSON.stringify({ sessionId: state.session, ...(direction ? { direction } : {}) }),
       // Generous without a saved copy: on a weak signal a slow answer beats none.
       signal: AbortSignal.timeout(cached ? 6000 : 15000),
     });
@@ -356,12 +363,22 @@ async function resolveScan(){
     saveScan(code, data);
     applyScan(code, data, 'live');
     if(!state.articles.length) await loadCurrentIssue();
-    cachePack(data.offlinePack);
+    // A direction chosen on another bus on this route still applies; ask again with it.
+    if(currentDirection() && currentDirection() !== data.direction){
+      refreshProgramme();
+    } else {
+      cachePack(data.offlinePack);
+    }
     wireStoreLinks(data.appLinks);
   }catch(_){
     if(!cached) state.mode = 'offline';
   }
   paintMast();
+}
+
+/** Which programme version this phone last saved whole, so a re-scan does not fetch it again. */
+function savedPack(){
+  try{ return JSON.parse(localStorage.getItem('bato.pack') || 'null'); }catch(_){ return null; }
 }
 
 /**
@@ -374,6 +391,14 @@ async function cachePack(pack){
   if(!pack || !('serviceWorker' in navigator)) return;
   // Do not claim anything is saved until the service worker confirms it is.
   state.packRequested = pack.articleCount || 0;
+  state.packVersion = pack.programmeVersion || null;
+  // The same programme, already confirmed whole on this phone: nothing to download again.
+  const held = savedPack();
+  if(held && held.version === pack.programmeVersion && held.complete){
+    state.packReported = true;
+    state.packCached = held.count;
+    return;
+  }
   state.packReported = false;
   const urls = (pack.articles || [])
     .flatMap(a => [a.url, a.audioUrl, a.imageUrl])
@@ -402,12 +427,38 @@ function wireStoreLinks(links){
  */
 function paintMast(){
   const r = state.route;
-  const ride = [r ? `On the ${r.name} route` : '', state.operator?.name].filter(Boolean).join(' · ');
-  $('#eyebrow').textContent = state.appName || 'Batoma';
-  $('#mastTitle').textContent = state.issue?.title || state.appName || 'Batoma';
-  $('#mastSub').textContent = ride || state.tagline || state.issue?.strapline || '';
-  $('#seatChip').innerHTML = `Seat<b>${state.seat || '—'}</b>`;
+  const dir = r ? currentDirection() : null;
+  const app = state.appName || 'Batoma';
+  $('#eyebrow').textContent = app;
+  if(r){
+    // "Batoma · Kathmandu → Pokhara": the road as this traveller is riding it.
+    const [from, to] = dir === 'REVERSE' ? [r.endPlace, r.startPlace] : [r.startPlace, r.endPlace];
+    $('#mastTitle').textContent = dir ? `${from} → ${to}` : `${r.startPlace} – ${r.endPlace}`;
+    $('.mast').setAttribute('aria-label', `${app} · ${$('#mastTitle').textContent}`);
+    $('#mastSub').textContent = [state.operator?.name, state.vehicle?.label || state.vehicle?.plateNo].filter(Boolean).join(' · ');
+  } else {
+    $('#mastTitle').textContent = state.issue?.title || app;
+    $('#mastSub').textContent = state.tagline || state.issue?.strapline || '';
+  }
+  $('#seatChip').innerHTML = `Seat<b>${esc(state.seat || '—')}</b>`;
   $('#seatChip').hidden = !state.seat;
+  paintDirectionChips();
+}
+
+/** One tap to say which way the bus is going; the stories and the road guide follow. */
+function paintDirectionChips(){
+  const box = $('#dirChips');
+  if(!box) return;
+  const r = state.route;
+  if(!r || isDemo()){ box.innerHTML = ''; return; }
+  const dir = currentDirection();
+  const target = (d) => (d === 'FORWARD' ? r.endPlace : r.startPlace);
+  box.innerHTML = dir && !state.changingDirection
+    ? `<button class="dir-chip on" data-action="changeDirection" aria-label="Heading to ${esc(target(dir))}. Change direction">
+         Heading to ${esc(target(dir))} <span aria-hidden="true">· change</span></button>`
+    : `<span class="dir-ask">Which way?</span>
+       ${['FORWARD', 'REVERSE'].map((d) => `
+         <button class="dir-chip${dir === d ? ' on' : ''}" data-action="setDirection" data-direction="${d}">To ${esc(target(d))}</button>`).join('')}`;
 }
 
 /** Colours and background come from the control panel, so the platform changes together. */
@@ -452,12 +503,14 @@ const SCREENS = {
       <div class="skel" style="height:96px;margin-bottom:10px"></div>
       <div class="skel" style="height:96px"></div>`;
     const all = articles();
-    const notice = scanNotice();
+    const notice = scanNotice() + roadNotices();
     const sections = [...new Set(all.map((a) => a.cat))];
     const shown = state.readFilter ? all.filter((a) => a.cat === state.readFilter) : all;
     const [hero, ...rest] = shown;
     const rail = rest.slice(0, 4);
-    const more = rest.slice(4);
+    const onThisRoad = rest.slice(4);
+    // The programme's overflow; filtered by section like the shelf.
+    const more = state.readFilter ? state.more.filter((a) => a.cat === state.readFilter) : state.more;
     const sectionName = (slug) => all.find((a) => a.cat === slug)?.catName || slug;
 
     if(!hero) return readTabs() + notice + slotAd('TOP_BANNER', 'banner') + (state.readFilter ? `
@@ -489,9 +542,13 @@ const SCREENS = {
         <div class="sec-head"><h2>Keep reading</h2><span>Swipe →</span></div>
         <div class="rail">${rail.map(railCard).join('')}</div>` : ''}
 
+      ${onThisRoad.length ? `
+        <div class="sec-head"><h2>${state.route ? 'For this road' : 'More stories'}</h2><span>${onThisRoad.length} more</span></div>
+        ${interleaveAds(onThisRoad.map(listCard))}` : ''}
+
       ${more.length ? `
         <div class="sec-head"><h2>More from this issue</h2><span>${more.length} more</span></div>
-        ${interleaveAds(more.map(listCard))}` : ''}
+        ${more.map(listCard).join('')}` : ''}
 
       ${stops.length ? `
         <div class="sec-head"><h2>Stops on this road</h2><span>${stops.length} along the way</span></div>
@@ -944,6 +1001,18 @@ function readNext(current){
     <button class="btn btn-ghost" style="margin-top:6px" data-action="go" data-to="read">All stories</button>`;
 }
 
+/** Road alerts the editors posted for this route and direction: closures, landslides, festival traffic. */
+function roadNotices(){
+  if(!state.notices?.length) return '';
+  return state.notices.map((n) => `
+    <div class="road-notice ${esc(n.severity)}" role="${n.severity === 'DANGER' ? 'alert' : 'status'}">
+      <strong>${n.severity === 'DANGER' ? '⚠ ' : ''}${esc(n.title)}</strong>
+      ${n.titleNe ? `<strong lang="ne" style="font-weight:600;font-size:15px">${esc(n.titleNe)}</strong>` : ''}
+      ${n.body ? `<p>${esc(n.body)}</p>` : ''}
+      ${n.bodyNe ? `<p lang="ne">${esc(n.bodyNe)}</p>` : ''}
+    </div>`).join('');
+}
+
 /** What the reader needs to know about this scan before the stories. */
 function scanNotice(){
   if(state.mode === 'inactive') return `
@@ -1352,8 +1421,7 @@ const timeFromStart = (m) => m == null ? '' : m < 60 ? `${m} min in` : `${Math.f
 /* ---------- direction of travel, remembered for one journey ---------- */
 const DIRECTION_TTL_MS = 12 * 3_600_000;
 
-function currentDirection(){
-  const routeId = state.route?.id;
+function currentDirection(routeId = state.route?.id){
   if(!routeId) return null;
   try{
     const saved = JSON.parse(localStorage.getItem('bato.direction') || 'null');
@@ -1365,7 +1433,34 @@ function setDirection(direction){
   if(!state.route?.id || !['FORWARD', 'REVERSE'].includes(direction)) return;
   try{ localStorage.setItem('bato.direction', JSON.stringify({ routeId: state.route.id, direction, at: Date.now() })); }catch(_){}
   state.road = null;
+  state.changingDirection = false;
+  paintMast();
   render();
+  refreshProgramme();
+}
+
+/**
+ * The stories programmed for the direction just chosen. Same visit, so the server is
+ * told not to count it as another scan. With no signal the both-way stories stay.
+ */
+async function refreshProgramme(){
+  const code = state.scanCode;
+  if(!code || isDemo()) return;
+  try{
+    const res = await fetch(`${API}/qr/r/${encodeURIComponent(code)}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sessionId: state.session, direction: currentDirection(), refresh: true }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if(!res.ok) return;
+    const { data } = await res.json();
+    if(state.scanCode !== code) return;
+    saveScan(code, data);
+    applyScan(code, data, 'live');
+    cachePack(data.offlinePack);
+    paintMast();
+    render();
+  }catch(_){}
 }
 
 /** The road guide for this route and direction, fetched once; the worker keeps it for offline. */
@@ -2446,6 +2541,7 @@ Actions.on({
   go: (el) => go(el.dataset.to),
   retryScan: () => { state.mode = 'loading'; render(); resolveScan().then(afterScan); },
   setDirection: (el) => setDirection(el.dataset.direction),
+  changeDirection: () => { state.changingDirection = true; paintDirectionChips(); },
   adBack: () => go(state.adReturn || 'read'),
   setReadFilter: (el) => setReadFilter(el.dataset.cat),
   setReadTab: (el) => setReadTab(el.dataset.tab),
@@ -2534,6 +2630,11 @@ Actions.onPress({
       if(e.data?.type === 'PACK_CACHED'){
         state.packReported = true;
         state.packCached = e.data.cached;
+        try{
+          localStorage.setItem('bato.pack', JSON.stringify({
+            version: state.packVersion, count: e.data.cached, complete: !e.data.failed, at: Date.now(),
+          }));
+        }catch(_){}
         state.packFailed = e.data.failed;
         if(e.data.failed && e.data.firstFailure){
           console.warn('Offline pack incomplete:', e.data.firstFailure);

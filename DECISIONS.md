@@ -72,3 +72,34 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
 - **`style-src` keeps `'unsafe-inline'`.** The brief's strict CSP is about scripts; the
   pages build markup with inline `style` attributes everywhere, and those cannot run
   code. `script-src` drops `'unsafe-inline'` page by page as each page's handlers move.
+
+## Step 3: route programming (Feature 1)
+
+- **Level before pin.** `contentFor` orders by level first (bus, company, route this way,
+  route both ways, every bus, current issue), and only then by pin and position within a
+  level. Pinning across all levels would let a route's pinned lead outrank a bus's own
+  programme, and the acceptance test is that a bus-level override wins and removing it
+  restores the route's list.
+- **The current issue is the last level**, after the DEFAULT placements, so a route with
+  nothing programmed still has a magazine. The reader's own "current issue" fallback from
+  step 2 now rarely runs.
+- **Company and bus placements may carry a route.** Made from the route view, they apply
+  only while that bus (or the company's buses) runs that road; a bus moved to another
+  route stops showing them. Without a route they apply wherever the bus goes.
+- **DEFAULT has no direction**, enforced in SQL (`placement_target`) and in the service.
+- **One article per slot** (`placement_slot`, an expression index Prisma cannot see). A
+  second schedule for the same story in the same list is an edit, not a copy.
+- **The admin list shows the reader's order**, with the same tie-breaks (featured, then
+  newest), so dragging starts from what travellers see.
+- **Choosing a direction re-asks with `refresh: true`**, which the server does not count as
+  a new scan. A direction chosen on one bus applies to every bus on that route for 12
+  hours. An active trip (step 4) will take precedence over the traveller's choice.
+- **The offline pack carries a programme version.** A phone that already saved that version
+  completely does not download it again on a re-scan; a changed programme is fetched the
+  next time there is signal.
+- **The admin preview ignores a company filter.** A traveller is on one bus, so the preview
+  is either a route (before overrides) or one bus (exactly what it shows).
+- **Route notices are bilingual and never dismissible.** They are safety information,
+  shown for the route and direction while their window is open.
+- **Times are entered and shown in Asia/Kathmandu** in the control panel, whatever the
+  editor's computer is set to.

@@ -23,10 +23,13 @@ JOMSOM=$(id_of articles "slug='jomsom-wind'")
 BUS1=$(id_of vehicles "\"plateKey\"='BA1KHA2345'"); BUS2=$(id_of vehicles "\"plateKey\"='BA1KHA2346'")
 QR1=$(code_of BA1KHA2345); QR2=$(code_of BA1KHA2346)
 START=$(date -u +"%Y-%m-%d %H:%M:%S")
-# The route's own list, put back exactly at the end.
 EDITOR_ID=$(id_of users "email='tester.editor@bato.test'")
-BEFORE_COUNT=$(sql "select count(*) from content_placements where \"routeId\"='$PKR'")
-BEFORE_ORDER=$(sql "select string_agg(format('update content_placements set position=%s where id=%L;', position, id), ' ') from content_placements where \"routeId\"='$PKR'")
+# Whatever editors have programmed on this route and its two test buses is put aside and
+# restored exactly at the end, so the checks start from the route's both-way list alone.
+MINE="\"routeId\"='$PKR' or \"vehicleId\" in ('$BUS1','$BUS2')"
+SNAPSHOT=$(sql "select coalesce(json_agg(p), '[]') from content_placements p where $MINE")
+BEFORE_COUNT=$(sql "select count(*) from content_placements where $MINE")
+sql "delete from content_placements where (\"routeId\"='$PKR' and direction <> 'BOTH') or \"vehicleId\" in ('$BUS1','$BUS2')" >/dev/null
 
 echo "== sign in"
 EDITOR=$(staff_login tester.editor@bato.test); MOD=$(staff_login tester.moderator@bato.test)
@@ -127,7 +130,8 @@ echo "== clean up"
 sql "delete from content_placements where \"createdAt\" >= '$START' and \"createdById\" = '$EDITOR_ID';
      delete from route_notices where \"createdAt\" >= '$START' and \"createdById\" = '$EDITOR_ID';
      update vehicles set \"routeId\" = '$PKR' where id = '$BUS1';
-     $BEFORE_ORDER" >/dev/null
-ok "the route's own list is back as it was" "$BEFORE_COUNT" "$(sql "select count(*) from content_placements where \"routeId\"='$PKR'")"
+     delete from content_placements where $MINE;
+     insert into content_placements select * from json_populate_recordset(null::content_placements, \$snap\$$SNAPSHOT\$snap\$);" >/dev/null
+ok "the route's programme is back as it was" "$BEFORE_COUNT" "$(sql "select count(*) from content_placements where $MINE")"
 
 finish
