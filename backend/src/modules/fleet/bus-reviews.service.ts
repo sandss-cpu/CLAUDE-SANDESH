@@ -13,7 +13,7 @@ import { needsReview } from '../../common/utils/content-filter';
 import { ModerationService } from '../moderation/moderation.service';
 import { TripsService } from './trips.service';
 import { FleetAccessService, parseDate } from './fleet-access.service';
-import { ownerReviewView } from './fleet.service';
+import { OWNER_REVIEW_INCLUDE, ownerReviewView } from './fleet.service';
 import { OwnerReportDto, ReviewListQueryDto, SubmitReviewDto } from './dto/fleet.dto';
 import { DAY_MS, normalisePlate, round1, topWords } from './fleet.util';
 
@@ -353,6 +353,7 @@ export class BusReviewsService {
     const base: Prisma.RideFeedbackWhereInput = {
       vehicle: { operatorId },
       ...(q.busId ? { vehicleId: q.busId } : {}),
+      ...(q.driverId ? { OR: [{ driverId: q.driverId }, { conductorId: q.driverId }] } : {}),
       ...(since ? { createdAt: { gte: since } } : {}),
     };
     const listWhere = { ...base, ...(q.rating ? { overall: q.rating } : {}) };
@@ -363,7 +364,7 @@ export class BusReviewsService {
       this.prisma.rideFeedback.count({ where: listWhere }),
       this.prisma.rideFeedback.findMany({
         where: listWhere, orderBy: { createdAt: 'desc' }, skip: (page - 1) * take, take,
-        include: { vehicle: { select: { id: true, plateNo: true, label: true } } },
+        include: OWNER_REVIEW_INCLUDE,
       }),
       this.prisma.rideFeedback.aggregate({
         where: approved, _count: { _all: true },
@@ -379,7 +380,7 @@ export class BusReviewsService {
       }),
       this.prisma.rideFeedback.findMany({
         where: { ...approved, suggestion: { not: null } }, orderBy: { createdAt: 'desc' }, take: 8,
-        include: { vehicle: { select: { id: true, plateNo: true, label: true } } },
+        include: OWNER_REVIEW_INCLUDE,
       }),
       this.prisma.$queryRaw<Array<{ month: Date; average: number; reviews: number }>>`
         SELECT date_trunc('month', rf."createdAt") AS month, AVG(rf.overall)::float AS average, COUNT(*)::int AS reviews
@@ -387,6 +388,7 @@ export class BusReviewsService {
           JOIN vehicles v ON v.id = rf."vehicleId"
          WHERE v."operatorId" = ${operatorId}
            AND (${q.busId ?? null}::text IS NULL OR rf."vehicleId" = ${q.busId ?? null}::text)
+           AND (${q.driverId ?? null}::text IS NULL OR rf."driverId" = ${q.driverId ?? null}::text OR rf."conductorId" = ${q.driverId ?? null}::text)
            AND rf.moderation = 'APPROVED' AND rf."createdAt" >= ${sinceTrend}
       GROUP BY 1 ORDER BY 1`,
     ]);
@@ -443,7 +445,7 @@ export class BusReviewsService {
     const updated = await this.prisma.rideFeedback.update({
       where: { id: reviewId },
       data: { ownerReply: reply || null, ownerRepliedAt: reply ? new Date() : null },
-      include: { vehicle: { select: { id: true, plateNo: true, label: true } } },
+      include: OWNER_REVIEW_INCLUDE,
     });
     return ownerReviewView(updated);
   }

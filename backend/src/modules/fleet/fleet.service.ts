@@ -625,7 +625,7 @@ export class FleetService {
         GROUP BY 1 ORDER BY 1`,
         this.prisma.rideFeedback.findMany({
           where: { vehicleId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 6,
-          include: { vehicle: { select: { id: true, plateNo: true, label: true } } },
+          include: OWNER_REVIEW_INCLUDE,
         }),
         this.prisma.busIncident.findMany({
           where: { vehicleId: { in: ids }, status: 'OPEN' }, orderBy: { occurredAt: 'desc' }, take: 10,
@@ -728,15 +728,32 @@ export class FleetService {
   }
 }
 
-type ReviewRow = Prisma.RideFeedbackGetPayload<{ include: { vehicle: { select: { id: true; plateNo: true; label: true } } } }>;
+/** Everything an owner's view of a review needs: the bus, and the crew on duty when it was written. */
+export const OWNER_REVIEW_INCLUDE = {
+  vehicle: { select: { id: true, plateNo: true, label: true } },
+  driver: { select: { id: true, name: true } },
+  conductor: { select: { id: true, name: true } },
+  trip: { select: { id: true, departAt: true, direction: true } },
+} satisfies Prisma.RideFeedbackInclude;
 
-/** What an owner sees of a review: everything the passenger wrote, nothing about who they are. */
+type ReviewRow = Prisma.RideFeedbackGetPayload<{ include: typeof OWNER_REVIEW_INCLUDE }>;
+
+/**
+ * What an owner sees of a review: everything the passenger wrote and which crew was on
+ * duty, nothing about who wrote it. The crew comes from the duty log, never the passenger.
+ */
 export function ownerReviewView(r: ReviewRow) {
   return {
     id: r.id, bus: r.vehicle ? { id: r.vehicle.id, registrationNo: r.vehicle.plateNo, label: r.vehicle.label } : null,
     overall: r.overall, cleanliness: r.cleanliness, driving: r.driving, punctuality: r.punctuality, staff: r.staff,
     comment: r.comment, suggestion: r.suggestion, tripDate: r.tripDate, createdAt: r.createdAt,
     verifiedRide: !!r.qrCodeId, moderation: r.moderation, ownerReply: r.ownerReply, ownerRepliedAt: r.ownerRepliedAt,
+    crew: {
+      driver: r.driver, conductor: r.conductor,
+      trip: r.trip,
+      // "From trip" is the duty log; "assigned" is who was on the bus's roster at the time.
+      source: r.tripId ? 'TRIP' : r.driverId || r.conductorId ? 'ASSIGNMENT' : 'UNKNOWN',
+    },
   };
 }
 

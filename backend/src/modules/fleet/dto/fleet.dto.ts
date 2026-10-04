@@ -332,6 +332,8 @@ export class OwnerReportDto {
 
 export class ReviewListQueryDto {
   @blankToUndefined() @IsOptional() @IsUUID() busId?: string;
+  /** Reviews written while this crew member was on duty, as driver or conductor. */
+  @blankToUndefined() @IsOptional() @IsUUID() driverId?: string;
   @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(5) rating?: number;
   @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(7) @Max(730) days?: number;

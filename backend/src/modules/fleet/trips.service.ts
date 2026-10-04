@@ -18,6 +18,11 @@ const OPEN_TRIP_LIMIT_MS = 24 * HOUR;
 /** A trip can be logged late, but not before the bus could have left or long in advance. */
 const LATE_LOGGING_MS = 48 * HOUR;
 const EARLY_LOGGING_MS = 1 * HOUR;
+/**
+ * Passengers scan at the bus park before the conductor taps "Start trip". A trip that
+ * departs this soon after the scan is the one they boarded.
+ */
+const BOARDING_MS = 1 * HOUR;
 const KATHMANDU_OFFSET_MS = (5 * 60 + 45) * 60_000;
 const PAGE = 50;
 
@@ -271,8 +276,9 @@ export class TripsService {
   // ================= for reviews and the reader =================
 
   /**
-   * Who was crewing this bus at a moment: the trip running then, else the crew assigned
-   * to the bus then, else nobody. This is how a review reaches a driver; the passenger
+   * Who was crewing this bus at a moment: the trip running then, else a trip that left
+   * within the hour after it (boarding at the park), else the crew assigned to the bus
+   * then, else nobody. This is how a review reaches a driver; the passenger
    * never says who it was.
    */
   async crewAt(vehicleId: string, at: Date) {
@@ -288,6 +294,16 @@ export class TripsService {
       select: { id: true, driverId: true, conductorId: true },
     });
     if (trip) return { tripId: trip.id, driverId: trip.driverId, conductorId: trip.conductorId };
+
+    const boarded = await this.prisma.trip.findFirst({
+      where: {
+        vehicleId, status: { not: TripStatus.CANCELLED },
+        departAt: { gt: at, lte: new Date(at.getTime() + BOARDING_MS) },
+      },
+      orderBy: { departAt: 'asc' },
+      select: { id: true, driverId: true, conductorId: true },
+    });
+    if (boarded) return { tripId: boarded.id, driverId: boarded.driverId, conductorId: boarded.conductorId };
 
     const assigned = await this.prisma.driverAssignment.findMany({
       where: { vehicleId, startedAt: { lte: at }, OR: [{ endedAt: null }, { endedAt: { gt: at } }] },
