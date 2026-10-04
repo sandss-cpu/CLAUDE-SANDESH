@@ -108,3 +108,12 @@ describe('validateEnv — rate limits', () => {
     expect(() => validateEnv(prod({ THROTTLE_DISABLED: 'true' }))).toThrow(/THROTTLE_DISABLED/);
   });
 });
+
+describe('validateEnv — sticker links', () => {
+  it('refuses a plain-http short link in production', () => {
+    expect(() => validateEnv(prod({ SHORT_LINK_BASE: 'http://batoma.example' }))).toThrow(/SHORT_LINK_BASE/);
+  });
+  it('accepts an https one', () => {
+    expect(() => validateEnv(prod({ SHORT_LINK_BASE: 'https://batoma.example' }))).not.toThrow();
+  });
+});

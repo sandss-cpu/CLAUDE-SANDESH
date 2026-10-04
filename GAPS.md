@@ -60,13 +60,22 @@ than a week.
 - The owner portal's inline handlers moved to data attributes, and it calls itself Batoma.
 - Scripts are now served `no-cache` on Render too, not only pages.
 
+## Done in step 5
+
+- One QR per bus, magazine first and rating second; stickers as PDF (A6, seat back, A4
+  fleet sheet), PNG and SVG, with print history, in the owner portal and the control panel.
+- `bus.html?code=` sends bus codes to the magazine; `bus.html` lost its inline script.
+- `scan.html` scans a bus's QR from inside the app.
+- Fonts are self-hosted on every page (no Google Fonts, and the CSP no longer allows it).
+- A unit test keeps the pages honest: no third-party scripts or stylesheets, no inline
+  code on the converted pages, and every pre-cached file exists.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| One QR per bus, magazine first; `bus.html?code=` redirect; stickers as PDF/PNG/SVG; seat-sticker minting UI (`/qr/batch`, `/qr/stats` have no UI) | 5 | L |
 | Driver scorecards and appraisals (review attribution to trip and crew is done) | 6 | L |
 | Income records | 7 | L |
 | Reading UI: summaries, "In brief", "Keep reading", the stops timeline | 8 | L |
@@ -75,8 +84,7 @@ than a week.
 | "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |
 | Moderation audit trail (`/moderation/audit` has no UI) | 10 (security events view) | S |
 | Traveller account: data export and deletion (`DELETE /users/me` has no UI) | 10 | M |
-| Inline scripts and handlers in `bus.html`, `login.html` and `creator.html` (CLAUDE.md known gap 7; the reader, control panel and owner portal are done) | 5–10 | M |
-| Google Fonts on every app page (a third party on each visit, and a CSP exception) | 9–10 (self-hosted) | S |
+| Inline scripts and handlers in `login.html`, `creator.html` and `preview.html` (CLAUDE.md known gap 7; the reader, control panel, owner portal, bus page and scan page are done) | 10 | M |
 | Development logs print recipients' email addresses (`[MAIL DISABLED] to …`) | 10 (log redaction) | S |
 | Sign-in, owner portal, admin and emails still say "Bato" | 3–11, as each is touched | S |
 | `API_PUBLIC_URL` must equal the origin the reader calls once `/api` is proxied through the app domain. Offline packs are cached under the address the API reports, and the reader looks stories up under its own. | 11 | S |
@@ -93,5 +101,6 @@ than a week.
 | Traveller profile and privacy settings (`/users/me`, privacy, follow, feed) have no UI | M | `hideExactLocation` and `publishDelayHours` can only be changed through the API. |
 | The legacy `operators` module (`/operators`, `/operators/vehicles`, `/operators/lost-items`, `/operators/:id/dashboard`) is superseded by `fleet` | S | Retire it, or move lost-item reports into the bus page. |
 | Article translations (CLAUDE.md known gap 1) | L | Needs a relation between language versions. |
+| Seat-sticker minting and statistics (`/qr/batch`, `/qr/stats`) have no UI | S | One code per bus replaces seat stickers; seat codes still resolve, so existing ones keep working. |
 | Payments (eSewa, Khalti) for listings and ads (known gap 2) | XL | Tiers and ads are still set by hand. |
 | `normalisePlate` drops Devanagari vowel signs (known gap 8) | M | Re-keying existing rows and the migration backfill together. |

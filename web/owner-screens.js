@@ -330,7 +330,7 @@ async function newBus(){
     onSubmit: (v) => api(`/fleet/companies/${state.companyId}/buses`, { method: 'POST', body: v }),
   });
   if(created && created.id){
-    notify(`${created.registrationNo} is registered. Its QR code is ready.`);
-    go(`bus/${created.id}`);
+    notify(`${created.registrationNo} is registered. Its sticker is ready to print${created.qr ? ` (code ${created.qr.code})` : ''}.`);
+    go(`bus/${created.id}/qr`);
   }
 }

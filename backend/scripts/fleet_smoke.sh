@@ -96,6 +96,7 @@ ok "refusal explains why" PLATE_TAKEN "$(get "d.get('code') or (d.get('error') o
 ok "number without digits refused" 400 "$(call POST /fleet/companies/$CID/buses "$OWNER" '{"registrationNo":"ABCDEF"}')"
 ok "register throwaway bus" 201 "$(call POST /fleet/companies/$CID/buses "$OWNER" '{"registrationNo":"ba 9 kha 9999","label":"Smoke Test Bus","seatCount":30,"busType":"TOURIST_DELUXE","amenities":["AC","WIFI"],"odometerKm":50000}')"
 SB=$(get "data['id']")
+ok "registering a bus returns its sticker in the same answer" true "$(get "len(data['qr']['code'])==10 and '/b/'+data['qr']['code'] in data['qr']['url']")"
 ok "plate tidied" "BA 9 KHA 9999" "$(get "data['registrationNo']")"
 ok "no service recorded yet" NO_RECORD "$(get "data['service']['state']")"
 

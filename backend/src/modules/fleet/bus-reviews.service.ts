@@ -95,7 +95,7 @@ export class BusReviewsService {
     }
   }
 
-  async scan(rawCode: string, sessionId?: string, ip?: string) {
+  async scan(rawCode: string, sessionId?: string, ip?: string, peek = false) {
     const code = rawCode.trim().toUpperCase();
     const qr = await this.prisma.qrCode.findUnique({
       where: { shortCode: code },
@@ -111,6 +111,7 @@ export class BusReviewsService {
       throw inactive;
     }
     if (qr.kind !== QrKind.COMPANY && !qr.vehicle?.isActive) throw inactive;
+    if (peek) return { kind: qr.kind };
 
     if (sessionId) {
       const seen = await this.prisma.scanEvent.findFirst({ where: { sessionId }, select: { id: true } });

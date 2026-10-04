@@ -13,6 +13,7 @@ import { BusReviewsService } from './bus-reviews.service';
 import { FleetAdminService } from './fleet-admin.service';
 import { FleetRemindersTask } from './fleet-reminders.task';
 import { TripsService } from './trips.service';
+import { StickersService } from './stickers.service';
 
 @Module({
   imports: [
@@ -28,8 +29,8 @@ import { TripsService } from './trips.service';
   controllers: [BusesController, FleetAdminController, FleetController],
   providers: [
     FleetAccessService, FleetService, FleetRecordsService, BusReviewsService, FleetAdminService, FleetRemindersTask,
-    TripsService,
+    TripsService, StickersService,
   ],
-  exports: [BusReviewsService, TripsService],
+  exports: [BusReviewsService, TripsService, StickersService],
 })
 export class FleetModule {}

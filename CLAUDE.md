@@ -48,7 +48,7 @@ and `npx tsc` then silently downloads an unrelated package named `tsc`. Run
 Health check is at `/health`, deliberately outside the `api/v1` prefix.
 
 `npm test` runs the unit tests over the pure logic. `scripts/fleet_smoke.sh <accounts file>`
-runs 113 API checks against a running local API, using the accounts from
+runs 114 API checks against a running local API, using the accounts from
 `npm run accounts:test`; `scripts/programming_smoke.sh` adds route programming. New smoke
 scripts source `scripts/smoke_lib.sh` for the shared helpers.
 Write request bodies into a variable before `"$(call …)"`: macOS's bash 3.2 mangles
@@ -62,7 +62,8 @@ npm run seed:creators          # demo approved creator with a journey
 bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
 bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming
 bash scripts/trips_smoke.sh ../Bato_Test_Accounts.md         # duty log (run the API with THROTTLE_DISABLED=true)
-node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts
+bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, stickers, print history
+node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts or web/css/fonts.css
 npm test                       # unit tests over the pure logic, including content-for
 ```
 
@@ -128,7 +129,9 @@ when a signed-in user should be recognised but anonymous access is still allowed
   `fleet` (owner portal, signed in), `buses` (public), `fleet/admin` (admin). Access is
   decided by `OperatorAdmin` membership in `FleetAccessService`, never by `User.role`:
   OWNER or MANAGER, and non-members get 404. Every service method calls
-  `access.company()` or `access.bus()` first; new endpoints must too
+  `access.company()` or `access.bus()` first; new endpoints must too.
+  `StickersService` owns the one active BUS code per bus (`ensureBusCode`, a partial
+  unique index backs it) and draws stickers with pdfkit; every download is a `QrPrint`
 - **ads**: twelve placements, and `AdRouteTarget` aims an ad at corridors. `slot()` serves
   targeted ads first and fills the rest with untargeted ones; an ad targeted elsewhere
   never appears, and with no `routeId` only untargeted ads show
@@ -245,7 +248,8 @@ cannot be bypassed by calling the API with the challenge directly.
 `moderationNote`, where a moderator writing a note destroyed the idempotency key and
 a replayed offline draft duplicated.
 
-**The service worker serves pages network-first** (3-second fallback to cache). It was
+**The service worker serves pages network-first**, falling back to the cache after 3 s,
+or 1.5 s on 3G and 0.8 s on 2G (`shellWait()`). It was
 cache-first, so a deploy never reached anyone who had visited before. Pages,
 `sw.js` and `config.js` are also served `no-cache` by `render.yaml`.
 
@@ -329,12 +333,28 @@ reduced-motion toggle, 17px body text at 1.6 line height, 48px tap targets and
 bottom-anchored navigation. Every one of those is a response to reading on a
 vibrating vehicle at night — treat them as requirements, not preferences.
 
-Body font is Mukta because it covers Devanagari and Latin in one family.
+Body font is Mukta because it covers Devanagari and Latin in one family. Fonts are
+served from `web/fonts` (`web/css/fonts.css`), never Google. The reader inlines the same
+`@font-face` rules and defers its scripts so the masthead paints the moment the page
+arrives; `scripts/sync-web-libs.mjs` copies them, and `web-pages.spec.ts` fails if the two
+drift or if any page loads a script or stylesheet from another origin.
+
+**`web/js/boot.js` starts the scan** before `reader.js` has downloaded; `resolveScan()`
+reuses that request (`earlyScan()`) only if it asked the same question. On Slow 3G that
+is two seconds sooner.
+
+**The rating comes second** (`web/js/rating.js`): a card after a finished story or five
+minutes, at each story's end, under More and near the journey's end, then a bottom sheet.
+Closing it after the stars sends the stars; with no signal the rating waits in
+`bato.ratingQueue` for as long as the ride's 12-hour scan token lasts.
+
+**Scanning from inside the app is `scan.html`**, the only page allowed the camera.
 
 **The masthead leads with Batoma, not the operator.** The app is the product; the route,
-bus company and seat are details of one ride and sit under it in small type. The wider
-rename was deliberately not done — sign-in, the control panel, the owner portal and
-printed QR stickers still say Bato.
+bus company and seat are details of one ride and sit under it in small type. Each surface
+is renamed to Batoma as Phase 3 touches it (the reader, the owner portal, the control
+panel's new screens and printed stickers so far). Code identifiers, env vars and `bato.*`
+storage keys keep the old name on purpose.
 
 **Palettes and backgrounds are CSS-only.** Every palette restates the whole token set so no
 colour survives from the previous one, and the backgrounds are gradients and repeating

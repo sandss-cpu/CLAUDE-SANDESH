@@ -83,6 +83,20 @@ async function authedFetch(url, opts = {}){
   return res;
 }
 
+/** Saves a file the API makes under the name the server gives it. */
+async function downloadFile(path){
+  const res = await authedFetch(`${API}${path}`);
+  if(!res.ok){
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json?.message || 'That file could not be made. Try again.');
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'batoma-download';
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 async function api(path, opts = {}){
   const res = await authedFetch(`${API}${path}`, {
     method: opts.method || 'GET',
@@ -1538,11 +1552,16 @@ async function viewCompany(id){
       <h3 style="margin:18px 0 8px">Team</h3>
       <div class="table-wrap"><table style="min-width:0"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Since</th></tr></thead>
         <tbody>${c.members.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.email || '—')}</td><td>${esc(m.phone || '—')}</td>
-          <td>${m.role === 'OWNER' ? 'Owner' : 'Manager'}</td><td><small>${fmtDate(m.since)}</small></td></tr>`).join('')}</tbody></table></div>
-      <h3 style="margin:18px 0 8px">Buses (${c.buses.length})</h3>
-      ${c.buses.length ? `<div class="table-wrap"><table style="min-width:0"><thead><tr><th>Registration</th><th>Name</th><th>Seats</th><th>Status</th></tr></thead>
+          <td>${({ OWNER: 'Owner', MANAGER: 'Manager', CREW: 'Crew' })[m.role] || esc(m.role)}</td><td><small>${fmtDate(m.since)}</small></td></tr>`).join('')}</tbody></table></div>
+      <div class="top-row" style="margin:18px 0 8px"><h3 style="margin:0">Buses (${c.buses.length})</h3>
+        ${c.buses.some((b) => b.isActive) ? `<button class="btn btn-sm" data-action="adminFleetStickers" data-id="${c.id}">All stickers (A4 sheets)</button>` : ''}</div>
+      ${c.buses.length ? `<div class="table-wrap"><table style="min-width:0"><thead><tr><th>Registration</th><th>Name</th><th>Seats</th><th>Status</th><th>Sticker</th></tr></thead>
         <tbody>${c.buses.map((b) => `<tr><td><b>${esc(b.registrationNo)}</b></td><td>${esc(b.label || '—')}</td><td>${b.seatCount ?? '—'}</td>
-          <td>${b.isActive ? esc(b.status.replace('_', ' ').toLowerCase()) : 'archived'}</td></tr>`).join('')}</tbody></table></div>`
+          <td>${b.isActive ? esc(b.status.replace('_', ' ').toLowerCase()) : 'archived'}</td>
+          <td class="row-actions">${b.isActive ? `
+            <button class="btn btn-sm" data-action="adminBusSticker" data-id="${b.id}" data-format="pdf" data-size="a6">A6</button>
+            <button class="btn btn-sm" data-action="adminBusSticker" data-id="${b.id}" data-format="pdf" data-size="seat">Seat</button>
+            <button class="btn btn-sm" data-action="adminBusSticker" data-id="${b.id}" data-format="png">PNG</button>` : '—'}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">No buses registered yet.</div>'}
       <h3 style="margin:18px 0 8px">Verification history</h3>
       ${c.history.length ? `<ul style="margin:0;padding-left:18px">${c.history.map((h) => `<li>${fmtDate(h.createdAt)}: ${esc(h.action)} by ${esc(h.moderator?.name || '—')}${h.note ? `. ${esc(h.note)}` : ''}</li>`).join('')}</ul>`
@@ -2325,6 +2344,10 @@ Actions.on({
   moveStop: (el) => moveStop(Number(el.dataset.index), Number(el.dataset.by)),
   deleteStop: (el) => deleteStop(el.dataset.id),
   cancelStopEdit: () => { state.guides.editingStop = null; renderMain(); },
+  // stickers, made by the server
+  adminBusSticker: (el) => downloadFile(`/fleet/admin/buses/${el.dataset.id}/qr/sticker?${new URLSearchParams({
+    format: el.dataset.format, ...(el.dataset.size ? { size: el.dataset.size } : {}) })}`).catch((err) => notify(err.message, 'error')),
+  adminFleetStickers: (el) => downloadFile(`/fleet/admin/companies/${el.dataset.id}/qr/stickers.pdf`).catch((err) => notify(err.message, 'error')),
   // creators
   reviewCreator: (el) => reviewCreator(el.dataset.id, el.dataset.status),
   featureCreator: (el) => featureCreator(el.dataset.id, el.dataset.featured === 'true'),

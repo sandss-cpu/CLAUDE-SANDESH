@@ -1,16 +1,21 @@
-import { Body, Controller, Delete, Get, Ip, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FleetService } from './fleet.service';
 import { FleetRecordsService } from './fleet-records.service';
 import { BusReviewsService } from './bus-reviews.service';
 import { TripsService } from './trips.service';
+import { StickersService } from './stickers.service';
+import { FleetAccessService } from './fleet-access.service';
+import type { Response } from 'express';
+import { sendFile as send } from '../../common/utils/send-file';
 import {
   AddMemberDto, ArchiveBusDto, AssignDriverDto, BusListQueryDto, CreateBusDto, CreateCompanyDto, DocumentDto,
   DriverDto, FuelDto, IncidentDto, MaintenanceDto, OwnerReportDto, ReplyDto, ResolveIncidentDto,
   ReviewListQueryDto, UpdateBusDto, UpdateCompanyDto,
-  EndTripDto, StartTripDto, TripListQueryDto, UnlockTripDto, UpdateTripDto,
+  EndTripDto, StartTripDto, StickerQueryDto, TripListQueryDto, UnlockTripDto, UpdateTripDto,
 } from './dto/fleet.dto';
+
 
 /**
  * The bus owner portal. Every route needs a signed-in account; which companies
@@ -23,6 +28,8 @@ export class FleetController {
     private records: FleetRecordsService,
     private reviews: BusReviewsService,
     private trips: TripsService,
+    private stickers: StickersService,
+    private access: FleetAccessService,
   ) {}
 
   // ---- trips: the duty log (crew accounts can start and end them) ----
@@ -116,7 +123,17 @@ export class FleetController {
   companyQr(@Param('cid') cid: string, @CurrentUser('id') uid: string) { return this.fleet.companyQr(cid, uid); }
 
   @Post('companies/:cid/qr/rotate')
-  rotateCompanyQr(@Param('cid') cid: string, @CurrentUser('id') uid: string) { return this.fleet.rotateCompanyQr(cid, uid); }
+  rotateCompanyQr(@Param('cid') cid: string, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.fleet.rotateCompanyQr(cid, uid, ip);
+  }
+
+  /** Every active bus's sticker on A4 sheets, ready to cut. */
+  @Throttle({ default: { limit: 20, ttl: 600_000 } })
+  @Get('companies/:cid/qr/stickers.pdf')
+  async fleetStickers(@Param('cid') cid: string, @Query() q: StickerQueryDto, @CurrentUser('id') uid: string, @Res() res: Response) {
+    await this.access.company(cid, uid, 'VIEW');
+    send(res, await this.stickers.fleetSheet(cid, q.size ?? 'a6', uid));
+  }
 
   @Get('companies/:cid/notifications')
   notifications(@Param('cid') cid: string, @CurrentUser('id') uid: string) { return this.fleet.notifications(cid, uid); }
@@ -146,7 +163,15 @@ export class FleetController {
   busQr(@Param('id') id: string, @CurrentUser('id') uid: string) { return this.fleet.busQr(id, uid); }
 
   @Post('buses/:id/qr/rotate')
-  rotateBusQr(@Param('id') id: string, @CurrentUser('id') uid: string) { return this.fleet.rotateBusQr(id, uid); }
+  rotateBusQr(@Param('id') id: string, @CurrentUser('id') uid: string, @Ip() ip: string) { return this.fleet.rotateBusQr(id, uid, ip); }
+
+  /** The bus's sticker as a print-ready PDF (A6 or seat-back), or the code alone as PNG or SVG. */
+  @Throttle({ default: { limit: 60, ttl: 600_000 } })
+  @Get('buses/:id/qr/sticker')
+  async busSticker(@Param('id') id: string, @Query() q: StickerQueryDto, @CurrentUser('id') uid: string, @Res() res: Response) {
+    await this.access.bus(id, uid, 'VIEW');
+    send(res, await this.stickers.busFile(id, q.format ?? 'pdf', q.size ?? 'a6', uid));
+  }
 
   @Get('buses/:id/history')
   history(@Param('id') id: string, @CurrentUser('id') uid: string) { return this.records.history(id, uid); }

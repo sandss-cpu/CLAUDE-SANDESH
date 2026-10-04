@@ -512,14 +512,15 @@ BUS_TABS.qr = async (bus) => {
   const qr = await api(`/fleet/buses/${bus.id}/qr`);
   state.qr = qr;
   return qrPanel(qr, {
+    kind: 'bus',
     heading: 'This bus’s QR code',
-    about: 'Print it and stick it inside the bus where passengers can see it: on the back of seats, near the door, or by the ticket window. Scanning it opens this bus’s page, where passengers can read and leave reviews. It is one way in; passengers can also find the bus by searching its registration number.',
+    about: 'The one code for this bus. Scanning it opens Batoma’s magazine for the road this bus is on, and passengers can rate the bus from there. Put it on seat backs, by the door and at the ticket window. It follows the bus: change the bus’s route and the same sticker shows the new road.',
     rotate: canManage() && bus.isActive ? 'rotateBusQr' : '',
     live: bus.isActive && state.company.verification === 'VERIFIED',
   });
 };
 
-function qrPanel(qr, { heading, about, rotate, live }){
+function qrPanel(qr, { kind = 'company', heading, about, rotate, live }){
   return `
     <section class="panel">
       <div class="qr-box">
@@ -533,16 +534,46 @@ function qrPanel(qr, { heading, about, rotate, live }){
             <div class="fact"><b>${fmtDay(qr.createdAt)}</b>Created</div>
             <div class="fact"><b>${live ? pill(['Working', 'good']) : pill(['Paused', 'warn'])}</b>${live ? 'Opens for passengers' : 'Starts working once verified and active'}</div>
           </div>
+          ${kind === 'bus' ? `
+          <div class="modal-actions" style="margin-top:0">
+            <button class="btn btn-primary" data-action="stickerDownload" data-format="pdf" data-size="a6">Sticker PDF · A6</button>
+            <button class="btn btn-ghost" data-action="stickerDownload" data-format="pdf" data-size="seat">Seat-back PDF</button>
+            <button class="btn btn-ghost" data-action="stickerDownload" data-format="png">PNG</button>
+            <button class="btn btn-ghost" data-action="stickerDownload" data-format="svg">SVG</button>
+            <button class="btn btn-ghost" data-action="copyLink">Copy link</button>
+            ${rotate ? `<button class="btn btn-ghost" data-action="${rotate}">Replace sticker</button>` : ''}
+          </div>` : `
           <div class="modal-actions" style="margin-top:0">
             <button class="btn btn-primary" data-action="printSticker">Print sticker</button>
             <button class="btn btn-ghost" data-action="downloadSvg">Download image</button>
             <button class="btn btn-ghost" data-action="copyLink">Copy link</button>
-            ${rotate ? `<button class="btn btn-ghost" data-action="${rotate}">Replace sticker</button>` : ''}
-          </div>
+            <button class="btn btn-ghost" data-action="fleetStickers">All bus stickers (A4 sheets)</button>
+            ${rotate ? `<button class="btn btn-ghost" data-action="${rotate}">Replace code</button>` : ''}
+          </div>`}
           <p class="hint">If a sticker is damaged or copied somewhere it shouldn't be, replace it: the old code stops working at once.</p>
+          ${kind === 'bus' && qr.prints?.length ? `
+            <details class="prints"><summary>Printed or downloaded ${plural(qr.prints.length, 'time')}</summary>
+              <ul>${qr.prints.map((p) => `<li>${fmtDayBs(p.at)} ${fmtTime(p.at)} · ${esc(PRINT_FORMAT[p.format] || p.format)}${p.by ? ` · ${esc(p.by)}` : ''}${p.current ? '' : ' · <span class="muted">an older, replaced code</span>'}</li>`).join('')}</ul>
+            </details>` : ''}
         </div>
       </div>
     </section>`;
+}
+
+const PRINT_FORMAT = { PDF_A6: 'A6 sticker', PDF_SEAT: 'Seat-back sticker', SHEET_A6: 'Fleet sheet', PNG: 'PNG', SVG: 'SVG' };
+
+/** The server makes the sticker; the browser only saves it. */
+async function stickerDownload(format, size){
+  const qs = new URLSearchParams({ format, ...(size ? { size } : {}) });
+  try{
+    await downloadFile(`/fleet/buses/${state.bus.id}/qr/sticker?${qs}`);
+    renderApp();
+  }catch(err){ fail(err); }
+}
+
+async function fleetStickers(){
+  try{ await downloadFile(`/fleet/companies/${state.companyId}/qr/stickers.pdf`); }
+  catch(err){ fail(err); }
 }
 
 async function rotateBusQr(){
@@ -574,21 +605,23 @@ function printSticker(){
     ${[1, 2].map(() => `<div class="sticker">
       <div class="brand">Batoma</div>
       <div class="flags"><i style="background:#2F6FD0"></i><i style="background:#eee"></i><i style="background:#E8455F"></i><i style="background:#3E9B4F"></i><i style="background:#F4A024"></i></div>
-      <p class="cta">How was your ride? Scan to rate this bus</p>
-      <p class="ne">यो बसको समीक्षा गर्न स्क्यान गर्नुहोस्</p>
+      <p class="cta">See all our buses and their ratings</p>
+      <p class="ne">हाम्रा सबै बस र तिनको मूल्याङ्कन हेर्नुहोस्</p>
       <div class="qr">${qr.svg}</div>
       <div class="plate">${esc(qr.title)}</div>
       <div class="sub">${esc([qr.subtitle, company].filter(Boolean).join(' · '))}</div>
       <div class="code">Code ${esc(qr.code)}</div>
     </div>`).join('')}
-    <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
+    </body></html>`);
   w.document.close();
+  // Printed from here rather than by a script inside the new page, which a strict CSP refuses.
+  setTimeout(() => { w.focus(); w.print(); }, 300);
 }
 
 function downloadSvg(){
   const qr = state.qr;
   const url = URL.createObjectURL(new Blob([qr.svg], { type: 'image/svg+xml' }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: `bato-qr-${qr.title.replace(/[^\p{L}\p{N}]+/gu, '-')}.svg` });
+  const a = Object.assign(document.createElement('a'), { href: url, download: `batoma-qr-${qr.title.replace(/[^\p{L}\p{N}]+/gu, '-')}.svg` });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

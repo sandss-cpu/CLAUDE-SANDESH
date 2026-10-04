@@ -71,6 +71,11 @@ export function validateEnv(config: Record<string, unknown>) {
     // Offline packs are cached from this host. If it is wrong or missing,
     // offline reading fails silently, which is the worst failure this
     // product can have.
+    // Printed on every sticker and never changed afterwards, so it has to be right first time.
+    const shortLinks = str('SHORT_LINK_BASE');
+    if (shortLinks && !shortLinks.startsWith('https://')) {
+      errors.push('SHORT_LINK_BASE must be https in production: it is printed on every bus sticker');
+    }
     const api = str('API_PUBLIC_URL');
     if (!api) {
       errors.push('API_PUBLIC_URL is required in production (offline packs are cached from it)');

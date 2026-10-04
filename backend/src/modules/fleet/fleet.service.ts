@@ -9,6 +9,8 @@ import * as QRCode from 'qrcode';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { uniqueSlug } from '../../common/utils/slug.util';
 import { FleetAccessService } from './fleet-access.service';
+import { StickersService } from './stickers.service';
+import { AuditService } from '../../common/audit/audit.service';
 import {
   AddMemberDto, BusListQueryDto, CreateBusDto, CreateCompanyDto, UpdateBusDto, UpdateCompanyDto,
 } from './dto/fleet.dto';
@@ -66,7 +68,12 @@ export function busView(b: BusWithRoute) {
 
 @Injectable()
 export class FleetService {
-  constructor(private prisma: PrismaService, private access: FleetAccessService) {}
+  constructor(
+    private prisma: PrismaService,
+    private access: FleetAccessService,
+    private stickers: StickersService,
+    private audit: AuditService,
+  ) {}
 
   // ================= companies =================
 
@@ -253,7 +260,9 @@ export class FleetService {
         });
         return created;
       });
-      return this.bus(bus.id, userId);
+      // The sticker is part of registering a bus: it comes back in the same answer.
+      const qr = await this.stickers.forBus(bus.id);
+      return { ...(await this.bus(bus.id, userId)), qr: { code: qr.code, url: qr.url } };
     } catch (e) {
       if ((e as Prisma.PrismaClientKnownRequestError)?.code === 'P2002') throw this.plateTaken();
       throw e;
@@ -514,6 +523,8 @@ export class FleetService {
   /** Archived buses leave public search, and their QR codes stop resolving until restored. */
   async archiveBus(id: string, archived: boolean, userId: string) {
     await this.access.bus(id, userId, 'OWN');
+    // A restored bus must come back with a working sticker, whatever happened while archived.
+    if (!archived) await this.stickers.ensureBusCode(id);
     await this.prisma.$transaction([
       this.prisma.vehicle.update({ where: { id }, data: { isActive: !archived } }),
       ...(archived
@@ -536,7 +547,9 @@ export class FleetService {
   // ================= QR codes =================
 
   private async qrView(qr: QrCode, title: string, subtitle: string | null) {
-    const url = this.access.webUrl(`bus.html?code=${qr.shortCode}`);
+    // A bus code opens that bus's magazine at its permanent short link; a company code
+    // opens the company's public profile.
+    const url = qr.kind === QrKind.BUS ? this.stickers.shortUrl(qr.shortCode) : this.access.webUrl(`bus.html?code=${qr.shortCode}`);
     const [svg, scans] = await Promise.all([
       QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#1C1A2E', light: '#FFFFFF' } }),
       this.prisma.scanEvent.count({ where: { qrCodeId: qr.id } }),
@@ -555,20 +568,40 @@ export class FleetService {
 
   async busQr(id: string, userId: string) {
     const { bus } = await this.access.bus(id, userId);
-    const qr = await this.prisma.qrCode.findFirst({
-      where: { vehicleId: id, kind: QrKind.BUS, isActive: true }, orderBy: { createdAt: 'desc' },
-    }) ?? await this.newQr(bus.operatorId, QrKind.BUS, id, bus.routeId);
-    return this.qrView(qr, bus.plateNo, bus.label);
+    const qr = await this.stickers.ensureBusCode(id);
+    return { ...(await this.qrView(qr, bus.plateNo, bus.label)), prints: await this.stickers.history(id) };
   }
 
-  /** For a copied or damaged sticker: the old code stops working at once. */
-  async rotateBusQr(id: string, userId: string) {
+  /**
+   * For a copied or damaged sticker: the old code stops working at once. Old off and new on
+   * happen together, so the bus is never without a code, nor with two.
+   */
+  async rotateBusQr(id: string, userId: string, ip?: string) {
     const { bus } = await this.access.bus(id, userId, 'MANAGE');
-    await this.prisma.qrCode.updateMany({
-      where: { vehicleId: id, kind: QrKind.BUS, isActive: true }, data: { isActive: false, replacedAt: new Date() },
+    const qr = await this.rotate({ vehicleId: id, kind: QrKind.BUS }, bus.operatorId, bus.routeId, id, userId, ip,
+      `the sticker on ${bus.plateNo}`);
+    return { ...(await this.qrView(qr, bus.plateNo, bus.label)), prints: await this.stickers.history(id) };
+  }
+
+  private rotate(
+    where: Prisma.QrCodeWhereInput, operatorId: string, routeId: string | null, vehicleId: string | undefined,
+    userId: string, ip: string | undefined, what: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const old = await tx.qrCode.findMany({ where: { ...where, isActive: true }, select: { shortCode: true } });
+      await tx.qrCode.updateMany({ where: { ...where, isActive: true }, data: { isActive: false, replacedAt: new Date() } });
+      const created = await tx.qrCode.create({
+        data: {
+          shortCode: profileCode(), operatorId, vehicleId, routeId, kind: where.kind as QrKind,
+          placement: where.kind === QrKind.BUS ? 'BUS_PROFILE' : 'COMPANY_PROFILE', printedAt: new Date(),
+        },
+      });
+      await this.audit.record({
+        actorId: userId, ip, action: 'qr.rotate', entityType: 'QrCode', entityId: created.id, operatorId,
+        summary: `Replaced ${what}: ${old.map((o) => o.shortCode).join(', ') || 'no code'} → ${created.shortCode}`,
+      }, tx);
+      return created;
     });
-    const qr = await this.newQr(bus.operatorId, QrKind.BUS, id, bus.routeId);
-    return this.qrView(qr, bus.plateNo, bus.label);
   }
 
   async companyQr(operatorId: string, userId: string) {
@@ -579,12 +612,10 @@ export class FleetService {
     return this.qrView(qr, operator.name, 'All buses');
   }
 
-  async rotateCompanyQr(operatorId: string, userId: string) {
+  async rotateCompanyQr(operatorId: string, userId: string, ip?: string) {
     const { operator } = await this.access.company(operatorId, userId, 'MANAGE');
-    await this.prisma.qrCode.updateMany({
-      where: { operatorId, kind: QrKind.COMPANY, isActive: true }, data: { isActive: false, replacedAt: new Date() },
-    });
-    return this.qrView(await this.newQr(operatorId, QrKind.COMPANY), operator.name, 'All buses');
+    const qr = await this.rotate({ operatorId, kind: QrKind.COMPANY }, operatorId, null, undefined, userId, ip, "the company's QR code");
+    return this.qrView(qr, operator.name, 'All buses');
   }
 
   // ================= dashboard =================

@@ -296,6 +296,7 @@ function applyScan(code, data, mode){
   state.operator = data.operator || null;
   state.vehicle = data.vehicle || null;
   state.seat = data.scan?.seatNo || null;
+  state.scannedAt = data.scan?.scannedAt ? Date.parse(data.scan.scannedAt) : Date.now();
   state.bus = data.bus || null;
   state.issue = data.currentIssue || null;
   state.articles = (data.routeArticles || []).map(cardView);
@@ -328,6 +329,17 @@ async function loadCurrentIssue(){
   }
 }
 
+/**
+ * The scan boot.js started while this script was still downloading, if it asked
+ * exactly the question this reader would ask now. Used once: a retry asks afresh.
+ */
+function earlyScan(code, direction){
+  const early = window.__batoScan;
+  window.__batoScan = null;
+  if(!early || early.code !== code || (early.body?.direction || null) !== (direction || null)) return null;
+  return early.promise;
+}
+
 async function resolveScan(){
   const fromUrl = scanCodeFromUrl();
   const saved = savedScan();
@@ -348,12 +360,16 @@ async function resolveScan(){
   try{
     // The direction this phone chose for this route, if it chose one in the last 12 hours.
     const direction = currentDirection(cached?.route?.id);
-    const res = await fetch(`${API}/qr/r/${encodeURIComponent(code)}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ sessionId: state.session, ...(direction ? { direction } : {}) }),
-      // Generous without a saved copy: on a weak signal a slow answer beats none.
-      signal: AbortSignal.timeout(cached ? 6000 : 15000),
-    });
+    // Generous without a saved copy: on a weak signal a slow answer beats none.
+    const ms = cached ? 6000 : 15000;
+    const early = earlyScan(code, direction);
+    const res = await (early
+      ? Promise.race([early, new Promise((_, fail) => setTimeout(() => fail(new Error('timeout')), ms))])
+      : fetch(`${API}/qr/r/${encodeURIComponent(code)}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ sessionId: state.session, ...(direction ? { direction } : {}) }),
+        signal: AbortSignal.timeout(ms),
+      }));
     if(res.status === 404){
       forgetScan(code);
       state.mode = 'inactive';
@@ -546,6 +562,7 @@ const SCREENS = {
       <div class="sec-head"><h2>${state.readFilter ? esc(sectionName(state.readFilter)) : 'Start here'}</h2>
         <span>${shown.length} ${shown.length === 1 ? 'story' : 'stories'}</span></div>
       ${heroCard(hero)}
+      ${/* Earned by reading; under the lead story, so the magazine still comes first. */ typeof ratingSlot === 'function' ? ratingSlot('read') : ''}
 
       ${rail.length ? `
         <div class="sec-head"><h2>Keep reading</h2><span>Swipe →</span></div>
@@ -598,7 +615,7 @@ const SCREENS = {
 
         ${a.loading
           ? '<div class="skel" style="height:18px;margin:18px 0 10px"></div><div class="skel" style="height:18px;margin-bottom:10px"></div><div class="skel" style="height:18px;width:70%"></div>'
-          : `<div class="article-body">${md(a.body || '')}</div>`}
+          : `<div class="article-body">${md(a.body || '')}</div><div id="storyEnd" aria-hidden="true"></div>`}
         ${slotAd('ARTICLE_BOTTOM')}
 
         <div class="btn-row">
@@ -607,6 +624,7 @@ const SCREENS = {
           ${isDemo() || planTarget(a) ? `<button class="btn btn-primary" data-action="tripFromArticle">Plan this trip</button>` : ''}
         </div>
         ${a.id ? `<div style="text-align:center;margin:-4px 0 14px">${reportButton('ARTICLE', a.id)}</div>` : ''}
+        ${!a.loading && typeof ratingSlot === 'function' ? ratingSlot('article') : ''}
         ${readNext(a)}
       </div>`;
   },
@@ -859,20 +877,19 @@ const SCREENS = {
         </a>
       `}
 
-      <div class="sec-head"><h2>Rate this bus</h2><span>Anonymous to the company</span></div>
+      <div class="sec-head"><h2>Your bus</h2><span>Anonymous to the company</span></div>
       ${state.bus ? `
-        <div class="num"><span><strong>${esc(state.bus.label || 'Your bus')}</strong><br>
-          <small style="color:var(--text-dim)">${esc(state.bus.registrationNo)}${state.operator ? ` · ${esc(state.operator.name)}` : ''}</small></span></div>
-        <p style="font-size:14px;color:var(--text-dim);margin:8px 0 0">
-          The company reads your review and suggestions, never who wrote them.
-        </p>
-        <a class="btn btn-primary" style="margin-top:12px" href="/bus.html?id=${encodeURIComponent(state.bus.id)}#review">Rate this bus</a>
+        ${typeof ratingSlot === 'function' ? ratingSlot('more') : ''}
+        ${typeof ratingAvailable === 'function' && !ratingAvailable() ? `<p style="font-size:14px;color:var(--text-dim);margin:0 0 8px">
+          Thanks: you have rated ${esc(state.bus.label || state.bus.registrationNo)} on this ride.</p>` : ''}
+        <a class="btn btn-ghost" href="/bus.html?id=${encodeURIComponent(state.bus.id)}">See this bus's ratings</a>
       ` : `
         <p style="font-size:14px;color:var(--text-dim);margin-top:0">
-          Scan the QR code inside your bus, or find the bus by its number plate.
+          Scan the QR code inside your bus to read its magazine and rate it, or find the bus by its number plate.
         </p>
+        <a class="btn btn-ghost" href="/bus.html">Find a bus by number plate</a>
       `}
-      <a class="btn btn-ghost" style="margin-top:10px" href="/bus.html">Find a bus by number plate</a>
+      <a class="btn btn-primary" style="margin-top:10px" href="/scan.html">Scan a bus QR</a>
 
       <div class="sec-head"><h2>Creators</h2><span>Travellers worth following</span></div>
       <p style="font-size:14px;color:var(--text-dim);margin-top:0">
@@ -1131,6 +1148,7 @@ function render(){
   $('#view').innerHTML = SCREENS[key]();
   paintNav();
   queueImpressions();
+  if(key === 'article' && typeof watchStoryEnd === 'function') watchStoryEnd();
 }
 
 /* ---------- actions ---------- */
@@ -2543,6 +2561,7 @@ function afterScan(){
   render();
   countOffline().then(() => { if(state.screen === 'read') render(); });
   if(state.route && currentDirection()) loadRoad();
+  if(typeof scheduleJourneyReminder === 'function') scheduleJourneyReminder();
 }
 
 /* ---------- what the markup may ask for (see js/actions.js) ---------- */

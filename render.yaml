@@ -111,9 +111,41 @@ services:
       - path: /*
         name: X-Frame-Options
         value: DENY
-      - path: /*
+      # The camera is for scan.html alone (scanning a bus's QR); every other page is denied
+      # it. Pages are listed one by one so no two rules for this header ever overlap.
+      - path: /
         name: Permissions-Policy
-        value: camera=(self), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /index.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /b/*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /r/*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /login.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /admin.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /owner.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /bus.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /creator.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /preview.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(self), microphone=()
+      - path: /scan.html
+        name: Permissions-Policy
+        value: camera=(self), geolocation=(), microphone=()
       # Honest about what this is: script-src still allows 'unsafe-inline',
       # because the pages carry inline handlers and one large inline script each.
       # So this is not XSS-proof. It does take the easy wins — a script can only
@@ -133,8 +165,8 @@ services:
           frame-ancestors 'none';
           form-action 'self';
           script-src 'self' 'unsafe-inline';
-          style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-          font-src 'self' https://fonts.gstatic.com;
+          style-src 'self' 'unsafe-inline';
+          font-src 'self';
           img-src 'self' data: blob: https:;
           connect-src 'self' https:
       # Pages, the service worker and config must be revalidated on every visit,
@@ -162,3 +194,10 @@ services:
       - path: /manifest.json
         name: Cache-Control
         value: no-cache
+      - path: /css/*
+        name: Cache-Control
+        value: no-cache
+      # Font files are versioned by their package and never change under the same name.
+      - path: /fonts/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable

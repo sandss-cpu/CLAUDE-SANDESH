@@ -318,6 +318,12 @@ export class SubmitReviewDto {
 
 export class ScanDto {
   @IsOptional() @IsString() @Length(8, 64) sessionId?: string;
+
+  /**
+   * Only say what kind of code this is, without counting a scan or issuing a token: an
+   * old bus sticker (bus.html?code=) is sent on to the magazine, which counts it there.
+   */
+  @IsOptional() @IsBoolean() peek?: boolean;
 }
 
 export class ReplyDto {
@@ -444,4 +450,14 @@ export class TripListQueryDto {
 
   @blankToUndefined() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500)
   page?: number;
+}
+
+// ---------------- stickers ----------------
+
+export class StickerQueryDto {
+  @IsOptional() @IsIn(['pdf', 'png', 'svg'], { message: 'Choose PDF, PNG or SVG' })
+  format?: 'pdf' | 'png' | 'svg';
+
+  @IsOptional() @IsIn(['a6', 'seat'], { message: 'Choose A6 or seat-back' })
+  size?: 'a6' | 'seat';
 }

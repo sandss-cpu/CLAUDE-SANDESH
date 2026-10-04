@@ -12,6 +12,7 @@
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
+import { createGzip } from 'node:zlib';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,6 +42,9 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json',
 };
 
+/** Text compresses to about a third; the hosted static site compresses it too, so measure the same. */
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.svg', '.txt', '.webmanifest']);
+
 function target(pathname) {
   for (const [pattern, file] of REWRITES) if (pattern.test(pathname)) return file;
   return pathname.endsWith('/') ? `${pathname}index.html` : pathname;
@@ -63,15 +67,18 @@ createServer(async (req, res) => {
   try {
     const info = await stat(file);
     if (!info.isFile()) throw new Error('not a file');
+    const ext = extname(file).toLowerCase();
+    const gzip = COMPRESSIBLE.has(ext) && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
     res.writeHead(200, {
-      'Content-Type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream',
-      'Content-Length': info.size,
+      'Content-Type': TYPES[ext] || 'application/octet-stream',
+      ...(gzip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : { 'Content-Length': info.size }),
       // Development: always revalidate, so an edit shows on the next reload.
       'Cache-Control': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
     });
     if (req.method === 'HEAD') return res.end();
-    createReadStream(file).pipe(res);
+    const body = createReadStream(file);
+    (gzip ? body.pipe(createGzip()) : body).pipe(res);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
   }

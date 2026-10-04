@@ -157,6 +157,20 @@ async function api(path, { method = 'GET', body } = {}){
   return readJson(res);
 }
 
+/** Saves a file the API makes (a sticker, a report) under the name the server gives it. */
+async function downloadFile(path){
+  const res = await authedFetch(`${API}${path}`);
+  if(!res.ok){
+    const json = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(json?.message || 'That file could not be made. Try again.'), { status: res.status });
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'batoma-download';
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 async function publicPost(path, body){
   let res;
   try{

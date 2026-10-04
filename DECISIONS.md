@@ -136,3 +136,60 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   out rather than guessed.
 - **`THROTTLE_DISABLED` switches rate limits off for local test runs only.** The smoke
   suites sign in many accounts back to back; production refuses to start with it set.
+
+## Step 5: one QR per bus (Feature 2)
+
+- **Every active bus has exactly one active BUS code**, enforced by a partial unique index
+  (`qr_one_active_bus_code`). The migration gave every bus without one a code in SQL;
+  registering a bus, restoring one from the archive and the seed scripts all ensure one.
+  The control panel has no "add bus" path to cover: companies register their own buses.
+- **The sticker encodes `SHORT_LINK_BASE/b/<code>`**, falling back to `PUBLIC_WEB_URL`.
+  That address must never change once stickers are printed, so production insists it is
+  https. Rotating a code (audited) leaves the old sticker on the "no longer active" screen
+  with a bus search link.
+- **Old stickers keep working.** `bus.html?code=` asks the API what the code is without
+  counting a scan (`peek`), then sends a bus code to `/b/<code>`; a company code stays on
+  that company's page. `/r/<code>` was already rewritten in step 2.
+- **Stickers are drawn on the server with pdfkit** and Mukta subsets (latin and
+  devanagari) vendored in `backend/assets/fonts`. fontkit shapes Devanagari conjuncts
+  correctly, so the print-to-PDF fallback in the plan was not needed. Formats: PDF in A6
+  and seat-back (70 × 100 mm), PNG, SVG, and an A4 sheet of the whole fleet. The QR is
+  drawn as vector squares, so it stays sharp at any print size. Every download is
+  recorded in `QrPrint` and shown as print history.
+- **The magazine comes first and the rating second.** "How's this bus?" is offered after
+  a finished story or 5 minutes of reading, at the end of every story, under More, and
+  once near the journey's end. It snoozes for 45 minutes when dismissed, and does not
+  come back for 20 hours once this bus has been rated.
+- **Closing the sheet after choosing stars sends the stars.** Part scores, the comment and
+  the private suggestion are optional extras, not a form to finish.
+- **A rating sent with no signal is queued** on the phone and sent when the signal
+  returns, as long as the ride's scan token (12 hours) is still valid. It goes to the
+  existing `/buses/:id/reviews`, so every existing rule (one per ride, moderation,
+  attribution to the crew) still applies.
+- **Scanning from inside the app is its own page, `scan.html`**, so the camera permission
+  (`Permissions-Policy: camera=(self)`) covers that page alone. BarcodeDetector where the
+  browser has it; elsewhere the vendored jsQR (Apache-2.0), loaded only then. Whatever a
+  QR says, the page only goes to this site's own `/b/<code>`.
+- **Load time on a weak signal.** Measured with Lighthouse on classic Slow 3G (2 s round
+  trip, 400 kbps), mobile, local servers with gzip:
+
+  | | Before | After |
+  |---|---|---|
+  | Cold first paint | 4.9 s | 2.2 s |
+  | Cold LCP (the bus's stories on screen) | 10.4 s | 6.7 s |
+  | Cold transfer | 287 KiB | 145 KiB |
+  | Warm (service worker) first paint and LCP | – | 0.9 s |
+
+  What changed: fonts are served from this site, not Google (one less connection
+  before the first paint, no third party told who reads what); the reader's scripts are
+  deferred and its font faces inlined, so the masthead paints as soon as the page
+  arrives; `boot.js` starts the scan request while the reader script is still
+  downloading; the service worker waits 0.8 s (2G) or 1.5 s (3G) for the network before
+  serving the cached page, instead of 3 s.
+
+  **The brief's "under 3 s on Slow 3G" holds for the first paint and for every visit
+  after the first, not for the first visit's stories.** At a 2 s round trip, the page,
+  then `boot.js`, then the API answer are three round trips, about 6 s, before any
+  network content can show. Inline scripts would save one, and the brief rules them out.
+  In production the `/api` rewrite (step 11) removes the cross-origin preflight, and
+  Render serves the files with Brotli.

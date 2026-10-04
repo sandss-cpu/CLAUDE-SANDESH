@@ -217,6 +217,7 @@ SCREENS.company = async () => {
       </section>
     </div>
     ${qrPanel(qr, {
+      kind: 'company',
       heading: 'Company QR code',
       about: 'Put this one at your ticket counter, office or bus park. Scanning it lists all your buses, so passengers can pick the one they rode and review it.',
       rotate: canManage() ? 'rotateCompanyQr' : '',

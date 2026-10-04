@@ -20,7 +20,7 @@ export class BusesController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('scan/:code')
   scan(@Param('code') code: string, @Body() dto: ScanDto, @Ip() ip: string) {
-    return this.reviews.scan(code, dto.sessionId, ip);
+    return this.reviews.scan(code, dto.sessionId, ip, dto.peek);
   }
 
   @Public()

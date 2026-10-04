@@ -334,7 +334,9 @@ enum BusStatus {
   OFF_ROAD
 }
 
-/// SEAT stickers open the magazine; BUS and COMPANY codes open the public profile.
+/// BUS: the one permanent code on each bus; it opens that bus's magazine (/b/<code>), with
+/// rating second. SEAT: optional seat stickers, kept for seat-level statistics. COMPANY: the
+/// company's public profile.
 enum QrKind {
   SEAT
   BUS
@@ -451,10 +453,29 @@ model QrCode {
   route    Route?    @relation(fields: [routeId], references: [id])
   scans    ScanEvent[]
   reviews  RideFeedback[]
+  prints   QrPrint[]
 
   @@index([routeId])
   @@index([vehicleId, kind, isActive])
   @@map("qr_codes")
+}
+
+/// What was printed or downloaded, and by whom: a sticker that keeps being reprinted is
+/// worth a look, and the owner can see when the stickers in their buses were made.
+model QrPrint {
+  id          String   @id @default(uuid())
+  qrCodeId    String
+  operatorId  String
+  /// PDF_A6, PDF_SEAT, SHEET_A6 (four to an A4 sheet), PNG or SVG.
+  format      String
+  printedById String?
+  createdAt   DateTime @default(now())
+
+  qrCode QrCode @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId, createdAt])
+  @@index([operatorId, createdAt])
+  @@map("qr_prints")
 }
 
 model ScanEvent {

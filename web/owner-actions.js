@@ -44,6 +44,8 @@ Actions.on({
   downloadSvg: () => downloadSvg(),
   copyLink: () => copyLink(),
   rotateBusQr: () => rotateBusQr(),
+  stickerDownload: (el) => stickerDownload(el.dataset.format, el.dataset.size),
+  fleetStickers: () => fleetStickers(),
   // crew and company
   addDriver: () => addDriver(),
   editDriver: (el) => editDriver(el.dataset.id),
