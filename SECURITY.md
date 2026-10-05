@@ -123,3 +123,7 @@ finance, trip, appraisal, document and partner route, as another company and as 
 roles), the website's tests, `npm audit --omit=dev` (fails on high), both builds, and an
 OWASP ZAP baseline scan of the running web app, website and API that fails on any high-risk
 finding. Dependabot opens weekly update pull requests.
+
+**Last scan**: 5 October 2026, CI run on `phase3`: 0 high-risk findings on the web app,
+the website and the API. The medium findings and why they are accepted are in
+DECISIONS.md (step 10).

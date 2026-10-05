@@ -478,3 +478,10 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   web app, website and API in the same job, and `scripts/zap-summary.mjs` fails the run on
   any high-risk finding and posts the counts as annotations (readable on the public
   repository without signing in).
+- **ZAP baseline, first run (CI, 5 October 2026): no high-risk findings.** Medium findings
+  accepted, with reasons: `style-src 'unsafe-inline'` (style attributes; styles cannot run
+  code); "wildcard" `https:` in `img-src`/`connect-src` (the API and image addresses are set
+  per deploy; step 11's `/api` proxy lets `connect-src` become `'self'`); "absence of
+  anti-CSRF tokens" on the website's forms (they carry a signed time token, and there is no
+  cookie or session for a forged request to ride on: the API takes them only from the
+  site's own server).
