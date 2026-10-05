@@ -187,12 +187,26 @@ export function createApp() {
     return res.redirect(302, to);
   };
 
+  /** Clicks are counted, so they are limited: 60 a minute per address, then they still go through, uncounted. */
+  const goHits = new Map<string, { n: number; since: number }>();
+  const countable = (req: Request) => {
+    const key = req.ip ?? '';
+    const now = Date.now();
+    const h = goHits.get(key);
+    if (!h || now - h.since > 60_000) {
+      goHits.set(key, { n: 1, since: now });
+      if (goHits.size > 10_000) for (const [k, v] of goHits) if (now - v.since > 60_000) goHits.delete(k);
+      return true;
+    }
+    return ++h.n <= 60;
+  };
+
   app.get('/go/ad/:id', async (req, res) => {
     const ad = /^[0-9a-f-]{36}$/.test(req.params.id) ? await data.offer(req.params.id) : null;
     if (!ad) return away(res, '/');
     const to = ad.linkType === 'EXTERNAL' && ad.externalUrl ? withUtm(ad.externalUrl, ad.placement.toLowerCase().replace(/_/g, '-')) : null;
     // One click per visit: a repeat in the same half-hour is dropped by the database.
-    await record(req, [{ type: 'CLICK', path: req.path, target: `ad:${ad.id}`, adId: ad.id, businessId: ad.businessId }]);
+    if (countable(req)) await record(req, [{ type: 'CLICK', path: req.path, target: `ad:${ad.id}`, adId: ad.id, businessId: ad.businessId }]);
     return away(res, to ?? `/offers/${ad.id}`);
   });
 
@@ -211,7 +225,7 @@ export function createApp() {
     }
     if (!to) return away(res, `/partners/${p.slug}`);
     const kind = want === 'whatsapp' || want === 'map' ? want : 'website';
-    await record(req, [{ type: 'CLICK', path: req.path, target: `partner:${p.slug}:${kind}`, businessId: p.id }]);
+    if (countable(req)) await record(req, [{ type: 'CLICK', path: req.path, target: `partner:${p.slug}:${kind}`, businessId: p.id }]);
     return away(res, to);
   });
 

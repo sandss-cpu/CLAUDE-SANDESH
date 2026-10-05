@@ -7,7 +7,7 @@ import { FleetAccessService } from './fleet-access.service';
 import { FleetService, Reminder } from './fleet.service';
 
 const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
 
 /**
  * Turns due services, expiring documents and licences, and open breakdowns into
@@ -92,7 +92,7 @@ export class FleetRemindersTask {
         url: this.access.webUrl('owner.html'),
         footer: 'Bato sends one summary a day, only when something new needs attention.',
       });
-      sent = (await this.mail.send(user.email, `Bus reminders for ${operator.name}`, content.text, content.html)) || sent;
+      if (user.email) sent = (await this.mail.send(user.email, `Bus reminders for ${operator.name}`, content.text, content.html)) || sent;
     }
     return sent;
   }

@@ -17,7 +17,7 @@ const ACT_FOR: Record<OperatorVerification, ModerationAct> = {
 };
 
 const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
 
 /** Bato's side of the bus portal: who is verified, and how many buses are on the platform. */
 @Injectable()
@@ -161,6 +161,7 @@ export class FleetAdminService {
       select: { user: { select: { email: true, name: true } } },
     });
     for (const { user } of recipients) {
+      if (!user.email) continue;
       const content = this.mail.linkEmail({
         heading: escapeHtml(message.title),
         intro: `Namaste ${escapeHtml(user.name)}, this is about ${escapeHtml(operator.name)}. ${escapeHtml(body)}`,

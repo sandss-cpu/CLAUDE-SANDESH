@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Ip, Param, Patch, Post, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { QrService } from './qr.service';
 import { CreateQrBatchDto, ResolveScanDto } from './dto/qr.dto';
@@ -13,7 +14,9 @@ export class QrController {
    * Public entry point for every sticker: POST /api/v1/qr/r/{shortCode}
    * No auth. Must return content, not a login prompt.
    */
+  // Generous: a busload of phones can share one address on the bus's Wi-Fi.
   @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('r/:code')
   resolve(@Param('code') code: string, @Body() dto: ResolveScanDto, @Ip() ip: string) {
     return this.qr.resolve(code, dto, ip);

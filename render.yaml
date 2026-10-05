@@ -101,6 +101,8 @@ services:
       # https://<your bato-api address>, without a trailing slash
       - key: BATO_API_URL
         sync: false
+    # Generated from scripts/web-headers.mjs, which the local server uses too; a test
+    # (backend/src/common/utils/web-pages.spec.ts) checks the two still agree.
     headers:
       - path: /*
         name: X-Content-Type-Options
@@ -111,51 +113,56 @@ services:
       - path: /*
         name: X-Frame-Options
         value: DENY
-      # The camera is for scan.html alone (scanning a bus's QR); every other page is denied
-      # it. Pages are listed one by one so no two rules for this header ever overlap.
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin
+      # Two years, subdomains included: ready for the HSTS preload list once the domain is final.
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=63072000; includeSubDomains; preload
+      # The camera is for scan.html alone; location only where the reader can send it with
+      # an SOS. Pages are listed one by one so no two rules for this header ever overlap.
       - path: /
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(self), microphone=(), payment=(), usb=()
       - path: /index.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(self), microphone=(), payment=(), usb=()
       - path: /b/*
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(self), microphone=(), payment=(), usb=()
       - path: /r/*
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(self), microphone=(), payment=(), usb=()
       - path: /login.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /admin.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /owner.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
+      - path: /business.html
+        name: Permissions-Policy
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /bus.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /creator.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /preview.html
         name: Permissions-Policy
-        value: camera=(), geolocation=(self), microphone=()
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()
       - path: /scan.html
         name: Permissions-Policy
-        value: camera=(self), geolocation=(), microphone=()
-      # Honest about what this is: script-src still allows 'unsafe-inline',
-      # because the pages carry inline handlers and one large inline script each.
-      # So this is not XSS-proof. It does take the easy wins — a script can only
-      # come from this site, plugins and framing are refused, <base> cannot be
-      # hijacked, and neither a form nor a connection can leave over plain http.
-      # Removing 'unsafe-inline' means moving every handler to a delegated
-      # listener, which is its own change.
-      #
-      # connect-src stays broad because the API address is chosen per deploy
-      # (BATO_API_URL) and a header value here cannot read it.
+        value: camera=(self), geolocation=(), microphone=(), payment=(), usb=()
+      # No inline script anywhere (web-pages.spec.ts checks every page and script), so
+      # script-src is 'self' alone: an injected handler or <script> does not run.
+      # style-src keeps 'unsafe-inline' for style attributes, which cannot run code.
+      # connect-src and img-src allow https: because the API address is set per deploy
+      # (BATO_API_URL) and a header here cannot read it.
       - path: /*
         name: Content-Security-Policy
         value: >-
@@ -164,11 +171,15 @@ services:
           object-src 'none';
           frame-ancestors 'none';
           form-action 'self';
-          script-src 'self' 'unsafe-inline';
+          script-src 'self';
           style-src 'self' 'unsafe-inline';
           font-src 'self';
           img-src 'self' data: blob: https:;
-          connect-src 'self' https:
+          media-src 'self' blob: https:;
+          connect-src 'self' https:;
+          worker-src 'self';
+          manifest-src 'self';
+          upgrade-insecure-requests
       # Pages, the service worker and config must be revalidated on every visit,
       # or readers keep running an old build after a deploy.
       - path: /

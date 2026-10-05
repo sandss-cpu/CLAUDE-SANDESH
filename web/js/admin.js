@@ -744,7 +744,7 @@ async function screenArticles(){
             <td>${esc(x.category?.name || '—')}</td>
             <td>${fmtDate(x.updatedAt)}</td>
             <td class="row-actions">
-              <button class="btn btn-sm" onclick='editArticle("${x.id}")'>Edit</button>
+              <button class="btn btn-sm" data-action="editArticle" data-id="${x.id}">Edit</button>
               ${x.status !== 'PUBLISHED' ? `<button class="btn btn-sm btn-brand" data-action="publishArticle" data-id="${x.id}">Publish</button>` : ''}
               ${x.status !== 'ARCHIVED' ? `<button class="btn btn-sm" data-action="archiveArticle" data-id="${x.id}">Archive</button>` : ''}
               ${role === 'ADMIN' ? `<button class="btn btn-sm btn-danger" data-action="deleteArticleForever" data-id="${x.id}">Delete forever</button>` : ''}
@@ -2465,6 +2465,7 @@ Actions.on({
   openPalettePicker: () => openPalettePicker(),
   signOut: () => signOut(),
   signOutEverywhere: () => signOutEverywhere(),
+  editArticle: (el) => editArticle(el.dataset.id),
   loginStep: (el) => { Object.assign(state.login, { step: el.dataset.step, error: '', busy: false }); renderLogin(); },
   downloadRecoveryCodes: () => downloadRecoveryCodes(),
   recoveryCodesSaved: () => onSignedIn(state.login.pending),

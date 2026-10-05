@@ -1,0 +1,17 @@
+# Weekly dependency updates for the API, the website and the CI actions.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      nestjs: { patterns: ['@nestjs/*'] }
+      prisma: { patterns: ['prisma', '@prisma/*'] }
+  - package-ecosystem: npm
+    directory: /site
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 3
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }

@@ -28,6 +28,18 @@ describe('web pages', () => {
     expect(html).not.toMatch(/\son[a-z]+\s*=/i);
   });
 
+  // Markup built in scripts is checked too: one inline handler in a template string is
+  // enough to break a page under a strict Content-Security-Policy.
+  const scripts = [
+    ...readdirSync(join(WEB, 'js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`),
+    ...readdirSync(WEB).filter((f) => f.endsWith('.js')),
+  ];
+  it.each(scripts)('%s builds no inline handlers and runs no strings as code', (file) => {
+    const code = read(file);
+    expect(code).not.toMatch(/<[a-z][^>`]*\son[a-z]+\s*=\s*['"]/i);
+    expect(code).not.toMatch(/\beval\(|new Function\(|setTimeout\(\s*['"`]|javascript:/);
+  });
+
   it("keeps the reader's inline font faces identical to css/fonts.css", () => {
     // scripts/sync-web-libs.mjs copies them; run it after changing fonts.css.
     const faces = (text: string) => text.split('\n').filter((l) => l.startsWith('@font-face')).join('\n');
@@ -48,4 +60,16 @@ describe('web pages', () => {
       expect([path, existsSync(join(WEB, file))]).toEqual([path, true]);
     }
   });
+
+  it('render.yaml sends the strict policy and a camera rule for every page', () => {
+    const blueprint = readFileSync(join(WEB, '../render.yaml'), 'utf8');
+    const csp = /name: Content-Security-Policy\s+value: >-\s+([\s\S]*?)\n\s*#/.exec(blueprint)?.[1].replace(/\s+/g, ' ').trim();
+    expect(csp).toContain("script-src 'self';");
+    expect(csp).not.toMatch(/script-src[^;]*unsafe/);
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(blueprint).toMatch(/Strict-Transport-Security\s+value: max-age=63072000; includeSubDomains; preload/);
+    for (const page of pages) expect([page, blueprint.includes(`path: /${page}\n        name: Permissions-Policy`)]).toEqual([page, true]);
+    expect(blueprint).toMatch(/path: \/scan\.html\n\s+name: Permissions-Policy\n\s+value: camera=\(self\)/);
+  });
 });
+

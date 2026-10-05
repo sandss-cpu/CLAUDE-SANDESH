@@ -19,13 +19,14 @@
  *   TEST_ACCOUNTS_FILE=../Bato_Test_Accounts.md npm run accounts:test
  */
 import { PrismaClient, Role } from '@prisma/client';
+import { withFieldEncryption } from '../src/common/crypto/field-crypto';
 import * as argon2 from 'argon2';
 import { authenticator } from 'otplib';
 import { randomBytes } from 'crypto';
 import { writeFileSync } from 'fs';
 import { FLEET_ACCOUNTS, FleetSummary, seedFleetDemo } from './fleet-demo';
 
-const prisma = new PrismaClient();
+const prisma = withFieldEncryption(new PrismaClient());
 
 const ACCOUNTS = [
   {

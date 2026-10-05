@@ -104,22 +104,30 @@ than a week.
 - Found on the way: re-saving a listing's tier counts as a renewal and extends the
   subscription by a month; the panel's tier dialog says so.
 
+## Done in step 10
+
+- Recovery codes, lockout, new-device alerts, "sign out everywhere" (with a UI on every
+  surface), 10-character passwords checked against common ones, account export and deletion.
+- Field encryption with key rotation; verification document upload; uploads re-encoded;
+  redacted JSON logs; 13-month retention; Sentry; the Security events view.
+- No inline script on any page (known gap 7 closed); strict CSP, HSTS and per-page
+  Permissions-Policy; rate limits on scans, reviews, leads and `/go`.
+- The generated IDOR suite, `strictNullChecks` for the Phase 3 modules, GitHub Actions with
+  a ZAP baseline scan, Dependabot. THREAT_MODEL.md and SECURITY.md.
+- Found on the way: the control panel's articles list still had an inline handler; a bus
+  owner with an authenticator stopped being asked for it once income records were off;
+  the disabled-SMS log printed sign-in codes; statement photos kept their GPS metadata.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |
-| Moderation audit trail (`/moderation/audit` has no UI) | 10 (security events view) | S |
-| Traveller account: data export and deletion (`DELETE /users/me` has no UI) | 10 | M |
-| Inline scripts and handlers in `login.html`, `creator.html` and `preview.html` (CLAUDE.md known gap 7; the reader, control panel, owner portal, bus page and scan page are done) | 10 | M |
-| Development logs print recipients' email addresses (`[MAIL DISABLED] to …`) | 10 (log redaction) | S |
-| `login.html` and `creator.html` still say "Bato"; everything else says Batoma. The sign-in page should also point partners to `business.html`, as it points bus owners to the owner portal. | 10 (with their inline scripts) | S |
-| Lead contacts, like driver and company phone numbers, are stored in plain text until field encryption | 10 | M |
-| Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | 10 or later | S |
+| `strictNullChecks` for the older modules (on for Phase 3 code through `tsconfig.strict.json`) | after launch | L |
+| The weekly encrypted `pg_dump` cron and the restore drill (SECURITY.md) need the hosting set up | 11 | S |
+| Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | after launch | S |
 | `API_PUBLIC_URL` must equal the origin the reader calls once `/api` is proxied through the app domain. Offline packs are cached under the address the API reports, and the reader looks stories up under its own. | 11 | S |
-| `strictNullChecks`; company verification documents (CLAUDE.md known gaps 6 and 4; BS dates are done) | 10 | M |
 
 ### Not in the Phase 3 brief (owner's call)
 

@@ -97,7 +97,8 @@ export class IncomeReportsService {
     const [y, m] = today.split('-').map(Number);
     const from = new Date(Date.UTC(y, m - 12, 1)).toISOString().slice(0, 10);
     const [entries, buses] = await Promise.all([this.entries(operatorId, from, today), this.buses(operatorId)]);
-    return { today, todayBs: formatBs(today), ...dashboard(entries, buses, today) };
+    // dashboard() returns today itself.
+    return { todayBs: formatBs(today), ...dashboard(entries, buses, today) };
   }
 
   async reconciliation(operatorId: string, q: ReportQueryDto, userId: string) {

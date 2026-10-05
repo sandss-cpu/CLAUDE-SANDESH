@@ -23,7 +23,7 @@ export class SmsService {
       return false;
     }
     try {
-      const res = await fetch(this.config.get<string>('SMS_GATEWAY_URL'), {
+      const res = await fetch(this.config.getOrThrow<string>('SMS_GATEWAY_URL'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

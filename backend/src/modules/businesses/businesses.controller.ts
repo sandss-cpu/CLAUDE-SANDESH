@@ -1,6 +1,7 @@
 import {
   BadRequestException, Body, Controller, DefaultValuePipe, Get, Ip, Param, ParseEnumPipe, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { BusinessTier, Role } from '@prisma/client';
 import { BusinessesService } from './businesses.service';
 import {
@@ -66,7 +67,7 @@ export class BusinessesController {
   }
 
   /** Attribution: every call, WhatsApp tap and directions request is a lead. */
-  @OptionalAuth() @Post(':id/lead')
+  @OptionalAuth() @Throttle({ default: { limit: 30, ttl: 60_000 } }) @Post(':id/lead')
   lead(@Param('id') id: string, @Body() dto: LeadDto, @CurrentUser() u?: AuthUser) {
     return this.businesses.recordLead(id, dto, u?.id);
   }
@@ -109,6 +110,7 @@ export class BusinessesController {
 
   // ---- reviews ----
 
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @Post(':id/reviews')
   review(@Param('id') id: string, @Body() dto: ReviewDto, @CurrentUser('id') userId: string) {
     return this.businesses.review(id, dto, userId);

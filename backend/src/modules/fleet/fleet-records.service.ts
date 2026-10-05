@@ -3,7 +3,7 @@ import {
   BusStatus, IncidentSeverity, IncidentStatus, MaintenanceKind, Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { FleetAccessService, parseDate } from './fleet-access.service';
+import { FleetAccessService, parseDate, requireDate } from './fleet-access.service';
 import { busView } from './fleet.service';
 import {
   DocumentDto, DriverDto, FuelDto, IncidentDto, MaintenanceDto, ResolveIncidentDto,
@@ -40,7 +40,7 @@ export class FleetRecordsService {
 
   private maintenanceData(dto: MaintenanceDto) {
     this.access.assertMedia(...(dto.photos ?? []));
-    const servicedAt = parseDate(dto.servicedAt, 'The service date');
+    const servicedAt = requireDate(dto.servicedAt, 'The service date');
     const nextDueDate = parseDate(dto.nextDueDate, 'The next service date', -1);
     if (nextDueDate && nextDueDate <= servicedAt) {
       throw new BadRequestException('The next service date must be after this service.');
@@ -109,7 +109,7 @@ export class FleetRecordsService {
   async reportIncident(busId: string, dto: IncidentDto, userId: string) {
     const { bus } = await this.access.bus(busId, userId, 'MANAGE');
     this.access.assertMedia(...(dto.photos ?? []));
-    const occurredAt = parseDate(dto.occurredAt, 'The time it happened', 0.05);
+    const occurredAt = requireDate(dto.occurredAt, 'The time it happened', 0.05);
     if (dto.driverId) {
       const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId, operatorId: bus.operatorId } });
       if (!driver) throw new BadRequestException('Choose a driver from your crew list.');
@@ -361,7 +361,7 @@ export class FleetRecordsService {
 
   async addFuel(busId: string, dto: FuelDto, userId: string) {
     const { bus } = await this.access.bus(busId, userId, 'MANAGE');
-    const filledAt = parseDate(dto.filledAt, 'The fill-up date');
+    const filledAt = requireDate(dto.filledAt, 'The fill-up date');
     const later = await this.prisma.fuelLog.findFirst({
       where: { vehicleId: busId, filledAt: { lte: filledAt }, odometerKm: { gt: dto.odometerKm } },
       orderBy: { odometerKm: 'desc' },
@@ -396,7 +396,7 @@ export class FleetRecordsService {
   /** The complete record for one bus, for the owner portal to turn into CSV or a printable report. */
   async history(busId: string, userId: string) {
     await this.access.bus(busId, userId);
-    const bus = await this.prisma.vehicle.findUnique({
+    const bus = await this.prisma.vehicle.findUniqueOrThrow({
       where: { id: busId },
       include: {
         route: { select: { id: true, name: true, code: true } },

@@ -180,6 +180,8 @@ export function fieldEncryptionMiddleware(fc: FieldCrypto): Prisma.Middleware {
 
 /** For scripts that make their own PrismaClient: the same encryption as the API, when keys are set. */
 export function withFieldEncryption<C extends { $use(m: Prisma.Middleware): void }>(client: C, env = process.env): C {
+  // Scripts run with ts-node get no help from Nest's ConfigModule: read .env if it is there.
+  if (!env.FIELD_ENCRYPTION_KEYS) { try { process.loadEnvFile('.env'); } catch { /* none */ } }
   const fc = FieldCrypto.fromEnv(env);
   if (fc) client.$use(fieldEncryptionMiddleware(fc));
   return client;

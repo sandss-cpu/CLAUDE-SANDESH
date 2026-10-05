@@ -130,6 +130,8 @@ export class BusReviewsService {
         scanToken: await this.issueScanToken({ qid: qr.id, oid: qr.operator.id }),
       };
     }
+    // A bus code whose bus is gone answers like any inactive code.
+    if (!qr.vehicle) throw new NotFoundException('This code is no longer active');
     return {
       kind: 'BUS' as const,
       bus: await this.profile(qr.vehicle.id),
@@ -250,7 +252,7 @@ export class BusReviewsService {
       ...operator, verified: true, busCount: buses.length,
       rating: {
         reviews,
-        average: reviews ? round1(reviewed.reduce((n, b) => n + b.rating.average * b.rating.reviews, 0) / reviews) : null,
+        average: reviews ? round1(reviewed.reduce((n, b) => n + (b.rating.average ?? 0) * b.rating.reviews, 0) / reviews) : null,
       },
       buses: rated,
     };
@@ -395,7 +397,7 @@ export class BusReviewsService {
     ]);
 
     const plates = await this.prisma.vehicle.findMany({
-      where: { id: { in: perBus.map((p) => p.vehicleId) } }, select: { id: true, plateNo: true, label: true },
+      where: { id: { in: perBus.map((p) => p.vehicleId).filter((v): v is string => !!v) } }, select: { id: true, plateNo: true, label: true },
     });
     const reviewCount = agg._count._all;
 

@@ -15,9 +15,12 @@ import { stat } from 'node:fs/promises';
 import { createGzip } from 'node:zlib';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { webHeaders } from './web-headers.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../web', import.meta.url)));
 const PORT = Number(process.env.PORT || 5173);
+/** The API the pages call locally; allowed by the same strict policy the hosted site sends. */
+const API_ORIGIN = process.env.API_ORIGIN || 'http://localhost:3000';
 
 /** Paths answered by another file, as the hosted static site's `routes:` rewrites do. */
 const REWRITES = [
@@ -74,7 +77,7 @@ createServer(async (req, res) => {
       ...(gzip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : { 'Content-Length': info.size }),
       // Development: always revalidate, so an edit shows on the next reload.
       'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
+      ...webHeaders(pathname, { api: API_ORIGIN, production: false }),
     });
     if (req.method === 'HEAD') return res.end();
     const body = createReadStream(file);

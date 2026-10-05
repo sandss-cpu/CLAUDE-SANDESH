@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strictNullChecks": true, "noEmit": true, "incremental": false },
+  "include": [
+    "src/common/crypto/**/*", "src/common/logging/**/*", "src/common/media/**/*", "src/common/storage/**/*",
+    "src/common/site-purge/**/*", "src/common/utils/stops.ts", "src/common/utils/brief.ts", "src/common/utils/bs-date.ts", "src/common/utils/ktm-period.ts",
+    "src/modules/site/**/*", "src/modules/verification/**/*", "src/modules/retention/**/*", "src/modules/programming/**/*",
+    "src/modules/finance/**/*", "src/modules/auth/login-guard.service.ts", "src/modules/auth/password-policy.ts", "src/modules/auth/device-label.ts",
+    "src/modules/fleet/scorecard.ts", "src/modules/fleet/trips.service.ts", "src/modules/fleet/appraisals.service.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}

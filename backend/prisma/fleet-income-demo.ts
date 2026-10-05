@@ -8,6 +8,7 @@
  *   npm run seed:income        (after npm run seed:trips)
  */
 import { IncomeSourceKind, PrismaClient } from '@prisma/client';
+import { withFieldEncryption } from '../src/common/crypto/field-crypto';
 
 const DAY = 86_400_000;
 const SOURCES: Array<[string, IncomeSourceKind]> = [
@@ -80,7 +81,7 @@ export async function seedDemoIncome(prisma: PrismaClient) {
 }
 
 if (require.main === module) {
-  const prisma = new PrismaClient();
+  const prisma = withFieldEncryption(new PrismaClient());
   seedDemoIncome(prisma)
     .then((n) => console.log(n ? `Added ${n} demo income entries.` : 'Demo income already exists; nothing added.'))
     .catch((e) => { console.error(e); process.exitCode = 1; })

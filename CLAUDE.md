@@ -69,6 +69,12 @@ bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appra
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 bash scripts/site_smoke.sh ../Bato_Test_Accounts.md          # website forms, newsletter, partner area and report, packages, verification
 npm run db:site-role           # after every migration: the website's read-only role, grants and row-level security
+npm run fields:encrypt         # after the step 10 migration, after seeding, and after adding a key: encrypts personal fields
+npm run retention              # the nightly 13-month roll-up, now
+npm run typecheck              # tsc, plus strictNullChecks over the Phase 3 modules (tsconfig.strict.json)
+npm run test:db                # (re)builds batoma_test: migrations, seeds, test accounts, encrypted fields
+DATABASE_URL=postgresql://travel:travel@localhost:5432/batoma_test npm run test:e2e   # the IDOR suite
+bash scripts/security_smoke.sh ../Bato_Test_Accounts.md      # lockout, passwords, recovery codes, sessions, documents, retention, encryption
 npm run seed:trips             # demo duty log between the demo fuel fills
 npm run seed:income            # demo income on the demo trips (income records stay off)
 node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts, stops.ts or web/css/fonts.css
@@ -441,6 +447,34 @@ privately for that reason; do not put a shared cache in front of the HTML.
 `@PurgeSite()`, which calls the site's signed `/_purge`. A new route that edits articles,
 guides, ads, listings, deals or packages needs it too.
 
+## Security (step 10)
+
+Read SECURITY.md and THREAT_MODEL.md before changing sign-in, files or personal data.
+
+**Encrypted fields** (`common/crypto/field-crypto.ts`): `ENCRYPTED_FIELDS` lists them.
+Prisma middleware encrypts them on write and decrypts every result, raw queries included,
+but **raw SQL writes are not encrypted** (use Prisma), and an encrypted column cannot be
+searched with `contains` or compared in SQL: add a blind index (`BLIND_INDEXES`) for exact
+matches. A new personal field goes into `ENCRYPTED_FIELDS`, then `npm run fields:encrypt`.
+Scripts with their own `PrismaClient` call `withFieldEncryption(client)`. The smoke helpers
+read authenticator secrets through `scripts/field-decrypt.mjs`.
+
+**A new route with an id** fails the IDOR suite (`test/idor.e2e-spec.ts`) until `fill()`
+knows what the id refers to, and a new write route needs a valid body in `BODIES`. That is
+the point: every route is tried as another company and as a lower role.
+
+**No inline code, anywhere.** Pages and the markup scripts build are checked by
+`web-pages.spec.ts`; the web app's CSP has no `'unsafe-inline'` for scripts. Headers live
+in `scripts/web-headers.mjs` and `render.yaml`, kept in step by the same test.
+
+**Logs** go through `JsonLogger`, which redacts, but do not rely on it: never log a
+request body, a token or a password. Use `AuditService.record()` for anything an admin or a
+company's owner may need to see later; security-relevant actions appear in the control
+panel's Security events (`SECURITY_KINDS` in `admin.service.ts`).
+
+**Uploads** go through `common/media/images.ts` (decoded and drawn again, metadata gone);
+private files through `StorageService` and short-lived signed links only.
+
 ## Known gaps
 
 Real, and worth knowing before you plan work:
@@ -449,14 +483,12 @@ Real, and worth knowing before you plan work:
    relationship between versions, so a language toggle needs a schema change
 2. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
 3. ~~No Bikram Sambat dates~~ Done in Phase 3: `BsDate` (backend and `web/js/lib`)
-4. **Company verification has no document upload.** Admins check details by phone or email
+4. ~~Company verification has no document upload~~ Done in step 10, for companies and businesses
 5. ~~Outstanding `npm audit` advisories~~ Done in Phase 3 step 2 (NestJS 11, nodemailer 10,
    multer 2): `npm audit --omit=dev` reports nothing
-6. **`strictNullChecks` is off.** Unit tests exist (`npm test`, 189 of them over the pure
-   logic) but they cannot make up for the compiler not checking nulls
-7. **The CSP still allows `'unsafe-inline'` for scripts.** The reader, control panel,
-   owner portal, partner area, bus and scan pages have no inline code any more;
-   `login.html`, `creator.html` and `preview.html` still do. The public website has none
+6. **`strictNullChecks` is on only for the Phase 3 modules** (`npm run typecheck` runs
+   `tsconfig.strict.json`); the older modules still compile without it
+7. ~~The CSP allows `'unsafe-inline'` for scripts~~ Done in step 10: no inline code anywhere
 8. **`normalisePlate` drops Devanagari combining vowel signs**, so "बा" and "ब" produce
    the same registration key. Pinned by a test; fixing it means re-keying existing rows
    and changing the migration backfill in step

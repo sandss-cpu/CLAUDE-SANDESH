@@ -410,7 +410,7 @@ export class AuthService {
     const { recoveryCodes } = await this.mfa.confirmEnrolment(payload.sub, code);
     await this.audit.record({ actorId: payload.sub, action: 'auth.mfa_enabled', entityType: 'User', entityId: payload.sub, ip: ctx.ip, summary: 'Authenticator app set up' });
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: payload.sub } });
     return { enabled: true, recoveryCodes, ...(await this.session(user, ctx)) };
   }
 

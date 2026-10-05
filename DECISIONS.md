@@ -399,3 +399,82 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   Mukta file for that one word. Accessibility and best practices are 100 everywhere.
   SEO is 100 except Privacy and Terms, which score 66 because they are deliberately
   `noindex` while they are drafts.
+
+## Step 10: security hardening (Feature 7)
+
+- **Field encryption through Prisma middleware** (`common/crypto/field-crypto.ts`), not
+  an extension: `$use` keeps `PrismaService` a plain `PrismaClient`, so no service's types
+  change. Writes to the listed fields are encrypted, nested writes included (relations
+  are read from Prisma's own schema description); every result, raw queries included, is
+  walked and any `enc:` value decrypted. AES-256-GCM, a fresh 96-bit IV per value, the key
+  id in the stored form so keys rotate without downtime. Existing rows are encrypted by
+  `npm run fields:encrypt`, not SQL, because keys must never be in a migration.
+- **Encrypted**: drivers' phone and licence numbers, companies' contact phones (with a
+  keyed hash for exact-match search; "contains" search on phones is gone), emergency
+  contacts, income notes, lead and enquiry contacts, and authenticator secrets (the brief
+  did not list these; they are as sensitive as passwords). Not encrypted: business phones
+  (public), user phone and email (unique sign-in lookups), the newsletter list.
+- **Lockout in the database** (`login_guards`), so it holds across API instances. Per
+  account: four free mistakes, then waits of 30 s, 1, 2, 5 and 15 minutes; while locked the
+  password is not even checked. Per address hash: 30 failures in an hour locks it for 15
+  minutes. An unknown email gets a key of its own, so locking behaves the same whether or
+  not the account exists. Locks are short on purpose: anyone can type someone's email.
+- **"Sign out everywhere" ends access tokens too**, through `users.sessionsValidFrom`,
+  which `JwtStrategy` compares with each token's issue time (it already loads the user on
+  every request). Password resets, role changes, suspensions and authenticator resets set
+  it as well.
+- **An authenticator, once set up, is always asked for**, whatever the role. Before, a bus
+  owner who turned income records off again signed in without it.
+- **Recovery codes**: ten, 50 bits each, shown once, stored as SHA-256 (random enough
+  that a slow hash adds nothing), each used once; a fresh set needs a current code.
+- **New-device email** when an account signs in from a browser family it has not used
+  ("Chrome on Android"): versions are ignored, or every browser update would alert.
+- **Passwords**: 10 characters minimum, the SecLists 10,000 most common, the same with
+  digits or symbols added, and the person's own name and email are refused. No
+  composition rules.
+- **Every picture is drawn again** with sharp (0.35.5, clear of the libvips advisories in
+  0.34) as WebP without metadata, at 480, 960 and up to 1600 pixels; files are named
+  `<id>-<width>.webp`, so the website works out its `srcset` from the address.
+- **Verification documents** in private storage: photos re-encoded, PDFs kept but refused
+  when they carry scripts, launch actions or attachments, and always downloaded rather
+  than opened on our origin. Owners only (not managers), plus admins and moderators, whose
+  every look is audited.
+- **Row-level security for fleet and finance: evaluated, not adopted.** The API connects as
+  the tables' owner; for policies to bind it the tables would need `FORCE ROW LEVEL
+  SECURITY` and every query a per-request `SET LOCAL app.operator_id` inside a transaction.
+  With Prisma's pooled connections that means wrapping each query in its own transaction (a
+  second round trip on the busiest owner screens), and seeds, retention, admin statistics
+  and the website's role all need a bypass. The policy that keeps those working ("unset
+  means allowed") protects exactly the code that forgets to set it, which is the case RLS
+  would be for. Instead: one access layer (`FleetAccessService`, `FinanceAccessService`) and
+  an IDOR suite generated from the live route table, which fails on any route it cannot
+  fill in. RLS stays where it fits: the website's separate, read-only role.
+- **The IDOR suite is generated, not listed.** It reads every route from the running app
+  and calls each fleet, finance, trip, appraisal, document and partner route as another
+  company's owner, as crew, as a manager (owner-only routes) and as a traveller (partner
+  routes), with a valid body for every write so input validation cannot answer first. Every
+  call must answer 403 or 404: 193 calls on the first run.
+- **No inline code anywhere**: `login.html`, `creator.html` and `preview.html` moved to
+  `web/js`; the last inline handler in the control panel (articles' Edit) went too. The
+  test now scans every page and every script. The web app's CSP is `script-src 'self'`;
+  `style-src` keeps `'unsafe-inline'` for style attributes, which cannot run code. One
+  header definition (`scripts/web-headers.mjs`) feeds the local server, and a test keeps
+  `render.yaml` in step with it.
+- **Logs**: Nest's logger is replaced by `JsonLogger`, which redacts every message
+  (emails become `a***@domain`, phone numbers keep their first and last two digits, tokens
+  and signed-link parameters go) and writes one JSON object per line in production. The
+  disabled-SMS log no longer prints the sign-in code. Error responses and logs carry the
+  path without the query string.
+- **Retention at the start of a Kathmandu day**, 13 calendar months back, so each day is
+  rolled up once and whole. Partner reports read the raw events and the daily counts
+  together, so old months still add up.
+- **Sentry is optional** (`SENTRY_DSN`): no default PII, no request data beyond method and
+  path, user reduced to an id, messages redacted.
+- **`strictNullChecks` through a second config** (`tsconfig.strict.json`) over the Phase 3
+  modules; the old code they import was fixed rather than excluded (a QR code whose bus was
+  gone, recipients without an email, dates the DTO requires but the type allowed to be
+  null).
+- **CI checks the scan, not just the build**: the ZAP baseline runs against the running
+  web app, website and API in the same job, and `scripts/zap-summary.mjs` fails the run on
+  any high-risk finding and posts the counts as annotations (readable on the public
+  repository without signing in).

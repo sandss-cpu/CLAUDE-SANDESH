@@ -11,6 +11,7 @@
  *   npm run seed:trips
  */
 import { DriverRole, GuideDirection, PrismaClient, TripSource, TripStatus } from '@prisma/client';
+import { withFieldEncryption } from '../src/common/crypto/field-crypto';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -79,7 +80,7 @@ export async function seedDemoTrips(prisma: PrismaClient, slugs?: string[]) {
 }
 
 if (require.main === module) {
-  const prisma = new PrismaClient();
+  const prisma = withFieldEncryption(new PrismaClient());
   seedDemoTrips(prisma)
     .then((n) => console.log(n ? `Added ${n} demo trips.` : 'Demo trips already exist; nothing added.'))
     .catch((e) => { console.error(e); process.exitCode = 1; })

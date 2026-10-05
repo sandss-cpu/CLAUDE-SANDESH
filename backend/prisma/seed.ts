@@ -1,9 +1,10 @@
 /* eslint-disable no-console */
 import { PrismaClient } from '@prisma/client';
+import { withFieldEncryption } from '../src/common/crypto/field-crypto';
 import * as argon2 from 'argon2';
 import { firstSentence } from '../src/common/utils/brief';
 
-const prisma = new PrismaClient();
+const prisma = withFieldEncryption(new PrismaClient());
 
 async function main() {
   console.log('Seeding…');

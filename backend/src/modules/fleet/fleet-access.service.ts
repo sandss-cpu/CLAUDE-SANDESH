@@ -68,6 +68,13 @@ export class FleetAccessService {
 }
 
 /** Parses a date field, refusing dates further in the future than `futureDays`. */
+/** A date the form must have: the DTO already insists on it, this keeps the type honest. */
+export function requireDate(value: string | undefined | null, label: string, futureDays = 1): Date {
+  const d = parseDate(value, label, futureDays);
+  if (!d) throw new BadRequestException(`Enter ${label.toLowerCase()}.`);
+  return d;
+}
+
 export function parseDate(value: string | undefined | null, label: string, futureDays = 1): Date | null {
   if (!value) return null;
   const d = new Date(value);
