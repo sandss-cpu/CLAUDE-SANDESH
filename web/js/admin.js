@@ -493,6 +493,13 @@ function articleForm(a){
           <input id="af-title" value="${esc(a?.title)}" required minlength="3">
           <label for="af-subtitle">Subtitle</label>
           <input id="af-subtitle" value="${esc(a?.subtitle)}">
+          <label for="af-summary">Summary <span class="hint">one line for story cards; needed to publish</span></label>
+          <input id="af-summary" maxlength="160" value="${esc(a?.summary)}" data-input="countSummary" aria-describedby="af-summary-count">
+          <div id="af-summary-count" class="hint counter" aria-live="polite">${(a?.summary || '').length} / 160</div>
+          <fieldset class="key-points">
+            <legend>In brief: key points <span class="hint">one to three short lines; needed to publish</span></legend>
+            ${[0, 1, 2].map((i) => `<input id="af-point-${i}" maxlength="160" aria-label="Key point ${i + 1}" placeholder="Key point ${i + 1}" value="${esc(a?.keyPoints?.[i] || '')}">`).join('')}
+          </fieldset>
           <label>Cover image</label>
           <div class="cover-field">
             <div id="af-cover-preview" class="cover-preview">
@@ -603,6 +610,8 @@ async function saveArticle(e, id){
   const dto = {
     title: $('#af-title').value.trim(),
     subtitle: $('#af-subtitle').value.trim() || undefined,
+    summary: $('#af-summary').value.trim(),
+    keyPoints: [0, 1, 2].map((i) => $(`#af-point-${i}`).value.trim()).filter(Boolean),
     coverImageUrl: $('#af-cover').value || null,
     categoryId: $('#af-category').value || undefined,
     issueId: $('#af-issue').value || undefined,
@@ -2442,6 +2451,13 @@ Actions.onChange({
 });
 
 Actions.onInput({
+  // The summary's character count, so an editor sees the 160 limit coming.
+  countSummary: (el) => {
+    const n = el.value.length;
+    const box = $('#af-summary-count');
+    box.textContent = `${n} / 160`;
+    box.classList.toggle('near', n > 140);
+  },
   updateAdPreview: () => updateAdPreview(),
 });
 

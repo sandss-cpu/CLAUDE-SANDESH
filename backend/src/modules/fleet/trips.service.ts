@@ -319,14 +319,19 @@ export class TripsService {
 
   /** The direction of the trip this bus is on now, if any: it outranks a traveller's guess. */
   async directionNow(vehicleId: string) {
+    return (await this.tripNow(vehicleId))?.direction ?? null;
+  }
+
+  /** The run this bus is on now, if the crew logged it: which way, and when it left. */
+  async tripNow(vehicleId: string): Promise<{ direction: 'FORWARD' | 'REVERSE'; departAt: Date } | null> {
     const trip = await this.prisma.trip.findFirst({
       where: {
         vehicleId, status: TripStatus.IN_PROGRESS,
         departAt: { gte: new Date(Date.now() - OPEN_TRIP_LIMIT_MS), lte: new Date(Date.now() + EARLY_LOGGING_MS) },
       },
-      select: { direction: true },
+      select: { direction: true, departAt: true },
     });
-    return trip?.direction === 'FORWARD' || trip?.direction === 'REVERSE' ? trip.direction : null;
+    return trip && (trip.direction === 'FORWARD' || trip.direction === 'REVERSE') ? { direction: trip.direction, departAt: trip.departAt } : null;
   }
 
   // ================= helpers =================

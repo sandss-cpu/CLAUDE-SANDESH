@@ -13,7 +13,7 @@ import {
 
 /** What a reader needs to list a story, plus what ordering and the offline pack need. */
 export const PROGRAMME_CARD = {
-  id: true, slug: true, title: true, subtitle: true, coverImageUrl: true, audioUrl: true,
+  id: true, slug: true, title: true, subtitle: true, summary: true, coverImageUrl: true, audioUrl: true,
   readMinutes: true, isSponsored: true, isFeatured: true, publishedAt: true, updatedAt: true,
   category: { select: { slug: true, name: true, colorHex: true } },
 } satisfies Prisma.ArticleSelect;

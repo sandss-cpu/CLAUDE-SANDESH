@@ -3,13 +3,14 @@ import { ContentStatus, PlacementScope, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { readMinutes, uniqueSlug } from '../../common/utils/slug.util';
+import { cleanKeyPoints, firstSentence, publishProblem } from '../../common/utils/brief';
 import {
   AdminArticleQueryDto, ArticleQueryDto, CreateArticleDto, CreateIssueDto, ElevatePostDto,
   UpdateArticleDto,
 } from './dto/magazine.dto';
 
 const ARTICLE_CARD = {
-  id: true, slug: true, title: true, subtitle: true, coverImageUrl: true,
+  id: true, slug: true, title: true, subtitle: true, summary: true, coverImageUrl: true,
   audioUrl: true, readMinutes: true, language: true, isSponsored: true,
   isFeatured: true, publishedAt: true,
   category: { select: { slug: true, name: true, colorHex: true } },
@@ -218,6 +219,8 @@ export class MagazineService {
         slug,
         title: dto.title,
         subtitle: dto.subtitle,
+        summary: dto.summary?.trim() || null,
+        keyPoints: cleanKeyPoints(dto.keyPoints),
         body: dto.body,
         coverImageUrl: dto.coverImageUrl,
         audioUrl: dto.audioUrl,
@@ -243,6 +246,12 @@ export class MagazineService {
     const existing = await this.prisma.article.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Article not found');
 
+    // Publishing needs the brief; an article published before it existed keeps its status.
+    const publishing = dto.status === ContentStatus.PUBLISHED && existing.status !== ContentStatus.PUBLISHED;
+    if (publishing) {
+      const problem = publishProblem({ summary: dto.summary ?? existing.summary, keyPoints: dto.keyPoints ?? existing.keyPoints });
+      if (problem) throw new BadRequestException(problem);
+    }
     if (dto.routeIds) await this.syncRoutes(id, dto.routeIds);
 
     return this.prisma.article.update({
@@ -250,6 +259,8 @@ export class MagazineService {
       data: {
         title: dto.title ?? undefined,
         subtitle: dto.subtitle,
+        summary: dto.summary === undefined ? undefined : dto.summary.trim() || null,
+        keyPoints: dto.keyPoints === undefined ? undefined : cleanKeyPoints(dto.keyPoints),
         body: dto.body ?? undefined,
         coverImageUrl: dto.coverImageUrl,
         audioUrl: dto.audioUrl,
@@ -296,6 +307,10 @@ export class MagazineService {
   }
 
   async publishArticle(id: string) {
+    const article = await this.prisma.article.findUnique({ where: { id }, select: { summary: true, keyPoints: true, status: true } });
+    if (!article) throw new NotFoundException('Article not found');
+    const problem = article.status === ContentStatus.PUBLISHED ? null : publishProblem(article);
+    if (problem) throw new BadRequestException(problem);
     return this.prisma.article.update({
       where: { id },
       data: { status: ContentStatus.PUBLISHED, publishedAt: new Date() },
@@ -339,6 +354,8 @@ export class MagazineService {
           slug,
           title: post.title,
           subtitle: post.locationName ?? undefined,
+          // A traveller's post has no brief; its first sentence stands in, and the editor can add key points.
+          summary: firstSentence(post.body),
           body: post.body,
           coverImageUrl: post.coverImageUrl ?? post.photos[0]?.url,
           readMinutes: readMinutes(post.body),

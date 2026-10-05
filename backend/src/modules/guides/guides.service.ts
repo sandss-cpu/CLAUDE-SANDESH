@@ -169,7 +169,7 @@ export class GuidesService {
       },
       orderBy: [{ isFeatured: 'desc' }, { publishedAt: 'desc' }],
       take: 6,
-      select: { id: true, slug: true, title: true, subtitle: true, coverImageUrl: true, readMinutes: true },
+      select: { id: true, slug: true, title: true, subtitle: true, summary: true, coverImageUrl: true, readMinutes: true },
     });
 
     return {

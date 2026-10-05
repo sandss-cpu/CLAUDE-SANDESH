@@ -63,6 +63,11 @@ const state = {
   journeyFilter: '',
   tripTab: 'roads',
   readFilter: '',
+  readAll: false,
+  stopsFilter: '',
+  stopsAll: false,
+  continueDismissed: false,
+  departedAt: null,
   appName: 'Batoma',
   tagline: '',
   auth: null,
@@ -271,6 +276,8 @@ function forgetScan(code){
 function cardView(a){
   return {
     id: a.id, slug: a.slug, title: a.title, subtitle: a.subtitle || '',
+    // One line for cards; older stories without one fall back to the standfirst.
+    summary: a.summary || a.subtitle || '',
     cat: a.category?.slug || 'road', catName: a.category?.name || 'On the Road',
     readMinutes: a.readMinutes, audio: !!a.audioUrl, body: '',
   };
@@ -297,6 +304,8 @@ function applyScan(code, data, mode){
   state.vehicle = data.vehicle || null;
   state.seat = data.scan?.seatNo || null;
   state.scannedAt = data.scan?.scannedAt ? Date.parse(data.scan.scannedAt) : Date.now();
+  // When the crew logged this run's departure: where the bus is on the road comes from it.
+  state.departedAt = data.departedAt ? Date.parse(data.departedAt) : null;
   state.bus = data.bus || null;
   state.issue = data.currentIssue || null;
   state.articles = (data.routeArticles || []).map(cardView);
@@ -414,8 +423,14 @@ async function cachePack(pack){
   state.packRequested = pack.articleCount || 0;
   state.packVersion = pack.programmeVersion || null;
   // The same programme, already confirmed whole on this phone: nothing to download again.
+  // Unless the phone has since cleared its storage: the note survives, the stories may not.
   const held = savedPack();
-  if(held && held.version === pack.programmeVersion && held.complete){
+  const stillThere = async () => {
+    if(!('caches' in window)) return false;
+    for(const a of pack.articles || []){ if(a.url && !(await caches.match(a.url))) return false; }
+    return true;
+  };
+  if(held && held.version === pack.programmeVersion && held.complete && await stillThere()){
     state.packReported = true;
     state.packCached = held.count;
     return;
@@ -522,6 +537,7 @@ const SCREENS = {
    */
   read(){
     if(state.readTab === 'vlogs') return readTabs() + slotAd('TOP_BANNER', 'banner') + vlogsFeed();
+    if(state.readAll) return allStoriesView();
     if(state.mode === 'loading') return readTabs() + `
       <div class="sec-head"><h2>Opening your magazine…</h2><span></span></div>
       <div class="skel" style="height:220px;margin-bottom:12px"></div>
@@ -545,11 +561,10 @@ const SCREENS = {
         <p>${state.mode === 'offline' ? 'They will appear as soon as the bus has signal.' : 'The next issue is on its way.'}</p></div>`)
       + savedStoriesSection();
 
-    const stops = isDemo() ? DEMO.businesses : state.biz.items;
-
     return `
       ${readTabs()}
       ${notice}
+      ${continueCard()}
       ${slotAd('TOP_BANNER', 'banner')}
       ${offlineChip()}
       ${sections.length > 1 ? `
@@ -564,9 +579,7 @@ const SCREENS = {
       ${heroCard(hero)}
       ${/* Earned by reading; under the lead story, so the magazine still comes first. */ typeof ratingSlot === 'function' ? ratingSlot('read') : ''}
 
-      ${rail.length ? `
-        <div class="sec-head"><h2>Keep reading</h2><span>Swipe →</span></div>
-        <div class="rail">${rail.map(railCard).join('')}</div>` : ''}
+      ${keepReadingRail(rail)}
 
       ${onThisRoad.length ? `
         <div class="sec-head"><h2>${state.route ? 'For this road' : 'More stories'}</h2><span>${onThisRoad.length} more</span></div>
@@ -576,9 +589,7 @@ const SCREENS = {
         <div class="sec-head"><h2>More from this issue</h2><span>${more.length} more</span></div>
         ${more.map(listCard).join('')}` : ''}
 
-      ${stops.length ? `
-        <div class="sec-head"><h2>Stops on this road</h2><span>${stops.length} along the way</span></div>
-        ${stops.map((b) => bizRow(b)).join('')}` : ''}
+      ${stopsSection()}
 
       <div class="sec-head"><h2>Where next?</h2><span>Plan the trip</span></div>
       <a class="btn btn-ghost" data-action="go" data-to="trip">🧭 Road guides and place itineraries</a>
@@ -595,12 +606,16 @@ const SCREENS = {
         <p>${esc(a.error)}</p>
         <button class="btn btn-ghost" data-action="openArticle" data-slug="${esc(a.slug)}">Try again</button></div>`;
     const saved = isSaved(a.slug);
+    const story = a.loading ? null : articleBodyHtml(a);
     return `
+      ${readingChrome(a)}
       ${back}
       <div class="reader">
         <span class="tag c-${esc(a.cat || 'road')}">${esc(a.catName || '')}</span>
         <h1>${esc(a.title)}</h1>
         <div class="standfirst">${esc(a.subtitle || '')}</div>
+        ${a.loading ? '' : inBrief(a)}
+        ${story ? contentsList(story.blocks) : ''}
         ${slotAd('ARTICLE_TOP')}
 
         ${a.audioUrl ? `
@@ -615,7 +630,7 @@ const SCREENS = {
 
         ${a.loading
           ? '<div class="skel" style="height:18px;margin:18px 0 10px"></div><div class="skel" style="height:18px;margin-bottom:10px"></div><div class="skel" style="height:18px;width:70%"></div>'
-          : `<div class="article-body">${md(a.body || '')}</div><div id="storyEnd" aria-hidden="true"></div>`}
+          : `${story.html}<div id="storyEnd" aria-hidden="true"></div>`}
         ${slotAd('ARTICLE_BOTTOM')}
 
         <div class="btn-row">
@@ -625,7 +640,7 @@ const SCREENS = {
         </div>
         ${a.id ? `<div style="text-align:center;margin:-4px 0 14px">${reportButton('ARTICLE', a.id)}</div>` : ''}
         ${!a.loading && typeof ratingSlot === 'function' ? ratingSlot('article') : ''}
-        ${readNext(a)}
+        ${upNextSection(a)}
       </div>`;
   },
 
@@ -973,7 +988,7 @@ function heroCard(a){
       </div>
       <div class="card-body">
         <h3>${esc(a.title)}</h3>
-        <p>${esc(a.subtitle || '')}</p>
+        ${a.summary ? `<p class="one-line">${esc(a.summary)}</p>` : ''}
         <div class="meta">
           <span>${a.readMinutes || 3} min read</span>
           ${a.audio ? '<span class="listen">🎧 Listen</span>' : ''}
@@ -990,6 +1005,7 @@ function railCard(a){
       </div>
       <div class="card-body">
         <h3 style="font-size:16px">${esc(a.title)}</h3>
+        ${a.summary ? `<p class="one-line">${esc(a.summary)}</p>` : ''}
         <div class="meta"><span>${a.readMinutes || 3} min</span>${a.audio ? '<span class="listen">🎧</span>' : ''}</div>
       </div>
     </button>`;
@@ -1003,6 +1019,7 @@ function listCard(a){
         <div style="flex:1;min-width:0">
           <span class="tag c-${esc(a.cat)}">${esc(a.catName)}</span>
           <h3 style="margin-top:7px;font-size:17px">${esc(a.title)}</h3>
+          ${a.summary ? `<p class="one-line">${esc(a.summary)}</p>` : ''}
           <div class="meta"><span>${a.readMinutes || 3} min</span>${a.audio ? '<span class="listen">🎧</span>' : ''}</div>
         </div>
       </div>
@@ -1013,18 +1030,6 @@ function setReadFilter(cat){
   state.readFilter = cat;
   render();
   window.scrollTo({ top: 0, behavior: document.documentElement.dataset.motion === 'off' ? 'auto' : 'smooth' });
-}
-
-/** Nobody should reach the end of a story with nowhere to go: same section first, then the rest. */
-function readNext(current){
-  const others = articles().filter((a) => a.slug !== current.slug);
-  if(!others.length) return '';
-  const sameSection = others.filter((a) => a.cat === current.cat);
-  const picks = [...sameSection, ...others.filter((a) => a.cat !== current.cat)].slice(0, 3);
-  return `
-    <div class="sec-head"><h2>Read next</h2><span>${sameSection.length ? esc(current.catName) : 'From this issue'}</span></div>
-    ${picks.map(listCard).join('')}
-    <button class="btn btn-ghost" style="margin-top:6px" data-action="go" data-to="read">All stories</button>`;
 }
 
 /** Road alerts the editors posted for this route and direction: closures, landslides, festival traffic. */
@@ -1149,6 +1154,7 @@ function render(){
   paintNav();
   queueImpressions();
   if(key === 'article' && typeof watchStoryEnd === 'function') watchStoryEnd();
+  if(key === 'article') afterArticleRender();
 }
 
 /* ---------- actions ---------- */
@@ -1187,6 +1193,7 @@ function articleView(a){
   return {
     ...cardView(a),
     body: a.body || '',
+    keyPoints: a.keyPoints || [],
     // Narration may be stored relative to the API host; the player needs a full address.
     audioUrl: a.audioUrl ? new URL(a.audioUrl, API).href : null,
     places: a.places || [],
@@ -1501,20 +1508,23 @@ function loadRoad(){
   (async () => {
     const road = state.road;
     try{
-      const list = await fetch(`${API}/guides/journeys?routeId=${encodeURIComponent(routeId)}&kind=ROUTE`,
-        { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+      const listUrl = `${API}/guides/journeys?routeId=${encodeURIComponent(routeId)}&kind=ROUTE`;
+      const list = await fetch(listUrl, { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
       const journeys = Array.isArray(list.data) ? list.data : [];
       const pick = journeys.find((j) => j.direction === direction) || journeys.find((j) => j.direction === 'BOTH');
       if(pick){
-        const one = await fetch(`${API}/guides/${encodeURIComponent(pick.guideId)}?direction=${direction}`,
-          { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+        const guideUrl = `${API}/guides/${encodeURIComponent(pick.guideId)}?direction=${direction}`;
+        const one = await fetch(guideUrl, { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
         road.guide = one.data || null;
+        // On the very first scan the service worker is not yet in charge of this page, so it
+        // did not see these requests: hand it the addresses, so the stops work with no signal.
+        if(!navigator.serviceWorker?.controller) swCache([listUrl, guideUrl]);
       }
     }catch(_){
       road.error = true;
     }finally{
       road.loading = false;
-      if(state.road === road && state.screen === 'map') render();
+      if(state.road === road && (state.screen === 'map' || state.screen === 'read')) render();
     }
   })();
   return state.road;

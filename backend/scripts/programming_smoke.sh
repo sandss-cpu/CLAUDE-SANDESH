@@ -124,6 +124,23 @@ call GET "/programming/history?routeId=$PKR" "$MOD" >/dev/null
 ok "moderator can read the history" true "$(get "len(data)>=8")"
 ok "each change names who made it" true "$(get "all(e['actor'] and e['actor']['name'] for e in data[:8])")"
 
+echo "== briefer articles: a summary and key points before publishing"
+B='{"title":"Smoke brief article","body":"## A heading\n\nThe first sentence of a smoke test article. A second sentence follows it."}'
+ok "an editor drafts an article with no brief" 201 "$(call POST /magazine/articles "$EDITOR" "$B")"
+SMOKE_ART=$(get "data['id']")
+ok "it cannot be published without a summary" 400 "$(call PATCH "/magazine/articles/$SMOKE_ART/publish" "$EDITOR")"
+ok "the reason is given" true "$(get "'summary' in d['message']")"
+ok "a summary over 160 characters is refused" 400 "$(call PATCH "/magazine/articles/$SMOKE_ART" "$EDITOR" "{\"summary\":\"$(printf 'x%.0s' $(seq 1 161))\"}")"
+ok "the summary is saved on the draft" 200 "$(call PATCH "/magazine/articles/$SMOKE_ART" "$EDITOR" '{"summary":"A smoke test, in one line."}')"
+ok "a summary alone is not enough to publish" 400 "$(call PATCH "/magazine/articles/$SMOKE_ART" "$EDITOR" '{"status":"PUBLISHED"}')"
+ok "four key points are refused" 400 "$(call PATCH "/magazine/articles/$SMOKE_ART" "$EDITOR" '{"keyPoints":["a","b","c","d"]}')"
+ok "with key points it publishes" 200 "$(call PATCH "/magazine/articles/$SMOKE_ART" "$EDITOR" '{"keyPoints":["First point"," ","Second point"],"status":"PUBLISHED"}')"
+ok "blank points are dropped" '["First point", "Second point"]' "$(get "str(data['keyPoints']).replace(chr(39), chr(34))")"
+SLUG=$(get "data['slug']")
+ok "readers see the brief" "A smoke test, in one line.|2" "$(call GET "/magazine/articles/$SLUG" "" >/dev/null; get "data['summary'] + '|' + str(len(data['keyPoints']))")"
+ok "cards carry the summary" true "$(call GET "/magazine/articles?q=Smoke%20brief" "" >/dev/null; get "any(a.get('summary')=='A smoke test, in one line.' for a in data['items'])")"
+sql "delete from articles where id='$SMOKE_ART'" >/dev/null
+
 echo "== clean up"
 # Only what the test editor made during this run: a time window alone also caught rows
 # whose timestamps were written in another zone.

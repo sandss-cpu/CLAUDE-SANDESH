@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Min,
+  ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, MaxLength, Min,
 } from 'class-validator';
 import { ContentStatus, Language } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
@@ -23,6 +23,11 @@ export class AdminArticleQueryDto extends ArticleQueryDto {
 export class CreateArticleDto {
   @IsString() @Length(3, 200) title: string;
   @IsOptional() @IsString() subtitle?: string;
+  /** One line for cards, 160 characters at most. Required to publish. */
+  @IsOptional() @IsString() @MaxLength(160, { message: 'The summary is one line: 160 characters or fewer' }) summary?: string;
+  /** "In brief": up to three points. At least one is required to publish. */
+  @IsOptional() @IsArray() @ArrayMaxSize(3, { message: 'Up to three key points' }) @IsString({ each: true })
+  @MaxLength(160, { each: true, message: 'Each key point is one short line' }) keyPoints?: string[];
   @IsString() @Length(20, 100_000) body: string;
   @IsOptional() @IsString() coverImageUrl?: string;
   @IsOptional() @IsString() audioUrl?: string;

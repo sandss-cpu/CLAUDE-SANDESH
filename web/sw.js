@@ -5,12 +5,12 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v14';
+const SHELL_CACHE = 'bato-shell-v15';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
 const SHELL = [
-  '/', '/index.html', '/manifest.json', '/config.js', '/js/boot.js', '/css/fonts.css', '/js/actions.js', '/js/reader.js', '/js/admin.js', '/js/admin-programming.js', '/js/bus.js', '/js/rating.js', '/scan.html', '/js/scan.js',
+  '/', '/index.html', '/manifest.json', '/config.js', '/js/boot.js', '/css/fonts.css', '/js/actions.js', '/js/reader.js', '/js/reading.js', '/js/lib/stops.js', '/js/admin.js', '/js/admin-programming.js', '/js/bus.js', '/js/rating.js', '/scan.html', '/js/scan.js',
   '/login.html', '/admin.html', '/bus.html',
   '/creator.html', '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js', '/owner-actions.js', '/owner-trips.js', '/owner-crew.js', '/owner-income.js', '/js/lib/bs-date.js',
   // The Latin faces every page uses; Devanagari and extended Latin are cached the first time a page needs them.

@@ -84,13 +84,20 @@ than a week.
 - The owner portal can set up an authenticator, at sign-in or while signed in; it used to
   send people to the control panel to do it.
 
+## Done in step 8
+
+- Reading experience: summaries and key points, folding, contents, progress, "Next",
+  "Up next", "Continue where you left off", the labelled rail and the stops timeline.
+- Fixed on the way: the reader's bottom-navigation styles applied to every `<nav>`; the
+  offline pack was never downloaded again after a phone cleared its cache; italics in
+  stories were shown as asterisks; no page had a favicon (a console 404 on every load).
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| Reading UI: summaries, "In brief", "Keep reading", the stops timeline | 8 | L |
 | **No business owner area in the web app.** `/businesses/mine`, `/:id/dashboard`, coupon creation and redemption, and review replies have no page. | 9 (`business.html`) | M |
 | **No admin screen for verifying businesses.** `/businesses/admin/pending-verification`, `/:id/verify`, `/:id/tier` and `/:id/routes` have no UI, though verification is meant to be manual. | 9 (partners admin) | M |
 | "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |

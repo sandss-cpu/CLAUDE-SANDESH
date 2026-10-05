@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { firstSentence } from '../src/common/utils/brief';
 
 const prisma = new PrismaClient();
 
@@ -91,6 +92,7 @@ async function main() {
   const articles = [
     {
       slug: 'bandipur-the-town-time-forgot',
+      keyPoints: ["A Newar bazaar town on a ridge at 1,030 metres, left untouched when the highway bypassed it.", "Get off any Kathmandu–Pokhara bus at Dumre: 30 minutes by jeep, or two hours on foot.", "Walk to Tundikhel for the mountains from Dhaulagiri to Ganesh Himal."],
       title: 'Bandipur: the town that stepped off the highway',
       subtitle: 'A Newar trading post that survived by being bypassed',
       categoryId: byCat.heritage.id,
@@ -111,6 +113,7 @@ That accident of neglect is now the reason to climb the eight kilometres up from
     },
     {
       slug: 'what-to-eat-on-the-prithvi-highway',
+      keyPoints: ["Malekhu fish is excellent at eleven in the morning, not at three in the afternoon.", "Sel roti and milk tea at Naubise; the best dal bhat is at Kurintar.", "Mugling is where everyone stops, and has the worst food and toilets on the route."],
       title: 'What to eat between Kathmandu and Pokhara',
       subtitle: 'A rest-stop guide for people who have been on this bus before',
       categoryId: byCat.food.id,
@@ -135,6 +138,7 @@ The Trishuli river fish at Malekhu is genuinely good when it is fresh, which dep
     },
     {
       slug: 'manakamana-cable-car',
+      keyPoints: ["A ten-minute cable car from Kurintar, beside the highway, replaces a three-hour climb.", "Queues are longest on Saturdays, during Dashain and after exam results.", "Goats ride in their own cabins."],
       title: 'The cable car that saved a three-hour climb',
       subtitle: 'Manakamana, straight off the highway',
       categoryId: byCat.heritage.id,
@@ -150,6 +154,7 @@ The temple is dedicated to Bhagwati, and the name means "wish-fulfilling". Devot
     },
     {
       slug: 'first-time-on-a-night-bus',
+      keyPoints: ["Sit in the middle of the bus, over neither axle, and avoid the back row.", "Carry a warm layer: the air conditioning runs hard and mountain nights are cold.", "Take motion-sickness medicine before boarding, not after."],
       title: 'Your first night bus in Nepal',
       subtitle: 'What nobody tells you before you board',
       categoryId: byCat.road.id,
@@ -170,6 +175,7 @@ The temple is dedicated to Bhagwati, and the name means "wish-fulfilling". Devot
     },
     {
       slug: 'chitwan-in-three-days',
+      keyPoints: ["Nepal’s most reliable place to see a one-horned rhinoceros.", "Jeep safaris, canoe trips and walks have replaced elephant rides at the better operators.", "Walking safaris need two licensed naturalists, by park rule."],
       title: 'Chitwan in three days, without the elephant ride',
       subtitle: 'Wildlife the way the park now wants you to see it',
       categoryId: byCat.wildlife.id,
@@ -189,6 +195,7 @@ Elephant-back safaris have been progressively phased out on welfare grounds, and
     },
     {
       slug: 'jomsom-wind',
+      keyPoints: ["By midday the wind through the Kali Gandaki gorge grounds flights and makes walking hard.", "Walk early and be off the valley floor by eleven; carry a scarf against the dust.", "Fly on the earliest slot and keep a spare day for cancellations."],
       title: 'The wind at Jomsom',
       subtitle: 'Why every flight leaves before lunch',
       categoryId: byCat.trekking.id,
@@ -215,6 +222,8 @@ By late morning, air heated on the Terai plains is drawn north through the gorge
         slug: a.slug,
         title: a.title,
         subtitle: a.subtitle,
+        summary: firstSentence(a.body),
+        keyPoints: a.keyPoints,
         body: a.body,
         categoryId: a.categoryId,
         issueId: issue.id,

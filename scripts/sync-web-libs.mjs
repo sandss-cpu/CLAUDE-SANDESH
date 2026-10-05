@@ -26,6 +26,7 @@ const ts = require('typescript');
 
 const LIBS = [
   { source: 'backend/src/common/utils/bs-date.ts', target: 'web/js/lib/bs-date.js', global: 'BsDate' },
+  { source: 'backend/src/common/utils/stops.ts', target: 'web/js/lib/stops.js', global: 'Stops' },
 ];
 
 for (const lib of LIBS) {

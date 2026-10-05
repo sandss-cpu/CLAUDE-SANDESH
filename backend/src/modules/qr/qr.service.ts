@@ -73,7 +73,8 @@ export class QrService {
     const route = qr.vehicle ? qr.vehicle.route : qr.route;
     const routeId = route?.id;
     // A trip the crew started says which way the bus is going; otherwise the traveller's tap does.
-    const tripDirection = qr.vehicle ? await this.trips.directionNow(qr.vehicle.id) : null;
+    const trip = qr.vehicle ? await this.trips.tripNow(qr.vehicle.id) : null;
+    const tripDirection = trip?.direction ?? null;
     const direction = tripDirection ?? dto.direction ?? null;
 
     const [programme, notices, corridorBusinesses] = await Promise.all([
@@ -127,6 +128,8 @@ export class QrService {
       direction,
       /** TRIP when the crew's duty log decided it, so the reader does not ask. */
       directionSource: tripDirection ? 'TRIP' : direction ? 'TRAVELLER' : null,
+      // When the bus left, so the stops timeline knows what is behind and what is coming up.
+      departedAt: trip?.departAt ?? null,
       currentIssue: programme.issue,
       /** The lead story first, then up to twelve more: this bus's shelf. */
       routeArticles: shelf,

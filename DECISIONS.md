@@ -278,3 +278,44 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   browser; the daily sheet was checked there.
 - **Demo income** (`npm run seed:income`, also run by the fleet demo) lays cash, Bussewa,
   eSewa (some without references) and parcels on the demo trips, with finance left off.
+
+## Step 8: the reading experience (Feature 4)
+
+- **Every article has a one-line summary and up to three key points.** The migration
+  backfilled summaries in SQL from each article's first sentence (headings and emphasis
+  removed); `firstSentence()` does the same for elevated traveller posts and the seed.
+  Publishing needs both, but only when an article becomes published: stories published
+  before the rule keep their status. The admin form counts characters to 160.
+- **Cards show title, one-line summary, read time and audio**; the standfirst stays on the
+  story page only.
+- **Long stories fold.** Over 600 words, the body stops after the paragraph that passes
+  about 280 words, with "Continue reading · N min more"; the end-of-story options follow
+  the fold, so they come sooner. A contents list appears with three or more subheadings
+  (`##`, `###`); jumping to a folded section unfolds the story first. Markdown stays the
+  small safe subset: text is escaped before headings, bold and italics are added.
+- **Progress, "Next" and "Up next".** A 4 px progress bar along the top; at 70% read a
+  48 px "Next: <title>" bar above the bottom navigation, dismissible per story; at the end
+  a large "Up next" (the next story in this bus's programme) and two related stories, the
+  same section first.
+- **"Continue where you left off"** comes from the scroll position saved on the phone per
+  story (the 20 most recent, kept a week). A story counts as left part-read only once the
+  reader has scrolled into it (15% or more) and before 95%.
+- **"Keep reading" is labelled**: arrows on wide screens with a mouse, the next card
+  peeking in on phones, and "See all".
+- **Stops on this road are a timeline in travel order** (`common/utils/stops.ts`, shared
+  with the reader as `web/js/lib/stops.js`): the road guide's stops for the direction the
+  bus is going, joined with the businesses listed on the corridor (a listed business that
+  is also a guide stop appears once, under its own name, labelled "Promoted"). Where the
+  bus is comes from the crew's trip departure (now in the scan answer) or the scan time;
+  passed stops are counted, not shown. Groups: coming up (three), later, at the
+  destination (by distance, or by the business's district), and along this road. Four are
+  shown; "See all" opens the Road tab. Open or closed is read from the guide's opening
+  hours as written ("6am–9pm", "06:00-21:00", "6pm–2am", "24 hours"); anything else says
+  nothing rather than guess.
+- **Offline.** On a first scan the service worker does not control the page yet, so the
+  road guide is handed to it explicitly. The offline pack is downloaded again if the
+  phone has cleared its cache, even when the note saying it was saved survived.
+- **Accessibility.** Lighthouse accessibility and best practices: 100 on the reader. Text
+  contrast was checked in all three themes; section tags, the night theme's brand text,
+  the rating stars and the bright-sun button were darkened to reach AA. Chips, tabs and
+  the report button were raised to 48 px.

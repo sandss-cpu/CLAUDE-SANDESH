@@ -67,7 +67,7 @@ bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appra
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 npm run seed:trips             # demo duty log between the demo fuel fills
 npm run seed:income            # demo income on the demo trips (income records stay off)
-node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts or web/css/fonts.css
+node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts, stops.ts or web/css/fonts.css
 npm test                       # unit tests over the pure logic, including content-for
 ```
 
@@ -368,6 +368,13 @@ drift or if any page loads a script or stylesheet from another origin.
 **`web/js/boot.js` starts the scan** before `reader.js` has downloaded; `resolveScan()`
 reuses that request (`earlyScan()`) only if it asked the same question. On Slow 3G that
 is two seconds sooner.
+
+**The reading aids live in `web/js/reading.js`**, loaded before `reader.js`: story
+blocks and folding, "In brief", contents, progress and the "Next" bar, "Up next",
+"Continue where you left off" (`bato.readPos`), the "Keep reading" rail and the stops
+timeline (`Stops`, from `web/js/lib/stops.js`, generated from `common/utils/stops.ts`).
+The bottom navigation is styled as `#nav`: a bare `nav` selector once turned the
+contents list into a second fixed bar.
 
 **The rating comes second** (`web/js/rating.js`): a card after a finished story or five
 minutes, at each story's end, under More and near the journey's end, then a bottom sheet.

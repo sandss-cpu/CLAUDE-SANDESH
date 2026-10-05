@@ -550,6 +550,10 @@ model Article {
   slug              String        @unique
   title             String
   subtitle          String?
+  /// One line for cards: 160 characters at most (checked in SQL). Required to publish.
+  summary           String?       @db.VarChar(160)
+  /// "In brief": one to three points shown at the top of the article. Required to publish.
+  keyPoints         String[]      @default([])
   body              String // markdown
   coverImageUrl     String?
   audioUrl          String? // pre-generated TTS, cached offline
