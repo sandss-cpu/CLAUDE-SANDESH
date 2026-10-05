@@ -1,72 +1,109 @@
-# Render Blueprint for Bato: managed Postgres, the NestJS API, and the static web app.
+# Render Blueprint for Batoma: the API, the app, the public website, managed Postgres,
+# and a weekly encrypted backup. Deploy: Render dashboard → New → Blueprint → this
+# repository. GO_LIVE.md is the checklist; SECURITY.md explains the keys.
 #
-# Deploy: Render dashboard → New → Blueprint → pick this repository.
-# Entries marked `sync: false` are filled in on the dashboard. The API refuses to
-# start until they are, by design (see backend/src/config/env.validation.ts).
+# Domains (fill in <PUBLIC_DOMAIN> once, before any sticker is printed):
+#   https://<PUBLIC_DOMAIN>          bato-site: the public website
+#   https://<PUBLIC_DOMAIN>/b/<code> the permanent QR short link (bato-site redirects it to the app)
+#   https://app.<PUBLIC_DOMAIN>      bato-web: the reader, owner portal, partner area, control panel
+#   https://app.<PUBLIC_DOMAIN>/api  the API, through bato-web's rewrite (one origin for the app)
+#   https://media.<PUBLIC_DOMAIN>    the public bucket (R2 custom domain) for pictures
+#
+# Entries marked `sync: false` are filled in on the dashboard. The API refuses to start
+# until every production setting is right (backend/src/config/env.validation.ts).
 
 databases:
-  - name: bato-db
-    databaseName: bato
-    user: bato
-    region: singapore        # closest Render region to Nepal
-    plan: basic-256mb
+  - name: batoma-db
+    databaseName: batoma
+    user: batoma
+    region: singapore          # closest Render region to Nepal
+    # A paid plan: point-in-time recovery is what makes a bad migration or a deleted row
+    # recoverable to the minute. Check the plan includes it before choosing.
+    plan: basic-1gb
+    postgresMajorVersion: "16"
+    ipAllowList: []            # reachable only from Render services in this account
 
 services:
   - type: web
     name: bato-api
     runtime: node
     region: singapore
-    plan: starter            # a persistent disk needs a paid instance; free instances lose uploads on every deploy
+    plan: starter
     rootDir: backend
-    # --include=dev: the Nest CLI and Prisma CLI are dev dependencies, and Render
-    # skips those when NODE_ENV=production, which would break both build and migrate.
+    # --include=dev: the Nest and Prisma CLIs and ts-node are dev dependencies.
     buildCommand: npm ci --include=dev && npx prisma generate && npm run build
-    preDeployCommand: npx prisma migrate deploy
+    # Migrations, then the website's read-only role, then any personal field not yet
+    # encrypted (safe to repeat; it only touches what needs it).
+    preDeployCommand: npx prisma migrate deploy && npm run db:site-role && npm run fields:encrypt
     startCommand: npm run start:prod
     healthCheckPath: /health
-    disk:
-      name: uploads
-      mountPath: /var/data/uploads
-      sizeGB: 5
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: "22"
       - key: DATABASE_URL
-        fromDatabase:
-          name: bato-db
-          property: connectionString
+        fromDatabase: { name: batoma-db, property: connectionString }
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: REFRESH_EXPIRES_DAYS
         value: "60"
-      # One proxy (Render's) sits in front of the API; without this every visitor
-      # shares one address for rate limiting and report counting.
+      # Requests reach the API through bato-web's rewrite and Render's own proxy. Check the
+      # count with GO_LIVE.md step 6 (two addresses must show as two in Security events).
       - key: TRUST_PROXY
-        value: "1"
-      # Email is the sign-in method. Turning phone sign-in on also requires an SMS gateway.
+        value: "2"
       - key: PHONE_LOGIN_ENABLED
         value: "false"
-      - key: UPLOAD_DIR
-        value: /var/data/uploads
-      - key: MAX_UPLOAD_MB
-        value: "8"
-      # https://<your bato-web address>, e.g. https://bato-web.onrender.com
+      # Field encryption (SECURITY.md). Render generates them; copy both into the team's
+      # password manager the day they are made: losing them loses the encrypted fields.
+      - key: FIELD_ENCRYPTION_KEYS
+        generateValue: true
+      - key: BLIND_INDEX_KEY
+        generateValue: true
+      - key: SIGNED_URL_SECRET
+        generateValue: true
+      # https://app.<PUBLIC_DOMAIN>
       - key: PUBLIC_WEB_URL
         sync: false
-      # Same value as PUBLIC_WEB_URL (comma-separate if you add a custom domain)
+      # https://app.<PUBLIC_DOMAIN> (the app calls the API on its own origin)
       - key: CORS_ORIGINS
         sync: false
-      # https://<your bato-api address>
+      # https://app.<PUBLIC_DOMAIN>: offline packs are cached under the address the reader calls
       - key: API_PUBLIC_URL
         sync: false
-      # https://<your bato-api address>/static
-      - key: MEDIA_BASE_URL
+      # https://<PUBLIC_DOMAIN>: printed on every sticker, never changed afterwards
+      - key: SHORT_LINK_BASE
         sync: false
-      # Any SMTP provider: Resend, Brevo, Mailgun, Amazon SES…
+      # The public website, and the key it shares with this API (forms, cache purges)
+      - key: SITE_URL
+        sync: false
+      - key: SITE_API_KEY
+        generateValue: true
+      - key: SITE_DB_PASSWORD
+        generateValue: true
+      - key: ADMIN_INBOX
+        sync: false
+      # Files: Cloudflare R2 (or any S3-compatible store). Two buckets: private (statement
+      # photos, verification documents) and public (pictures, served from MEDIA_BASE_URL).
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false            # https://<account id>.r2.cloudflarestorage.com
+      - key: S3_REGION
+        value: auto
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_PUBLIC_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: MEDIA_BASE_URL
+        sync: false            # https://media.<PUBLIC_DOMAIN>
+      # Email: any SMTP provider (Resend, Brevo, Mailgun, Amazon SES…)
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -75,31 +112,77 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
-      # e.g. "Bato <no-reply@yourdomain.com>" on a domain verified with the provider
       - key: MAIL_FROM
+        sync: false            # "Batoma <no-reply@<PUBLIC_DOMAIN>>"
+      - key: SENTRY_DSN
+        sync: false            # optional
+
+  - type: web
+    name: bato-site
+    runtime: node
+    region: singapore
+    plan: starter
+    rootDir: site
+    # prepare.mjs copies the schema, fonts and icons in from ../backend and ../web.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # The read-only batoma_site role: address from the database, password from the API
+      - key: SITE_DB_HOST
+        fromDatabase: { name: batoma-db, property: host }
+      - key: SITE_DB_PORT
+        fromDatabase: { name: batoma-db, property: port }
+      - key: SITE_DB_NAME
+        fromDatabase: { name: batoma-db, property: database }
+      - key: SITE_DB_PASSWORD
+        fromService: { type: web, name: bato-api, envVarKey: SITE_DB_PASSWORD }
+      - key: SITE_API_KEY
+        fromService: { type: web, name: bato-api, envVarKey: SITE_API_KEY }
+      - key: SITE_EVENT_SALT
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "1"
+      # https://<PUBLIC_DOMAIN>
+      - key: SITE_URL
+        sync: false
+      # https://app.<PUBLIC_DOMAIN>
+      - key: APP_URL
+        sync: false
+      # The API's own Render address, for server-to-server form posts: https://bato-api.onrender.com/api/v1
+      - key: API_URL
         sync: false
 
   - type: web
     name: bato-web
     runtime: static
     rootDir: web
-    # Writes the API address the pages call; the committed config.js points at localhost.
+    # The app calls the API on its own origin (/api/v1, rewritten below); the website's
+    # address is used for links to a partner's page.
     buildCommand: >-
-      printf 'window.BATO_CONFIG = { api: "%s/api/v1" };\n' "$BATO_API_URL" > config.js
+      printf 'window.BATO_CONFIG = { api: "/api/v1", site: "%s" };\n' "$BATO_SITE_URL" > config.js
     staticPublishPath: .
-    # Printed stickers open /b/<code> (older ones /r/<code>). Neither is a file: both
-    # are answered by the reader, which reads the code from the path. Never change
-    # these paths once stickers are printed.
     routes:
+      # Printed stickers open /b/<code> (older ones /r/<code>). Neither is a file: the reader
+      # reads the code from the path. Never change these paths once stickers are printed.
       - type: rewrite
         source: /b/*
         destination: /index.html
       - type: rewrite
         source: /r/*
         destination: /index.html
+      # The API on the app's own origin: no CORS preflight and one less TLS handshake on a
+      # weak signal. Set the destination to bato-api's address as Render shows it.
+      - type: rewrite
+        source: /api/*
+        destination: https://bato-api.onrender.com/api/*
     envVars:
-      # https://<your bato-api address>, without a trailing slash
-      - key: BATO_API_URL
+      # https://<PUBLIC_DOMAIN>
+      - key: BATO_SITE_URL
         sync: false
     # Generated from scripts/web-headers.mjs, which the local server uses too; a test
     # (backend/src/common/utils/web-pages.spec.ts) checks the two still agree.
@@ -161,8 +244,8 @@ services:
       # No inline script anywhere (web-pages.spec.ts checks every page and script), so
       # script-src is 'self' alone: an injected handler or <script> does not run.
       # style-src keeps 'unsafe-inline' for style attributes, which cannot run code.
-      # connect-src and img-src allow https: because the API address is set per deploy
-      # (BATO_API_URL) and a header here cannot read it.
+      # connect-src is 'self': the app calls the API through its own domain (/api/*).
+      # img-src and media-src allow https: for the public bucket's address, set per deploy.
       - path: /*
         name: Content-Security-Policy
         value: >-
@@ -176,7 +259,7 @@ services:
           font-src 'self';
           img-src 'self' data: blob: https:;
           media-src 'self' blob: https:;
-          connect-src 'self' https:;
+          connect-src 'self';
           worker-src 'self';
           manifest-src 'self';
           upgrade-insecure-requests
@@ -212,3 +295,27 @@ services:
       - path: /fonts/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+
+  # Weekly encrypted logical backup, on top of the database's point-in-time recovery.
+  # Monday 02:15 in Kathmandu. SECURITY.md has the restore drill.
+  - type: cron
+    name: batoma-backup
+    runtime: docker
+    region: singapore
+    dockerfilePath: ./ops/backup/Dockerfile
+    dockerContext: ./ops/backup
+    schedule: "30 20 * * 0"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: batoma-db, property: connectionString }
+      # An age public key ("age1…"); the matching private key is kept offline.
+      - key: BACKUP_AGE_RECIPIENT
+        sync: false
+      - key: BACKUP_BUCKET
+        sync: false            # a third, private bucket, separate from the app's
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false

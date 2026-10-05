@@ -72,6 +72,7 @@ Actions.on({
   enableFinance: () => enableFinance(),
   // sessions and recovery codes
   signOutEverywhere: () => signOutEverywhere(),
+  setUpAuthenticator: () => setUpAuthenticator(),
   downloadCodes: (el) => downloadCodes(el.dataset.codes.split(' ')),
   codesSaved: () => finishSignIn(state.login.pending),
   // verification documents

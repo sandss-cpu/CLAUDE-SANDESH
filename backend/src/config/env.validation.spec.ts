@@ -17,6 +17,9 @@ const prod = (extra: Record<string, unknown> = {}) => ({
   PUBLIC_WEB_URL: 'https://app.example.com',
   API_PUBLIC_URL: 'https://api.example.com',
   SIGNED_URL_SECRET: 'y'.repeat(40),
+  STORAGE_DRIVER: 's3', S3_ENDPOINT: 'https://acc.r2.cloudflarestorage.com', S3_BUCKET: 'private', S3_PUBLIC_BUCKET: 'public',
+  S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's', MEDIA_BASE_URL: 'https://media.batoma.example',
+  SITE_URL: 'https://batoma.example', SITE_API_KEY: 'k'.repeat(40), SHORT_LINK_BASE: 'https://batoma.example',
   ...KEYS,
   ...extra,
 });
@@ -129,7 +132,7 @@ describe('validateEnv — private files', () => {
     expect(() => validateEnv(prod({ SIGNED_URL_SECRET: 'short' }))).toThrow(/SIGNED_URL_SECRET/);
   });
   it('needs every bucket setting for S3 storage', () => {
-    expect(() => validateEnv(prod({ STORAGE_DRIVER: 's3', S3_ENDPOINT: 'https://acc.r2.cloudflarestorage.com' }))).toThrow(/S3_BUCKET/);
+    expect(() => validateEnv(prod({ S3_BUCKET: undefined }))).toThrow(/S3_BUCKET is required/);
     expect(() => validateEnv(prod({
       STORAGE_DRIVER: 's3', S3_ENDPOINT: 'https://acc.r2.cloudflarestorage.com', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's',
     }))).not.toThrow();
@@ -152,5 +155,17 @@ describe('validateEnv — field encryption', () => {
   it('refuses a malformed key anywhere, so a typo cannot make fields unreadable later', () => {
     expect(() => validateEnv({ ...base, FIELD_ENCRYPTION_KEYS: 'v1:tooshort', BLIND_INDEX_KEY: KEYS.BLIND_INDEX_KEY })).toThrow(/32 bytes/);
     expect(() => validateEnv({ ...base, ...KEYS })).not.toThrow();
+  });
+});
+
+describe('validateEnv — ready to host', () => {
+  it('keeps files in buckets, never on the server disk', () => {
+    expect(() => validateEnv(prod({ STORAGE_DRIVER: 'disk' }))).toThrow(/STORAGE_DRIVER=s3/);
+    expect(() => validateEnv(prod({ S3_PUBLIC_BUCKET: undefined }))).toThrow(/S3_PUBLIC_BUCKET/);
+    expect(() => validateEnv(prod({ MEDIA_BASE_URL: 'http://media.example' }))).toThrow(/MEDIA_BASE_URL/);
+  });
+  it('needs the sticker address and the website before it starts', () => {
+    expect(() => validateEnv(prod({ SHORT_LINK_BASE: undefined }))).toThrow(/SHORT_LINK_BASE/);
+    expect(() => validateEnv(prod({ SITE_URL: undefined }))).toThrow(/SITE_URL/);
   });
 });

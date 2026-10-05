@@ -9,7 +9,7 @@
  *   node scripts/dev-web-server.mjs            # http://localhost:5173
  *   PORT=5180 node scripts/dev-web-server.mjs
  */
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createGzip } from 'node:zlib';
@@ -59,6 +59,18 @@ createServer(async (req, res) => {
     pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   } catch {
     res.writeHead(400).end('Bad request');
+    return;
+  }
+  // /api/* goes to the API, as bato-web's rewrite does on Render: the app and its API
+  // share one origin there, so they do here too.
+  if (pathname.startsWith('/api/')) {
+    const upstream = new URL(req.url, API_ORIGIN);
+    const proxied = httpRequest(upstream, { method: req.method, headers: { ...req.headers, host: upstream.host, 'x-forwarded-for': req.socket.remoteAddress ?? '' } }, (up) => {
+      res.writeHead(up.statusCode ?? 502, up.headers);
+      up.pipe(res);
+    });
+    proxied.on('error', () => { if (!res.headersSent) res.writeHead(502).end('API not reachable'); });
+    req.pipe(proxied);
     return;
   }
   const file = normalize(join(ROOT, target(pathname)));

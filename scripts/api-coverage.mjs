@@ -27,13 +27,22 @@ function walk(dir, test, out = []) {
 const segments = (p) => p.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
 
 // ---- routes, from the controllers ----
+// A file may hold several controllers, and a controller may inherit its routes from an
+// abstract base class in the same file (the verification documents do both). Each class
+// is read on its own: its prefix, its own routes, and those of the class it extends.
 const routes = [];
+const METHOD = /@(Get|Post|Patch|Put|Delete)\(\s*(?:'([^']*)')?\s*\)/g;
 for (const file of walk(join(ROOT, 'backend/src'), (n) => n.endsWith('.controller.ts'))) {
   const src = readFileSync(file, 'utf8');
-  const base = (src.match(/@Controller\(\s*'([^']*)'\s*\)/) || [, ''])[1];
-  for (const m of src.matchAll(/@(Get|Post|Patch|Put|Delete)\(\s*(?:'([^']*)')?\s*\)/g)) {
-    const path = `/${[base, m[2] || ''].filter(Boolean).join('/')}`;
-    routes.push({ method: m[1].toUpperCase(), path, file: relative(ROOT, file) });
+  const classes = [...src.matchAll(/(?:@Controller\(\s*(?:'([^']*)')?\s*\)[\s\S]*?)?(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?/g)]
+    .map((m, i, all) => ({ prefix: m[0].includes('@Controller') ? (m[1] ?? '') : null, name: m[2], base: m[3], start: m.index, end: all[i + 1]?.index ?? src.length }));
+  const own = (c) => [...src.slice(c.start, c.end).matchAll(METHOD)].map((m) => ({ method: m[1].toUpperCase(), sub: m[2] || '' }));
+  for (const c of classes) {
+    if (c.prefix === null) continue;
+    const inherited = classes.find((k) => k.name === c.base);
+    for (const r of [...own(c), ...(inherited ? own(inherited) : [])]) {
+      routes.push({ method: r.method, path: `/${[c.prefix, r.sub].filter(Boolean).join('/')}`, file: relative(ROOT, file) });
+    }
   }
 }
 

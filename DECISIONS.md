@@ -485,3 +485,43 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   anti-CSRF tokens" on the website's forms (they carry a signed time token, and there is no
   cookie or session for a forged request to ride on: the API takes them only from the
   site's own server).
+
+## Step 11: ready to host
+
+- **Three domains, one origin for the app.** `<PUBLIC_DOMAIN>` is the website (bato-site);
+  `app.<PUBLIC_DOMAIN>` is the static app (bato-web), which rewrites `/api/*` to the API, so
+  the app and its API share one origin: no CORS preflight on a weak signal, and the web
+  app's CSP can say `connect-src 'self'`. `API_PUBLIC_URL` is the app's origin, so offline
+  packs are cached under the address the reader asks for (the step 2 gap).
+- **Stickers carry `https://<PUBLIC_DOMAIN>/b/<code>`**, which the website answers with a
+  302 to `https://app.<PUBLIC_DOMAIN>/b/<code>`. 302, not 301: browsers keep a 301 for good,
+  and the app's address may change one day; the sticker's never can. One extra hop on the
+  first scan (the plan's risk 2); the service worker answers later scans.
+- **Files in buckets only, in production.** `STORAGE_DRIVER=s3` is required: a server disk
+  is lost on redeploy and cannot be shared by two instances. Two buckets: private
+  (statement photos, verification documents, signed links) and public (pictures, served
+  from `MEDIA_BASE_URL`, e.g. an R2 custom domain, cached for a year because names never
+  change). Local development keeps the disk.
+- **Render generates the secrets** (`generateValue`): JWT, field encryption, blind index,
+  signed links, the website's key and its database password. A bare generated key counts
+  as encryption key `v1`, so the generated value works as it is; GO_LIVE.md says to copy the
+  encryption keys out the day they are made.
+- **The website builds its database URL from parts** (`SITE_DB_HOST`, `_PORT`, `_NAME` from
+  the database, the password from the API service), because Render cannot put a URL
+  together from another service's values.
+- **The deploy runs `migrate deploy`, `db:site-role` and `fields:encrypt`**, all safe to
+  repeat, so a new column the website needs or a new encrypted field is handled by the
+  next deploy rather than by memory.
+- **Scheduled work stays inside the API** (`@nestjs/schedule`): reminders at 06:00 and
+  retention at 03:30 Kathmandu time. Retention takes a Postgres advisory lock, so two API
+  instances cannot roll the same rows up twice; reminders were already de-duplicated by key.
+  The weekly backup is the one Render cron job: it needs `pg_dump` and `age`, which the API's
+  image does not have.
+- **Backups**: the database plan's point-in-time recovery, plus a weekly `pg_dump`
+  encrypted to an `age` public key whose private half never touches a server, kept 13 weeks
+  in a separate bucket.
+- **`TRUST_PROXY=2` on the API**, because requests pass bato-web's rewrite and Render's own
+  proxy. This is the one setting only production can confirm; GO_LIVE.md step 6 checks it
+  from two networks.
+- **`prod_smoke.sh` signs in only to a company whose name starts with TEST**, so a smoke
+  run can never be pointed at a real company's data by mistake.

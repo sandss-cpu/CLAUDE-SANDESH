@@ -31,6 +31,9 @@ export class RetentionService {
   async run(now = new Date()) {
     const cutoff = retentionCutoff(now);
     const result = await this.prisma.$transaction(async (tx) => {
+      // One run at a time, across API instances: two at once would count the same rows twice.
+      const [{ locked }] = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(4207150013) AS locked`;
+      if (!locked) return null;
       const scansRolled = await tx.$executeRaw`
         INSERT INTO scan_daily (day, "qrCodeId", scans, "firstScans", sessions)
         SELECT ("scannedAt" + interval '345 minutes')::date, "qrCodeId", count(*), count(*) FILTER (WHERE "isFirstScan"), count(DISTINCT "sessionId")
@@ -57,6 +60,7 @@ export class RetentionService {
         DELETE FROM login_guards WHERE "lastFailureAt" < ${new Date(now.getTime() - 86_400_000)} AND ("lockedUntil" IS NULL OR "lockedUntil" < ${now})`;
       return { cutoff: cutoff.toISOString(), scansRolled, scansDeleted, eventsRolled, eventsDeleted, hashesCleared, devicesForgotten, guardsCleared };
     }, { timeout: 120_000 });
+    if (!result) { this.logger.log('Retention skipped: another instance is running it.'); return null; }
     this.logger.log(`Retention up to ${result.cutoff}: ${result.scansDeleted} scans and ${result.eventsDeleted} website events rolled up, ${result.hashesCleared} address hashes cleared, ${result.devicesForgotten} devices forgotten.`);
     return result;
   }

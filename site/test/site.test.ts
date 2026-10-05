@@ -263,6 +263,17 @@ describe('forms', () => {
   });
 });
 
+describe('printed stickers', () => {
+  test('/b/<code> on this domain hands the code to the app, uncached', async () => {
+    const r = await get('/b/6KNJ5RAS2T');
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get('location'), `${config.appUrl}/b/6KNJ5RAS2T`);
+    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.equal((await get('/r/OLDSEAT1')).headers.get('location'), `${config.appUrl}/r/OLDSEAT1`);
+    assert.equal((await get('/b/not a code')).status, 404);
+  });
+});
+
 describe('cache purge', () => {
   test('refuses an unsigned or old request and accepts a signed one', async () => {
     assert.equal((await get('/_purge', { method: 'POST' })).status, 403);

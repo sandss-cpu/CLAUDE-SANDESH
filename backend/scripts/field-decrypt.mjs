@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 try { process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), '../.env')); } catch { /* set elsewhere */ }
 const value = process.argv[2] ?? '';
 if (!value.startsWith('enc:')) { process.stdout.write(value); process.exit(0); }
-const keys = new Map((process.env.FIELD_ENCRYPTION_KEYS ?? '').split(',').filter(Boolean).map((p) => {
+const keys = new Map((process.env.FIELD_ENCRYPTION_KEYS ?? '').split(',').filter(Boolean).map((p, n) => (n === 0 && !/^[a-z0-9]{1,8}:/i.test(p.trim()) ? `v1:${p.trim()}` : p)).map((p) => {
   const i = p.indexOf(':');
   return [p.slice(0, i).trim(), Buffer.from(p.slice(i + 1).trim(), 'base64')];
 }));

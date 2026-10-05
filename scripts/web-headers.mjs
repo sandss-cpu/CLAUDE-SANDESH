@@ -20,7 +20,8 @@ export function contentSecurityPolicy({ api = '', production = true } = {}) {
     "font-src 'self'",
     `img-src 'self' data: blob: https:${extra}`,
     `media-src 'self' blob: https:${extra}`,
-    `connect-src 'self' https:${extra}`,
+    // The app reaches the API through its own domain (/api/*, rewritten by the host).
+    `connect-src 'self'${extra}`,
     "worker-src 'self'",
     "manifest-src 'self'",
     ...(production ? ['upgrade-insecure-requests'] : []),

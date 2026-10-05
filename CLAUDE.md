@@ -26,7 +26,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order. `owner-actions.js` registers what its markup may ask for; `owner-trips.js` is the duty log and the crew's duty screen |
 | `web/js/lib/bs-date.js` | Bikram Sambat dates, generated from `backend/src/common/utils/bs-date.ts` by `scripts/sync-web-libs.mjs`; never edit it by hand |
 | `web/config.js` | API address; overwritten by the Render static-site build |
-| `render.yaml` | Deployment blueprint (Postgres, API with uploads disk, static site) |
+| `render.yaml` | Deployment blueprint: API, app (with the `/api` rewrite), website, Postgres, weekly backup (GO_LIVE.md) |
 
 ## Commands
 
@@ -474,6 +474,22 @@ panel's Security events (`SECURITY_KINDS` in `admin.service.ts`).
 
 **Uploads** go through `common/media/images.ts` (decoded and drawn again, metadata gone);
 private files through `StorageService` and short-lived signed links only.
+
+## Hosting (step 11)
+
+**Domains**: `<PUBLIC_DOMAIN>` is the website; `app.<PUBLIC_DOMAIN>` the app, whose `/api/*`
+Render rewrites to the API (so `config.js` says `api: "/api/v1"` in production and the CSP
+says `connect-src 'self'`); stickers carry `https://<PUBLIC_DOMAIN>/b/<code>` and the
+website hands them to the app with a 302. `scripts/dev-web-server.mjs` proxies `/api` the
+same way locally. `SHORT_LINK_BASE` can never change once stickers are printed.
+
+**Production refuses disk storage**: `STORAGE_DRIVER=s3` with `S3_BUCKET` (private) and
+`S3_PUBLIC_BUCKET` (pictures, served from `MEDIA_BASE_URL`). `StorageService.putPublic`
+falls back to `uploads/` only in development.
+
+**The deploy runs** `migrate deploy`, `db:site-role` and `fields:encrypt`; keep all three
+safe to repeat. GO_LIVE.md is the launch checklist; `scripts/prod_smoke.sh` checks a live
+deploy and only ever signs in to a company named TEST….
 
 ## Known gaps
 

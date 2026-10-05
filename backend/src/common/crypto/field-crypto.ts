@@ -60,7 +60,8 @@ export class FieldCrypto {
     const raw = (env.FIELD_ENCRYPTION_KEYS ?? '').trim();
     if (!raw) return null;
     const keys = new Map<string, Buffer>();
-    for (const part of raw.split(',').map((p) => p.trim()).filter(Boolean)) {
+    // A bare key (Render's generated value) is key "v1"; add "v2:<key>" after it to rotate.
+    for (const part of raw.split(',').map((p, n) => (n === 0 && !/^[a-z0-9]{1,8}:/i.test(p.trim()) ? `v1:${p.trim()}` : p.trim())).filter(Boolean)) {
       const i = part.indexOf(':');
       const id = part.slice(0, i);
       const key = Buffer.from(part.slice(i + 1), 'base64');

@@ -13,11 +13,14 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+// Locally the settings are in backend/.env; on a host they are already in the environment.
+try { process.loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url))); } catch { /* none */ }
 const { PrismaClient } = require('@prisma/client');
 
 const password = process.env.SITE_DB_PASSWORD ?? '';
-if (!/^[A-Za-z0-9_-]{24,}$/.test(password)) {
-  console.error('SITE_DB_PASSWORD must be at least 24 letters, digits, - or _ (it goes into a connection URL).');
+// Base64 is allowed (Render's generated values); the website URL-encodes it.
+if (!/^[A-Za-z0-9_+/=-]{24,}$/.test(password)) {
+  console.error('SITE_DB_PASSWORD must be at least 24 letters, digits or + / = - _.');
   process.exit(1);
 }
 const sql = readFileSync(fileURLToPath(new URL('../prisma/site-role.sql', import.meta.url)), 'utf8');

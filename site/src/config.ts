@@ -1,7 +1,20 @@
 /** The site's settings, read once. Production refuses to start without the essentials. */
 const env = (k: string) => (process.env[k] ?? '').trim();
 
+/**
+ * On Render the database address comes in parts (fromDatabase host, port and name) and the
+ * read-only role's password from the API service, so the URL is put together here.
+ */
+function databaseUrl(): string {
+  if (env('DATABASE_URL')) return env('DATABASE_URL');
+  const host = env('SITE_DB_HOST');
+  if (!host) return '';
+  const port = env('SITE_DB_PORT') || '5432';
+  return `postgresql://batoma_site:${encodeURIComponent(env('SITE_DB_PASSWORD'))}@${host}:${port}/${env('SITE_DB_NAME')}?schema=public`;
+}
+
 export const config = {
+  databaseUrl: databaseUrl(),
   port: Number(env('PORT') || 4000),
   production: env('NODE_ENV') === 'production',
   /** This site's own address, for canonical links, sitemaps and share cards. */
@@ -20,7 +33,7 @@ export const config = {
 
 export function checkConfig() {
   const problems: string[] = [];
-  if (!env('DATABASE_URL')) problems.push('DATABASE_URL (the read-only batoma_site role) is required');
+  if (!config.databaseUrl) problems.push('DATABASE_URL, or SITE_DB_HOST, SITE_DB_NAME and SITE_DB_PASSWORD (the read-only batoma_site role), is required');
   if (config.production) {
     if (!/^https:\/\//.test(config.siteUrl)) problems.push('SITE_URL must be https in production');
     if (config.apiKey.length < 32) problems.push('SITE_API_KEY must be at least 32 characters in production');

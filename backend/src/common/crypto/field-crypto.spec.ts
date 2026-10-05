@@ -10,6 +10,13 @@ describe('FieldCrypto', () => {
   const k2 = key();
   const fc = FieldCrypto.fromEnv(env(`v1:${k1}`))!;
 
+  it('takes a bare generated key as v1', () => {
+    const bare = FieldCrypto.fromEnv(env(k1))!;
+    expect(bare.currentId).toBe('v1');
+    expect(bare.encrypt('x')).toMatch(/^enc:v1:/);
+    expect(fc.decrypt(bare.encrypt('same key'))).toBe('same key');
+  });
+
   it('is off without keys, and refuses malformed ones', () => {
     expect(FieldCrypto.fromEnv({} as NodeJS.ProcessEnv)).toBeNull();
     expect(() => FieldCrypto.fromEnv(env('v1:short'))).toThrow(/32 bytes/);

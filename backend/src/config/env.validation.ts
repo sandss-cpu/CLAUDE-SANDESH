@@ -92,19 +92,27 @@ export function validateEnv(config: Record<string, unknown>) {
     if (!signed || signed.length < 32) {
       errors.push('SIGNED_URL_SECRET must be set to at least 32 random characters in production');
     }
+    // Files live in buckets in production: a server's own disk is lost on redeploy and
+    // cannot be shared by two instances.
+    if (str('STORAGE_DRIVER') !== 's3') {
+      errors.push('STORAGE_DRIVER=s3 is required in production (private and public buckets, e.g. Cloudflare R2)');
+    }
     if (str('STORAGE_DRIVER') === 's3') {
-      for (const k of ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
+      for (const k of ['S3_ENDPOINT', 'S3_BUCKET', 'S3_PUBLIC_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
         if (!str(k)) errors.push(`${k} is required when STORAGE_DRIVER=s3`);
       }
       if (str('S3_ENDPOINT') && !/^https:\/\//.test(str('S3_ENDPOINT')!)) errors.push('S3_ENDPOINT must be https');
     }
-    if (str('SITE_URL')) {
-      if (!/^https:\/\//.test(str('SITE_URL')!)) errors.push('SITE_URL must be https in production');
-      if ((str('SITE_API_KEY') ?? '').length < 32) errors.push('SITE_API_KEY must be at least 32 random characters when SITE_URL is set');
+    if (!/^https:\/\//.test(str('MEDIA_BASE_URL') ?? '')) {
+      errors.push('MEDIA_BASE_URL must be the https address the public bucket is served from');
     }
+    // The public website: forms, newsletter links and cache purges depend on both.
+    if (!/^https:\/\//.test(str('SITE_URL') ?? '')) errors.push('SITE_URL (the public website, https) is required in production');
+    if ((str('SITE_API_KEY') ?? '').length < 32) errors.push('SITE_API_KEY must be at least 32 random characters in production');
+    // Printed on every sticker and never changed afterwards: required, and https.
     const shortLinks = str('SHORT_LINK_BASE');
-    if (shortLinks && !shortLinks.startsWith('https://')) {
-      errors.push('SHORT_LINK_BASE must be https in production: it is printed on every bus sticker');
+    if (!shortLinks || !shortLinks.startsWith('https://')) {
+      errors.push('SHORT_LINK_BASE (https://<public domain>) is required in production: it is printed on every bus sticker');
     }
     const api = str('API_PUBLIC_URL');
     if (!api) {

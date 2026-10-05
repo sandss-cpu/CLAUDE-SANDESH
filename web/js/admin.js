@@ -356,6 +356,30 @@ function downloadRecoveryCodes(){
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+/** Fresh recovery codes for a staff account; the old ones stop working. */
+async function newRecoveryCodes(){
+  const code = await askDialog({
+    title: 'New recovery codes', confirmLabel: 'Make new codes',
+    message: 'New codes replace the old ones, which stop working. Enter the current code from your authenticator app.',
+    field: { label: '6-digit code', placeholder: '123456', validate: (v) => (/^\d{6}$/.test(v) ? '' : 'Enter the 6 digits from the app.') },
+  });
+  if(!code) return;
+  let codes;
+  try{ codes = (await api('/auth/mfa/recovery-codes', { method: 'POST', body: { code } })).recoveryCodes; }
+  catch(err){ notify(err.message, 'error'); return; }
+  state.login.codes = codes;
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="codes-title">
+    <h2 id="codes-title">Your new recovery codes</h2>
+    <p class="hint">Each lets you sign in once if you lose your phone. Keep them somewhere safe and private. They are shown only now.</p>
+    <ol class="codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+    <div class="row-actions"><button class="btn" data-action="downloadRecoveryCodes">Save as a text file</button>
+      <button class="btn btn-primary" data-close>I have saved them</button></div></div>`;
+  back.addEventListener('click', (e) => { if(e.target.closest('[data-close]')){ back.remove(); state.login.codes = null; } });
+  document.body.appendChild(back);
+}
+
 async function signOutEverywhere(){
   const ok = await askDialog({ title: 'Sign out everywhere?', confirmLabel: 'Sign out everywhere', danger: true,
     message: 'Every device signed in to this account is signed out at once, this one too.' });
@@ -495,6 +519,7 @@ function renderSidebar(){
     <div class="signout">
       <button class="btn btn-ghost btn-sm" data-action="openPalettePicker">🎨 Appearance</button>
       <button class="btn btn-ghost btn-sm" data-action="signOut">Sign out</button>
+      <button class="btn btn-ghost btn-sm" data-action="newRecoveryCodes">New recovery codes</button>
       <button class="btn btn-ghost btn-sm" data-action="signOutEverywhere">Sign out everywhere</button>
     </div>`;
 }
@@ -2465,6 +2490,7 @@ Actions.on({
   openPalettePicker: () => openPalettePicker(),
   signOut: () => signOut(),
   signOutEverywhere: () => signOutEverywhere(),
+  newRecoveryCodes: () => newRecoveryCodes(),
   editArticle: (el) => editArticle(el.dataset.id),
   loginStep: (el) => { Object.assign(state.login, { step: el.dataset.step, error: '', busy: false }); renderLogin(); },
   downloadRecoveryCodes: () => downloadRecoveryCodes(),

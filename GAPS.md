@@ -118,6 +118,20 @@ than a week.
   owner with an authenticator stopped being asked for it once income records were off;
   the disabled-SMS log printed sign-in codes; statement photos kept their GPS metadata.
 
+## Done in step 11
+
+- `render.yaml` with the API, the app (with the `/api` rewrite), the website (with the
+  sticker short link), Postgres with point-in-time recovery, R2 buckets and a weekly
+  encrypted backup; production refuses to start without its storage, sticker and website
+  settings; `seed:prod` checks the admin's password; `scripts/prod_smoke.sh`; GO_LIVE.md.
+- The audit, again: no TODO or FIXME comments; no calls to missing routes (the coverage
+  script now reads files with several controllers and inherited routes); the only demo
+  path is the labelled sample magazine with no code and no API, as decided in step 2;
+  public uploads now go to a bucket in production instead of the API's disk.
+- Found on the way: no screen made fresh recovery codes, and owners could set up an
+  authenticator only by turning on income records; both are in the owner portal and the
+  control panel now.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
@@ -125,9 +139,9 @@ than a week.
 | Gap | Step | Effort |
 |---|---|---|
 | `strictNullChecks` for the older modules (on for Phase 3 code through `tsconfig.strict.json`) | after launch | L |
-| The weekly encrypted `pg_dump` cron and the restore drill (SECURITY.md) need the hosting set up | 11 | S |
+| Things only the owner can do: the domain, Render, R2, email and Sentry accounts, the first restore drill, legal review of Privacy and Terms, package prices (GO_LIVE.md) | before launch | S |
+| `TRUST_PROXY` must be confirmed on the live service (GO_LIVE.md step 6) | at launch | S |
 | Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | after launch | S |
-| `API_PUBLIC_URL` must equal the origin the reader calls once `/api` is proxied through the app domain. Offline packs are cached under the address the API reports, and the reader looks stories up under its own. | 11 | S |
 
 ### Not in the Phase 3 brief (owner's call)
 

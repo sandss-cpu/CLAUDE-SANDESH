@@ -641,6 +641,39 @@ async function authRecover(e){
     if(err.status === 401 && /expired/i.test(err.message)) authGo('signin', { error: 'That took too long. Sign in again.' }); else authFail(err);
   }
 }
+/** Optional for every owner, required once income records are on: an authenticator app. */
+async function setUpAuthenticator(){
+  let setup;
+  try{ setup = await api('/auth/mfa/setup', { method: 'POST' }); }
+  catch(err){
+    if(/already set up/i.test(err.message)) return newRecoveryCodes();
+    notify(err.message, 'error'); return;
+  }
+  const qr = /^<svg[\s\S]*<\/svg>\s*$/.test(setup.qrSvg) && !/<script|on\w+=/i.test(setup.qrSvg) ? setup.qrSvg : '';
+  let codes = null;
+  const done = await openForm({
+    title: 'Set up an authenticator', submitLabel: 'Confirm',
+    intro: 'Your sign-in will then ask for a 6-digit code from the app as well as your password. Scan the code with Google Authenticator, Authy or Microsoft Authenticator.',
+    html: `<div class="mfa-setup">${qr ? `<div class="qr" aria-hidden="true">${qr}</div>` : ''}
+      <p class="small">On this phone? <a href="${esc(setup.otpauthUri)}">Open in your authenticator app</a>, or type this key:
+      <code class="secret">${esc(setup.secret.replace(/(.{4})/g, '$1 ').trim())}</code></p></div>`,
+    fields: [{ name: 'code', label: '6-digit code', required: true, maxlength: 6, placeholder: '123456', full: true }],
+    onSubmit: async (v) => { codes = (await api('/auth/mfa/setup/confirm', { method: 'POST', body: { code: v.code } })).recoveryCodes; return true; },
+  });
+  if(done && codes?.length){ await showRecoveryCodes(codes); notify('Your sign-in now asks for the authenticator code.'); }
+}
+
+async function newRecoveryCodes(){
+  const code = await askDialog({
+    title: 'New recovery codes', confirmLabel: 'Make new codes',
+    message: 'Your authenticator is set up. New codes replace the old ones, which stop working. Enter the current code from the app.',
+    field: { label: '6-digit code', maxlength: 6, placeholder: '123456', required: true },
+  });
+  if(!code) return;
+  try{ await showRecoveryCodes((await api('/auth/mfa/recovery-codes', { method: 'POST', body: { code } })).recoveryCodes); }
+  catch(err){ notify(err.message, 'error'); }
+}
+
 async function signOutEverywhere(){
   const ok = await askDialog({ title: 'Sign out everywhere?', confirmLabel: 'Sign out everywhere',
     message: 'Every phone and computer signed in to this account is signed out at once, this one too. Use it if you lost a phone or shared your password.' });
@@ -793,6 +826,7 @@ function renderShell(){
       <a href="bus.html" target="_blank" rel="noopener">Passenger bus page ↗</a>
       <button data-action="toggleTheme">${document.documentElement.dataset.theme === 'night' ? '☀ Light mode' : '🌙 Dark mode'}</button>
       <button data-action="signOut">Sign out</button>
+      <button data-action="setUpAuthenticator">Authenticator and recovery codes</button>
       <button data-action="signOutEverywhere">Sign out everywhere</button>
     </div>`;
   if(window.innerWidth <= 900 && c){

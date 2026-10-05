@@ -77,6 +77,30 @@ export class StorageService {
     }
   }
 
+  /**
+   * Public pictures (covers, listings, posts), already re-encoded: into S3_PUBLIC_BUCKET
+   * when files are kept in a bucket (served from MEDIA_BASE_URL, e.g. an R2 custom domain),
+   * otherwise into the local uploads folder the API serves at /static. Names are made by
+   * the API, `<uuid>-<width>.webp`, and never change, so they are cached for a year.
+   */
+  async putPublic(name: string, body: Buffer): Promise<void> {
+    if (!/^[0-9a-f-]{36}-\d{2,4}\.webp$/.test(name)) throw new Error('Not a public picture name');
+    const bucket = this.config.get<string>('S3_PUBLIC_BUCKET');
+    if (this.driver === 's3' && bucket) {
+      const url = new URL(`${this.s3!.endpoint}/${uriEncode(bucket)}/${uriEncode(name, true)}`);
+      const headers = signRequest('PUT', url, this.s3!.creds, body, { 'content-type': 'image/webp', 'cache-control': 'public, max-age=31536000, immutable' });
+      const res = await fetch(url, { method: 'PUT', headers, body: new Uint8Array(body) });
+      if (!res.ok) {
+        this.log.error(`Public storage PUT failed: ${res.status}`);
+        throw new Error('The picture could not be stored. Try again in a minute.');
+      }
+      return;
+    }
+    const dir = resolve(process.cwd(), process.env.UPLOAD_DIR || './uploads');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, name), body);
+  }
+
   async remove(key: string): Promise<void> {
     if (this.driver === 'disk') {
       await unlink(this.path(key)).catch(() => undefined);

@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 /**
- * Production seed: the magazine categories and the first admin account.
+ * Production seed: the magazine categories, the national emergency numbers and the first
+ * admin account. Default income sources are not rows here: each company gets the eight
+ * standard ones (DEFAULT_SOURCES) when its owner turns income records on.
  *
  * Never creates the demo phone accounts or sample content from seed.ts, and
  * never overwrites an existing account, so it is safe to run more than once.
@@ -9,6 +11,7 @@
  */
 import { PrismaClient, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { passwordProblem } from '../src/modules/auth/password-policy';
 
 const prisma = new PrismaClient();
 
@@ -40,7 +43,7 @@ const EMERGENCY = [
 
 async function main() {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const name = process.env.ADMIN_NAME?.trim() || 'Bato Admin';
+  const name = process.env.ADMIN_NAME?.trim() || 'Batoma Admin';
   const password = process.env.ADMIN_PASSWORD ?? '';
 
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -49,6 +52,8 @@ async function main() {
   if (password.length < 12) {
     throw new Error('Set ADMIN_PASSWORD to at least 12 characters. This account controls the whole platform.');
   }
+  const weak = passwordProblem(password, { email, name });
+  if (weak) throw new Error(`ADMIN_PASSWORD: ${weak}`);
 
   for (const category of CATEGORIES) {
     await prisma.category.upsert({ where: { slug: category.slug }, update: {}, create: category });

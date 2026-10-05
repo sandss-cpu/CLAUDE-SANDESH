@@ -229,6 +229,16 @@ export function createApp() {
     return away(res, to);
   });
 
+  // ---------- printed stickers ----------
+  // A sticker carries https://<this domain>/b/<code> for ever; the reader lives on the app's
+  // domain. 302, not 301: browsers keep a 301 for good, and the app's address may change.
+  app.get(['/b/:code', '/r/:code'], (req, res) => {
+    const code = String(req.params.code);
+    if (!/^[A-Za-z0-9-]{4,40}$/.test(code)) return serve(req, res, '404', async () => null);
+    res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+    return res.redirect(302, `${config.appUrl}${req.path.startsWith('/r/') ? '/r/' : '/b/'}${encodeURIComponent(code)}`);
+  });
+
   // ---------- for search engines ----------
   app.get('/robots.txt', (_req, res) => {
     res.type('text/plain').set('Cache-Control', 'public, max-age=86400')
