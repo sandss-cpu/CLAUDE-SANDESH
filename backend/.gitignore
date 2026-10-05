@@ -5,3 +5,5 @@ uploads
 *.log
 .bato_seeded
 scripts/_resp.json
+# Statement photos and other private files in development: never committed, never served.
+private-uploads

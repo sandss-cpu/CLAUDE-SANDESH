@@ -235,3 +235,46 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
 - **A demo duty log** (`npm run seed:trips`, also run by the fleet demo) lays trips
   between the demo fuel fills, ending at least two days ago, so the demo scorecards have
   something to show and nothing collides with a test run.
+
+## Step 7: income and ticket records (Feature 6)
+
+- **Off until an owner turns it on, and turning it on needs an authenticator.** The
+  owner sets one up from the portal if they have none (QR drawn by the API, a tap-to-open
+  link for the same phone, or the key typed in), then confirms with a fresh code. From
+  then on that owner's sign-in asks for the code: `completeSignIn` treats an OWNER of a
+  company with income records on like a privileged role. Turning it off keeps the data.
+- **Managers enter income; totals are the owner's to share.** A manager uses the daily
+  sheet and imports, which show the rows being entered and their running sum. The
+  dashboard, reports, reconciliation and exports are refused (403, `TOTALS_HIDDEN`)
+  unless the owner ticks "Managers can see totals". Crew accounts never touch income.
+- **Integer paisa everywhere; fuel, maintenance and repair costs stay whole rupees** in
+  their own modules and are multiplied by 100 at the report layer.
+- **A settlement reference is unique per source among live entries**: a partial unique
+  index (`income_entry_source_reference`, raw SQL), so an undone import can be imported
+  again. The import inserts with `ON CONFLICT DO NOTHING`, so a reference saved by
+  someone else a moment earlier is skipped, not an error. Importing the same file twice
+  adds nothing.
+- **Deletes are soft and entries lock 7 days after they are made** (`lockedAt`), not 7
+  days after the day they describe, so last month's takings can still be entered.
+  Every create, edit, delete, import, undo, photo and setting change is audited.
+- **Imports: CSV by an in-house reader, XLSX by fflate.** The npm `xlsx` package has
+  unfixed high advisories. Date cells are read from the workbook's own number formats.
+  Columns are mapped by header name, guessed by a generic adapter and saved per source;
+  `IncomeImportAdapter` is the hook for a portal integration if Bussewa, eSewa or Khalti
+  ever publish an API. Dates can be BS. Undo within 24 hours.
+- **Operating profit = net income − fuel − maintenance − breakdown repairs** recorded for
+  the same days, with a note saying it leaves out wages, loan instalments, permits, tax
+  and insurance. Occupancy is tickets ÷ (seats × trips logged); without the duty log it is
+  left out rather than guessed. By driver, income follows the trip it was entered against;
+  costs belong to buses, so there is no profit by driver. Weeks start on Sunday.
+- **Statement photos live in private storage**: `StorageService`, disk in development
+  (never served statically) or any S3-compatible bucket (R2) in production, reached only
+  through links that expire in five minutes. The S3 driver signs its own requests (SigV4,
+  checked against AWS's published examples) rather than pulling in the AWS SDK.
+  Production needs `SIGNED_URL_SECRET`. Photos are checked by their bytes; re-encoding
+  with sharp comes with step 10.
+- **CORS now allows PUT**, for saving a whole day's sheet in one request. The smoke suites
+  call the API without a browser, so a method missing from CORS only shows in the
+  browser; the daily sheet was checked there.
+- **Demo income** (`npm run seed:income`, also run by the fleet demo) lays cash, Bussewa,
+  eSewa (some without references) and parcels on the demo trips, with finance left off.

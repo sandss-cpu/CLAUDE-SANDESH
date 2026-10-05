@@ -13,6 +13,7 @@ const prod = (extra: Record<string, unknown> = {}) => ({
   CORS_ORIGINS: 'https://app.example.com',
   PUBLIC_WEB_URL: 'https://app.example.com',
   API_PUBLIC_URL: 'https://api.example.com',
+  SIGNED_URL_SECRET: 'y'.repeat(40),
   ...extra,
 });
 
@@ -115,5 +116,18 @@ describe('validateEnv — sticker links', () => {
   });
   it('accepts an https one', () => {
     expect(() => validateEnv(prod({ SHORT_LINK_BASE: 'https://batoma.example' }))).not.toThrow();
+  });
+});
+
+describe('validateEnv — private files', () => {
+  it('needs a signing secret for private links in production', () => {
+    expect(() => validateEnv(prod({ SIGNED_URL_SECRET: undefined }))).toThrow(/SIGNED_URL_SECRET/);
+    expect(() => validateEnv(prod({ SIGNED_URL_SECRET: 'short' }))).toThrow(/SIGNED_URL_SECRET/);
+  });
+  it('needs every bucket setting for S3 storage', () => {
+    expect(() => validateEnv(prod({ STORAGE_DRIVER: 's3', S3_ENDPOINT: 'https://acc.r2.cloudflarestorage.com' }))).toThrow(/S3_BUCKET/);
+    expect(() => validateEnv(prod({
+      STORAGE_DRIVER: 's3', S3_ENDPOINT: 'https://acc.r2.cloudflarestorage.com', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's',
+    }))).not.toThrow();
   });
 });

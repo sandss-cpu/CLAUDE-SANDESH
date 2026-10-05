@@ -33,6 +33,6 @@ import { AppraisalsService } from './appraisals.service';
     FleetAccessService, FleetService, FleetRecordsService, BusReviewsService, FleetAdminService, FleetRemindersTask,
     TripsService, StickersService, ScorecardService, AppraisalsService,
   ],
-  exports: [BusReviewsService, TripsService, StickersService],
+  exports: [BusReviewsService, TripsService, StickersService, FleetAccessService],
 })
 export class FleetModule {}

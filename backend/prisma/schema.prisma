@@ -350,21 +350,26 @@ enum QrKind {
 
 /// A bus company, or an individual owner with one bus.
 model Operator {
-  id               String               @id @default(uuid())
-  name             String
-  slug             String               @unique
-  logoUrl          String?
-  contactPhone     String?
-  contactEmail     String?
-  address          String?
+  id                String               @id @default(uuid())
+  name              String
+  slug              String               @unique
+  logoUrl           String?
+  contactPhone      String?
+  contactEmail      String?
+  address           String?
   /// Company registration or PAN number, checked during verification.
-  registrationNo   String?
-  description      String?
-  isActive         Boolean              @default(true)
-  verification     OperatorVerification @default(PENDING)
-  verifiedAt       DateTime?
-  verificationNote String?
-  createdAt        DateTime             @default(now())
+  registrationNo    String?
+  description       String?
+  isActive          Boolean              @default(true)
+  verification      OperatorVerification @default(PENDING)
+  verifiedAt        DateTime?
+  verificationNote  String?
+  /// Income records stay off until an owner with an authenticator turns them on.
+  financeEnabled    Boolean              @default(false)
+  financeEnabledAt  DateTime?
+  /// Managers can always enter income; they see totals and reports only if this is on.
+  managersSeeTotals Boolean              @default(false)
+  createdAt         DateTime             @default(now())
 
   vehicles      Vehicle[]
   qrCodes       QrCode[]
@@ -374,6 +379,9 @@ model Operator {
   placements    ContentPlacement[]
   trips         Trip[]
   appraisals    DriverAppraisal[]
+  incomeSources IncomeSource[]
+  incomeEntries IncomeEntry[]
+  incomeImports IncomeImport[]
 
   @@index([verification])
   @@map("operators")
@@ -433,6 +441,7 @@ model Vehicle {
   notifications FleetNotification[]
   placements    ContentPlacement[]
   trips         Trip[]
+  incomeEntries IncomeEntry[]
 
   @@unique([operatorId, plateNo])
   @@index([operatorId, isActive])
@@ -1699,6 +1708,7 @@ model Trip {
   conductor Driver?        @relation("TripConductor", fields: [conductorId], references: [id], onDelete: SetNull)
   helper    Driver?        @relation("TripHelper", fields: [helperId], references: [id], onDelete: SetNull)
   reviews   RideFeedback[]
+  income    IncomeEntry[]
 
   @@index([vehicleId, departAt])
   @@index([vehicleId, status])
@@ -1756,6 +1766,105 @@ model DriverAppraisal {
   @@index([operatorId, createdAt])
   @@index([driverId, periodEnd])
   @@map("driver_appraisals")
+}
+
+// ------------------------- INCOME RECORDS -------------------------
+
+enum IncomeSourceKind {
+  CASH
+  PORTAL
+  CARGO
+  HIRE
+  OTHER
+}
+
+/// Where a company's money comes from: counter cash, Bussewa, eSewa and so on. Eight
+/// defaults are created when finance is turned on; owners add their own. A portal's
+/// saved import column mapping lives here.
+model IncomeSource {
+  id            String           @id @default(uuid())
+  operatorId    String
+  name          String
+  kind          IncomeSourceKind @default(OTHER)
+  isActive      Boolean          @default(true)
+  position      Int              @default(0)
+  importMapping Json?
+  createdAt     DateTime         @default(now())
+
+  operator Operator       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  entries  IncomeEntry[]
+  imports  IncomeImport[]
+
+  @@unique([operatorId, name])
+  @@map("income_sources")
+}
+
+/// What one bus earned from one source on one day (or one trip). Money is integer paisa;
+/// net = gross - fees is checked in SQL. A settlement reference can be used once per
+/// source among live entries: a partial unique index (raw SQL, Prisma cannot express it),
+/// so an undone import can be imported again. Deleting is soft; entries lock 7 days after
+/// they are made.
+model IncomeEntry {
+  id            String    @id @default(uuid())
+  operatorId    String
+  vehicleId     String
+  tripId        String?
+  date          DateTime  @db.Date
+  sourceId      String
+  ticketsSold   Int       @default(0)
+  seatsSold     Int?
+  grossPaisa    Int
+  feesPaisa     Int       @default(0)
+  netPaisa      Int
+  reference     String?
+  note          String?
+  /// A photo of the statement, in private storage.
+  attachmentKey String?
+  importId      String?
+  createdById   String?
+  updatedById   String?
+  lockedAt      DateTime
+  deletedAt     DateTime?
+  deletedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  operator Operator      @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  trip     Trip?         @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  source   IncomeSource  @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  import   IncomeImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+
+  @@index([operatorId, date])
+  @@index([vehicleId, date])
+  @@index([importId])
+  @@map("income_entries")
+}
+
+/// One CSV or XLSX import: what was in the file and what was saved. Undo within 24 hours
+/// soft-deletes the entries it made.
+model IncomeImport {
+  id          String    @id @default(uuid())
+  operatorId  String
+  sourceId    String
+  filename    String
+  format      String
+  rows        Int
+  created     Int
+  duplicates  Int
+  invalid     Int
+  mapping     Json
+  createdById String?
+  undoneAt    DateTime?
+  undoneById  String?
+  createdAt   DateTime  @default(now())
+
+  operator Operator      @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  source   IncomeSource  @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  entries  IncomeEntry[]
+
+  @@index([operatorId, createdAt])
+  @@map("income_imports")
 }
 
 model FuelLog {

@@ -1,10 +1,9 @@
-import { join } from 'path';
 import PDFDocument from 'pdfkit';
+import { mixed as mixedText, registerMukta } from '../../common/pdf/mixed-text';
 import { formatBs, kathmanduDay } from '../../common/utils/bs-date';
 import type { AppraisalView } from './appraisals.service';
 import type { Criterion, Suggestion } from './scorecard';
 
-const FONTS = join(__dirname, '../../../assets/fonts');
 const INK = '#1C1A2E';
 const DIM = '#5A5568';
 const BRAND = '#5B3FA8';
@@ -30,43 +29,8 @@ const ROLES: Record<string, [string, string]> = {
   DRIVER: ['Driver', 'चालक'], CONDUCTOR: ['Conductor', 'सहचालक'], HELPER: ['Helper', 'सहयोगी'],
 };
 
-/** Devanagari letters and the joiners that shape them. */
-const DEVANAGARI = /[ऀ-ॿ‌‍]/;
-
-/**
- * Splits text into runs of one script, so each is drawn with the Mukta file that has its
- * letters (the vendored files are split by script, as the browser gets them). Spaces stay
- * with the run they sit in, which keeps a Nepali phrase shaped as one piece. Punctuation
- * and digits go to the Latin file: the Devanagari one has only the space and the danda.
- */
-export function scriptRuns(text: string): Array<{ text: string; ne: boolean }> {
-  const runs: Array<{ text: string; ne: boolean }> = [];
-  for (const ch of text) {
-    const neutral = /\s/.test(ch);
-    const ne = DEVANAGARI.test(ch);
-    const last = runs[runs.length - 1];
-    if (last && (neutral || last.ne === ne)) last.text += ch;
-    else runs.push({ text: ch, ne: neutral ? false : ne });
-  }
-  return runs;
-}
-
 type Doc = PDFKit.PDFDocument;
-
-function mixed(doc: Doc, text: string, opts: { bold?: boolean; size?: number; color?: string; x?: number; y?: number; width?: number; align?: 'left' | 'right' | 'center' } = {}) {
-  const runs = scriptRuns(text || '');
-  if (!runs.length) runs.push({ text: ' ', ne: false });
-  doc.fontSize(opts.size ?? 10).fillColor(opts.color ?? INK);
-  runs.forEach((run, i) => {
-    doc.font(`${run.ne ? 'ne' : 'en'}${opts.bold ? '-bold' : ''}`);
-    const continued = i < runs.length - 1;
-    if (i === 0 && opts.x !== undefined) {
-      doc.text(run.text, opts.x, opts.y, { width: opts.width, align: opts.align, continued });
-    } else {
-      doc.text(run.text, { width: opts.width, align: opts.align, continued });
-    }
-  });
-}
+const mixed = (doc: Doc, text: string, opts: Parameters<typeof mixedText>[2] = {}) => mixedText(doc, text, { color: INK, ...opts });
 
 const both = (en: string, ne: string) => `${en} · ${ne}`;
 /** An instant as its Kathmandu day, AD then BS. */
@@ -88,10 +52,7 @@ export function appraisalPdf(a: AppraisalView): Promise<Buffer> {
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.registerFont('en', join(FONTS, 'mukta-latin-400-normal.woff'));
-    doc.registerFont('en-bold', join(FONTS, 'mukta-latin-700-normal.woff'));
-    doc.registerFont('ne', join(FONTS, 'mukta-devanagari-400-normal.woff'));
-    doc.registerFont('ne-bold', join(FONTS, 'mukta-devanagari-700-normal.woff'));
+    registerMukta(doc);
 
     const left = doc.page.margins.left;
     const width = doc.page.width - left - doc.page.margins.right;

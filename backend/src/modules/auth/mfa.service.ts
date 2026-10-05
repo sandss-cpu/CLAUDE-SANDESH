@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { authenticator } from 'otplib';
+import * as QRCode from 'qrcode';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -31,7 +32,7 @@ export class MfaService {
   async beginEnrolment(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { phone: true, totpConfirmedAt: true },
+      select: { phone: true, email: true, totpConfirmedAt: true },
     });
     if (user?.totpConfirmedAt) {
       throw new BadRequestException('Two-factor is already set up on this account');
@@ -43,9 +44,12 @@ export class MfaService {
       data: { totpSecret: secret, totpConfirmedAt: null },
     });
 
+    const otpauthUri = authenticator.keyuri(user?.email ?? user?.phone ?? userId, 'Batoma', secret);
     return {
       secret,
-      otpauthUri: authenticator.keyuri(user?.phone ?? userId, 'Bato Admin', secret),
+      otpauthUri,
+      // Drawn here so no page needs a QR library; it encodes only the URI above.
+      qrSvg: await QRCode.toString(otpauthUri, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }),
       instructions:
         'Scan this in Google Authenticator or Authy, then confirm with the 6-digit code.',
     };

@@ -1,21 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DriverRole, ModerationStatus, TripStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { adToBs, formatBs, kathmanduDay } from '../../common/utils/bs-date';
+import { adToBs, formatBs } from '../../common/utils/bs-date';
+import { kathmanduPeriod, Period } from '../../common/utils/ktm-period';
 import { FleetAccessService } from './fleet-access.service';
 import { DAY_MS, expiry, round1 } from './fleet.util';
 import {
   MIN_REVIEWS, PRIOR_WEIGHT, ScoreReview, ScoreTrip, ScorecardSummary, TankStretch, commentThemes, fuelEconomy,
   incidentSummary, monthlyTrend, passengerScores, rankDrivers, suggestScores, tankStretches, tripTotals,
 } from './scorecard';
-
-/** A Kathmandu calendar day, YYYY-MM-DD. */
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** Kathmandu is UTC+05:45 all year. */
-const dayStart = (day: string) => new Date(`${day}T00:00:00+05:45`);
-const addDays = (day: string, n: number) => kathmanduDay(dayStart(day).getTime() + n * DAY_MS + 6 * 3_600_000);
-
-export interface Period { fromDay: string; toDay: string; from: Date; to: Date }
 
 /** The reviews, trips, fuel and incidents of one company over one period, loaded once. */
 interface CompanyData {
@@ -34,18 +27,7 @@ export class ScorecardService {
 
   /** From and to are Kathmandu days, both included. Without them: the last 90 days. */
   period(fromDay?: string, toDay?: string): Period {
-    const today = kathmanduDay(new Date());
-    const to = toDay ?? today;
-    const from = fromDay ?? addDays(to, -89);
-    if (!DAY_RE.test(from) || !DAY_RE.test(to) || Number.isNaN(dayStart(from).getTime()) || Number.isNaN(dayStart(to).getTime())) {
-      throw new BadRequestException('Dates must be written as YYYY-MM-DD.');
-    }
-    if (from > to) throw new BadRequestException('The period must end on or after the day it starts.');
-    if (to > addDays(today, 1)) throw new BadRequestException("The period can't end in the future.");
-    if (dayStart(to).getTime() - dayStart(from).getTime() > 731 * DAY_MS) {
-      throw new BadRequestException('Choose a period of two years or less.');
-    }
-    return { fromDay: from, toDay: to, from: dayStart(from), to: dayStart(addDays(to, 1)) };
+    return kathmanduPeriod(fromDay, toDay, { defaultDays: 90, maxDays: 731 });
   }
 
   private async load(operatorId: string, period: Period): Promise<CompanyData> {

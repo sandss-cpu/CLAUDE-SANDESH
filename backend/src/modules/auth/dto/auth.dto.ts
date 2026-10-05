@@ -35,6 +35,11 @@ export class MfaCodeDto {
 }
 
 /** Exchanges an mfa_pending token plus a TOTP code for real session tokens. */
+export class MfaSetupConfirmDto {
+  @IsString() @Length(6, 6, { message: 'The authenticator code is 6 digits' })
+  code: string;
+}
+
 export class MfaVerifyDto {
   @IsString() @IsNotEmpty() challengeToken: string;
 

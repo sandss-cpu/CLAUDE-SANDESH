@@ -1,16 +1,17 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { MfaService } from './mfa.service';
 import {
   EmailLoginDto, EmailOnlyDto, EmailRegisterDto, MfaVerifyDto, PasswordResetDto, RefreshDto,
-  RequestOtpDto, TokenDto, VerifyOtpDto,
+  RequestOtpDto, TokenDto, VerifyOtpDto, MfaSetupConfirmDto,
 } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(private auth: AuthService, private mfa: MfaService) {}
 
   /** Step 1 — send a 6-digit code by SMS. */
   @Public()
@@ -97,6 +98,22 @@ export class AuthController {
   @Post('mfa/enrol/confirm')
   confirmEnrolment(@Body() dto: MfaVerifyDto) {
     return this.auth.completeEnrolment(dto.challengeToken, dto.code);
+  }
+
+  /**
+   * Setting up an authenticator while signed in: a bus company owner turning on income
+   * records, for example. The code must then be confirmed before it counts.
+   */
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @Post('mfa/setup')
+  startSetup(@CurrentUser('id') userId: string) {
+    return this.mfa.beginEnrolment(userId);
+  }
+
+  @Throttle({ default: { limit: 8, ttl: 900_000 } })
+  @Post('mfa/setup/confirm')
+  confirmSetup(@CurrentUser('id') userId: string, @Body() dto: MfaSetupConfirmDto) {
+    return this.mfa.confirmEnrolment(userId, dto.code);
   }
 
   @Public() @Post('refresh')

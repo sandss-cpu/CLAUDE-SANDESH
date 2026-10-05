@@ -130,6 +130,11 @@ export class FleetService {
     });
     return {
       ...companyView(operator), role,
+      // Members only: whether income records are on, and whether this member sees their totals.
+      finance: {
+        enabled: operator.financeEnabled, managersSeeTotals: operator.managersSeeTotals,
+        canSeeTotals: operator.financeEnabled && (role === 'OWNER' || operator.managersSeeTotals),
+      },
       members: members.map((m) => ({
         userId: m.user.id, name: m.user.name, email: m.user.email, role: m.role, since: m.createdAt,
       })),

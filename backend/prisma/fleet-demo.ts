@@ -12,6 +12,7 @@
 import { BusDocumentType, PrismaClient } from '@prisma/client';
 import { normalisePlate, profileCode } from '../src/modules/fleet/fleet.util';
 import { seedDemoTrips } from './fleet-trips-demo';
+import { seedDemoIncome } from './fleet-income-demo';
 
 const DAY = 86_400_000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY);
@@ -362,5 +363,6 @@ export async function seedFleetDemo(prisma: PrismaClient, userIds: Record<string
   }
   // The duty log goes in last: it needs the crew on their buses and the fuel fills.
   await seedDemoTrips(prisma);
+  await seedDemoIncome(prisma);
   return summary;
 }

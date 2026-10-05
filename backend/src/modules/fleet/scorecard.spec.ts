@@ -2,7 +2,7 @@ import {
   ScoreFuel, ScoreReview, ScoreTrip, bayesian, commentThemes, fuelEconomy, incidentSummary, monthlyTrend,
   passengerScores, rankDrivers, suggestScores, tankStretches, tripTotals,
 } from './scorecard';
-import { scriptRuns } from './appraisal-pdf';
+import { scriptRuns } from '../../common/pdf/mixed-text';
 
 /**
  * A hand-worked fixture. Every expected number below was calculated on paper first; the

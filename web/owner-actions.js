@@ -60,6 +60,17 @@ Actions.on({
   appraisalPdf: (el) => downloadFile(`/fleet/appraisals/${el.dataset.id}/pdf`),
   acknowledgeAppraisal: (el) => acknowledgeAppraisal(el.dataset.id),
   deleteAppraisal: (el) => deleteAppraisal(el.dataset.id),
+  // income
+  incomeRange: (el) => { state.income.range = el.dataset.range; renderApp(); },
+  incomeExport: (el) => incomeExport(el.dataset.format),
+  copyYesterday: (el) => copyYesterday(el),
+  deleteIncome: (el) => deleteIncome(el.dataset.id),
+  viewStatement: (el) => viewStatement(el.dataset.id),
+  undoImport: (el) => undoImport(el.dataset.id),
+  addIncomeSource: () => addIncomeSource(),
+  editIncomeSource: (el) => editIncomeSource(el.dataset.id),
+  enableFinance: () => enableFinance(),
+  disableFinance: () => disableFinance(),
 });
 
 Actions.onSubmit({
@@ -73,10 +84,29 @@ Actions.onSubmit({
   searchBuses: (el, ev) => { ev.preventDefault(); filterBuses({ q: el.elements.q.value.trim() }); },
   scorecardCustom: (el, ev) => scorecardCustom(el, ev),
   saveAppraisal: (el, ev) => saveAppraisal(el, ev),
+  authEnrol: (el, ev) => authEnrol(ev),
+  saveSheet: (el, ev) => saveSheet(el, ev),
+  previewImport: (el, ev) => previewImport(el, ev),
+  recheckImport: (el, ev) => recheckImport(el, ev),
+  openSheetDay: (el, ev) => { ev.preventDefault(); go(`sheet/${el.elements.bus.value}/${el.elements.day.value}`); },
+  incomeCustom: (el, ev) => {
+    ev.preventDefault();
+    const from = el.elements.from.value; const to = el.elements.to.value;
+    if(!from || !to || from > to){ notify('Choose a start date on or before the end date.', 'error'); return; }
+    Object.assign(state.income, { range: 'custom', from, to }); renderApp();
+  },
 });
 
 Actions.onChange({
   switchCompany: (el) => switchCompany(el.value),
   filterBuses: (el) => filterBuses({ [el.dataset.field]: el.type === 'checkbox' ? el.checked : el.value }),
   filterFeedback: (el) => filterFeedback({ [el.dataset.field]: el.value }),
+  addSheetSource: (el) => addSheetSource(el),
+  attachStatement: (el) => attachStatement(el),
+  shareTotals: (el) => shareTotals(el),
+  incomeOption: (el) => { state.income[el.dataset.field] = el.value; renderApp(); },
+});
+
+Actions.onInput({
+  sheetTotals: (el) => sheetTotals(el),
 });

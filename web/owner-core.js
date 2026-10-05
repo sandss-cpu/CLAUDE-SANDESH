@@ -251,7 +251,8 @@ function fieldHtml(f, value){
   return `<div class="field ${f.full ? 'full' : ''}">${label}${control}${hint}</div>`;
 }
 
-function openForm({ title, intro = '', fields, values = {}, submitLabel = 'Save', danger = false, wide = false, onSubmit }){
+/** `html` is markup the page itself built (an authenticator QR, for example), shown under the intro. */
+function openForm({ title, intro = '', html = '', fields, values = {}, submitLabel = 'Save', danger = false, wide = false, onSubmit }){
   return new Promise((resolve) => {
     const photos = {};
     for(const f of fields) if(f.type === 'photos' || f.type === 'photo') photos[f.name] = [].concat(values[f.name] || []).filter(Boolean);
@@ -261,6 +262,7 @@ function openForm({ title, intro = '', fields, values = {}, submitLabel = 'Save'
       <form class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="fm-title" novalidate>
         <div class="modal-head"><h2 id="fm-title">${esc(title)}</h2><button type="button" class="icon-btn" data-cancel aria-label="Close">×</button></div>
         ${intro ? `<p class="muted" style="margin:0">${esc(intro)}</p>` : ''}
+        ${html}
         ${fields.length ? `<div class="form-grid">${fields.map((f) => fieldHtml(f, values[f.name])).join('')}</div>` : ''}
         <div class="error" role="alert" hidden></div>
         <div class="modal-actions">
@@ -474,10 +476,18 @@ const AUTH_VIEWS = {
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Checking…' : 'Sign in'}</button>
     </form>
     <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Use a different account</button></div>`,
-  mfaSetup: () => `
-    <h2>Set up your authenticator first</h2>
-    <p class="muted">This account can manage Batoma itself. Set up an authenticator app once in the control panel, then sign in here.</p>
-    <a class="btn btn-primary" href="admin.html">Open the control panel</a>
+  mfaEnrol: (l) => `
+    <h2>Set up your authenticator</h2>
+    <p class="muted">${esc(l.notice || 'This account needs an authenticator app before it can be used.')}</p>
+    ${l.enrol ? `<div class="mfa-setup">${l.enrol.qr ? `<div class="qr" aria-hidden="true">${l.enrol.qr}</div>` : ''}
+      <p class="small">Scan it with Google Authenticator, Authy or Microsoft Authenticator. On this phone?
+        <a href="${esc(l.enrol.otpauthUri)}">Open in your authenticator app</a>, or type this key:
+        <code class="secret">${esc(l.enrol.secret.replace(/(.{4})/g, '$1 ').trim())}</code></p></div>
+    <form data-submit="authEnrol" novalidate>
+      <div class="field"><label for="code">6-digit code from the app</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
+      ${authAlerts(l)}
+      <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Checking…' : 'Confirm and sign in'}</button>
+    </form>` : `<div class="spinner" role="status" aria-label="Preparing"></div>${authAlerts(l)}`}
     <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Use a different account</button></div>`,
   working: (l) => `<h2>${esc(l.notice || 'One moment…')}</h2><div class="spinner" role="status" aria-label="Loading"></div>`,
   linkFailed: (l) => `
@@ -593,8 +603,32 @@ async function authMfa(e){
     if(err.status === 401 && /expired/i.test(err.message)) authGo('signin', { error: 'That took too long. Sign in again.' }); else authFail(err);
   }
 }
+/** The QR comes from Batoma's own API; anything that is not a bare SVG is left out. */
+const safeQr = (svg) => (/^<svg[\s\S]*<\/svg>\s*$/.test(svg || '') && !/<script|on\w+=/i.test(svg) ? svg : '');
+
+async function startEnrol(challengeToken, notice){
+  authGo('mfaEnrol', { challengeToken, notice, enrol: null });
+  try{
+    const enrol = await publicPost('/auth/mfa/enrol/start', { challengeToken });
+    Object.assign(state.login, { enrol: { ...enrol, qr: safeQr(enrol.qrSvg) } });
+    renderAuth();
+  }catch(err){ authFail(err); }
+}
+
+async function authEnrol(e){
+  e.preventDefault();
+  const code = $('#code').value.trim();
+  if(!/^\d{6}$/.test(code)){ state.login.error = 'Enter the 6 digits from your authenticator app.'; renderAuth(); return; }
+  const { challengeToken, enrol, notice } = state.login; authBusy();
+  try{ await finishSignIn(await publicPost('/auth/mfa/enrol/confirm', { challengeToken, code })); }
+  catch(err){
+    if(err.status === 401 && /expired/i.test(err.message)) authGo('signin', { error: 'That took too long. Sign in again.' });
+    else { Object.assign(state.login, { busy: false, error: err.message, enrol, notice }); renderAuth(); }
+  }
+}
+
 async function finishSignIn(data){
-  if(data.mfaEnrolmentRequired){ authGo('mfaSetup'); return; }
+  if(data.mfaEnrolmentRequired){ await startEnrol(data.challengeToken, data.message); return; }
   if(data.mfaRequired){ authGo('mfa', { challengeToken: data.challengeToken }); return; }
   saveAuth(data);
   state.login = freshLogin();
@@ -606,6 +640,10 @@ const NAV = [
   ['dashboard', 'Dashboard', '▦'], ['buses', 'Buses', '🚌'], ['trips', 'Trips', '🧭'], ['feedback', 'Feedback', '★'],
   ['crew', 'Crew', '👤'], ['reminders', 'Reminders', '🔔'], ['company', 'Company', '🏢'],
 ];
+/** Income appears once the owner has turned income records on. */
+const navItems = () => (state.company?.finance?.enabled
+  ? [...NAV.slice(0, 3), ['income', 'Income', '₨'], ...NAV.slice(3)]
+  : NAV);
 const CREW_NAV = [['duty', 'Duty', '🚌']];
 
 async function bootApp(){
@@ -685,7 +723,7 @@ function renderShell(){
       ${companyBox}
     </div>
     ${c ? `<nav aria-label="Owner portal">
-      ${(isCrew() ? CREW_NAV : NAV).map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') || (key === 'crew' && ['driver', 'appraisal', 'leaderboard'].includes(screen)) ? 'aria-current="page"' : ''}>
+      ${(isCrew() ? CREW_NAV : navItems()).map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') || (key === 'crew' && ['driver', 'appraisal', 'leaderboard'].includes(screen)) || (key === 'income' && screen === 'sheet') ? 'aria-current="page"' : ''}>
         <span class="ico" aria-hidden="true">${icon}</span>${label}
         ${key === 'reminders' && state.unread ? `<span class="badge" aria-label="${state.unread} unread">${state.unread}</span>` : ''}</a>`).join('')}
     </nav>` : ''}
@@ -719,6 +757,9 @@ function go(hash){
 }
 
 let renderSeq = 0;
+/** Screens that need a moment of script once their markup is in place (live totals, for example). */
+const AFTER_RENDER = {};
+
 async function renderApp(){
   if(!state.auth) return;
   let { screen, id, tab } = parseHash();
@@ -733,6 +774,7 @@ async function renderApp(){
     const html = await SCREENS[screen]({ id, tab });
     if(seq !== renderSeq) return;
     main.innerHTML = html;
+    AFTER_RENDER[screen]?.(main);
     window.scrollTo(0, 0);
     main.focus({ preventScroll: true });
   }catch(err){

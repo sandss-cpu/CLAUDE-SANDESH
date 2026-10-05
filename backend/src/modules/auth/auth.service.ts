@@ -160,20 +160,23 @@ export class AuthService {
       user.isSuspended && (!user.suspendedUntil || user.suspendedUntil > new Date());
     if (stillSuspended) throw new ForbiddenException('This account is suspended.');
 
-    // Ordinary travellers are done here.
-    if (!isPrivileged(user.role)) {
+    // Ordinary travellers, and bus companies without income records, are done here.
+    const financeOwner = !isPrivileged(user.role) && await this.ownsFinanceCompany(user.id);
+    if (!isPrivileged(user.role) && !financeOwner) {
       const tokens = await this.issueTokens(user.id, user.role);
       return { mfaRequired: false, user: this.publicUser(user), ...tokens };
     }
 
-    // Privileged roles must present a second factor, or enrol one first.
+    // Privileged roles, and owners whose company keeps its income in Batoma, must present
+    // a second factor, or enrol one first.
     if (!user.totpConfirmedAt) {
       return {
         mfaRequired: true,
         mfaEnrolmentRequired: true,
         challengeToken: await this.scopedToken(user.id, SCOPE_MFA_ENROL, '15m'),
-        message:
-          'This account has elevated permissions and needs an authenticator app before it can be used.',
+        message: financeOwner
+          ? 'Your company keeps its income records in Batoma, so this account needs an authenticator app.'
+          : 'This account has elevated permissions and needs an authenticator app before it can be used.',
       };
     }
 
@@ -373,6 +376,15 @@ export class AuthService {
   async beginEnrolment(enrolToken: string) {
     const payload = await this.readScopedToken(enrolToken, SCOPE_MFA_ENROL);
     return this.mfa.beginEnrolment(payload.sub);
+  }
+
+  /** An owner of a company with income records on: their sign-in needs an authenticator. */
+  private async ownsFinanceCompany(userId: string) {
+    const link = await this.prisma.operatorAdmin.findFirst({
+      where: { userId, role: 'OWNER', operator: { financeEnabled: true } },
+      select: { operatorId: true },
+    });
+    return !!link;
   }
 
   // ---------------- tokens ----------------

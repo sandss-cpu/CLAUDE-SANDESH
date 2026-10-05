@@ -72,6 +72,17 @@ export function validateEnv(config: Record<string, unknown>) {
     // offline reading fails silently, which is the worst failure this
     // product can have.
     // Printed on every sticker and never changed afterwards, so it has to be right first time.
+    // Private files (statement photos) are reached only through links signed with this.
+    const signed = str('SIGNED_URL_SECRET');
+    if (!signed || signed.length < 32) {
+      errors.push('SIGNED_URL_SECRET must be set to at least 32 random characters in production');
+    }
+    if (str('STORAGE_DRIVER') === 's3') {
+      for (const k of ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
+        if (!str(k)) errors.push(`${k} is required when STORAGE_DRIVER=s3`);
+      }
+      if (str('S3_ENDPOINT') && !/^https:\/\//.test(str('S3_ENDPOINT')!)) errors.push('S3_ENDPOINT must be https');
+    }
     const shortLinks = str('SHORT_LINK_BASE');
     if (shortLinks && !shortLinks.startsWith('https://')) {
       errors.push('SHORT_LINK_BASE must be https in production: it is printed on every bus sticker');

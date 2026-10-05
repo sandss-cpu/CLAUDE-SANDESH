@@ -64,7 +64,9 @@ bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming
 bash scripts/trips_smoke.sh ../Bato_Test_Accounts.md         # duty log (run the API with THROTTLE_DISABLED=true)
 bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, stickers, print history
 bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appraisals, crew disputes, cross-company 404s
+bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 npm run seed:trips             # demo duty log between the demo fuel fills
+npm run seed:income            # demo income on the demo trips (income records stay off)
 node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts or web/css/fonts.css
 npm test                       # unit tests over the pure logic, including content-for
 ```
@@ -166,6 +168,13 @@ when a signed-in user should be recognised but anonymous access is still allowed
   scan which way the bus is going. Members with the CREW role can only use the `DUTY`
   level (the duty screen); trips lock 48 hours after departure and owners reopen them
   with a reason
+- **finance** (`modules/finance`, routes under `/fleet`): income records. `FinanceAccessService`
+  sits on `FleetAccessService` and adds ENTER (owners and managers), TOTALS (owners, managers
+  only if shared) and OWN; everything is refused until the owner turns income records on.
+  Pure logic is in `money.ts`, `reports.ts` and `import/` (CSV, XLSX via fflate, column
+  mapping, adapters), each with tests. Money is integer paisa
+- **storage** (`common/storage`): private files behind expiring signed links; disk or any
+  S3-compatible bucket, SigV4 signed by hand (`sigv4.ts`)
 - **audit**: `AuditService.record()` writes the append-only `AuditEvent` for admin,
   finance and security changes, in the caller's transaction. Programming's history is read
   from it
@@ -191,6 +200,14 @@ system and be careful what you add to it.
 ## Landmines
 
 Things that have already caused real bugs here. Do not undo them.
+
+**Every method the pages use must be in the CORS list** (`main.ts`). The smoke suites
+call the API with curl, which ignores CORS, so a missing method (PUT, for the daily
+income sheet) passes every test and fails only in a browser.
+
+**An owner of a company with income records on signs in with an authenticator.** The
+smoke helpers' `login` answers that step from the database secret; `income_smoke.sh`
+puts the test owner back to no authenticator and the company to income records off.
 
 **Offline pack URLs must be absolute.** A service worker resolves relative paths
 against the *page* origin, not the API's. When these were relative, every cached

@@ -76,13 +76,20 @@ than a week.
   English and Nepali PDF, and crew disputes settled by moderators.
 - A moderator signed in on a reload no longer lands on Articles, which they cannot load.
 
+## Done in step 7
+
+- Income and ticket records: daily sheet, CSV/XLSX import with undo, reports with
+  operating profit, dashboard, reconciliation, CSV and PDF export, statement photos in
+  private storage, and the finance switch behind an authenticator.
+- The owner portal can set up an authenticator, at sign-in or while signed in; it used to
+  send people to the control panel to do it.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| Income records | 7 | L |
 | Reading UI: summaries, "In brief", "Keep reading", the stops timeline | 8 | L |
 | **No business owner area in the web app.** `/businesses/mine`, `/:id/dashboard`, coupon creation and redemption, and review replies have no page. | 9 (`business.html`) | M |
 | **No admin screen for verifying businesses.** `/businesses/admin/pending-verification`, `/:id/verify`, `/:id/tier` and `/:id/routes` have no UI, though verification is meant to be manual. | 9 (partners admin) | M |

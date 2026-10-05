@@ -35,6 +35,8 @@ import { FleetModule } from './modules/fleet/fleet.module';
 import { GuidesModule } from './modules/guides/guides.module';
 import { CreatorsModule } from './modules/creators/creators.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { StorageModule } from './common/storage/storage.module';
+import { FinanceModule } from './modules/finance/finance.module';
 
 @Module({
   imports: [
@@ -54,6 +56,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     }),
     PrismaModule,
     AuditModule,
+    StorageModule,
     AuthModule,
     UsersModule,
     QrModule,
@@ -70,6 +73,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     AdminModule,
     AdsModule,
     FleetModule,
+    FinanceModule,
     GuidesModule,
     CreatorsModule,
     SettingsModule,
