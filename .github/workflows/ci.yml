@@ -116,7 +116,10 @@ jobs:
           allow_issue_writing: false
           fail_action: false
           artifact_name: zap-site
-          cmd_options: '-a -j -J zap-site.json'
+          cmd_options: '-a'
+
+      - name: Keep the website's report
+        run: mv report_json.json zap-site.json
 
       - name: ZAP baseline (web app)
         uses: zaproxy/action-baseline@v0.15.0
@@ -125,7 +128,11 @@ jobs:
           allow_issue_writing: false
           fail_action: false
           artifact_name: zap-web
-          cmd_options: '-a -j -J zap-web.json'
+          # The web app draws its pages with script, so the AJAX spider is needed to find them.
+          cmd_options: '-a -j'
+
+      - name: Keep the web app's report
+        run: mv report_json.json zap-web.json
 
       - name: ZAP baseline (API)
         uses: zaproxy/action-baseline@v0.15.0
@@ -134,7 +141,10 @@ jobs:
           allow_issue_writing: false
           fail_action: false
           artifact_name: zap-api
-          cmd_options: '-a -J zap-api.json'
+          cmd_options: '-a'
+
+      - name: Keep the API's report
+        run: mv report_json.json zap-api.json
 
       - name: No high-risk findings
         run: node scripts/zap-summary.mjs zap-site.json zap-web.json zap-api.json
