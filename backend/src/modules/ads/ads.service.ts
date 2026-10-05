@@ -244,6 +244,9 @@ export class AdsService {
       overviewBody: external ? null : dto.overviewBody?.trim() || null,
       overviewImageUrl: external ? null : dto.overviewImageUrl || null,
       businessId: dto.businessId || null,
+      // Section and place targets only mean something for those two website placements.
+      targetCategoryId: dto.placement === AdPlacement.WEB_SECTION_SPONSOR ? dto.targetCategoryId ?? null : null,
+      targetDestinationId: dto.placement === AdPlacement.WEB_DESTINATION_SPONSOR ? dto.targetDestinationId ?? null : null,
     };
   }
 }

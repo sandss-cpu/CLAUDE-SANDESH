@@ -7,6 +7,7 @@
  *   npm run seed:guides
  */
 import { GuideStopKind, PrismaClient } from '@prisma/client';
+import { slugify } from '../src/common/utils/slug.util';
 
 const prisma = new PrismaClient();
 
@@ -79,7 +80,7 @@ async function main() {
     const existing = await prisma.routeGuide.findFirst({ where: { routeId: route.id, title: spec.title } });
     const guide = existing ?? await prisma.routeGuide.create({
       data: {
-        routeId: route.id, direction: 'BOTH', title: spec.title, summary: spec.summary,
+        slug: slugify(spec.title), routeId: route.id, direction: 'BOTH', title: spec.title, summary: spec.summary,
         status: 'PUBLISHED', publishedAt: new Date(),
       },
     });

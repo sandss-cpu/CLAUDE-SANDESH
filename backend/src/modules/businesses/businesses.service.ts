@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { BusinessTier, ModerationStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../../common/audit/audit.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { couponCode, uniqueSlug } from '../../common/utils/slug.util';
 import { haversineKm } from '../../common/utils/geo.util';
@@ -17,7 +18,7 @@ const TIER_RANK: Record<BusinessTier, number> = {
 
 @Injectable()
 export class BusinessesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private audit: AuditService) {}
 
   // ---------- discovery ----------
 
@@ -225,15 +226,25 @@ export class BusinessesService {
    * Verification is manual and deliberate. One fraudulent listing that harms
    * a tourist is an existential reputational event for a platform like this.
    */
-  async verify(id: string, dto: VerifyBusinessDto, adminId: string) {
-    return this.prisma.business.update({
-      where: { id },
-      data: {
-        verifiedAt: new Date(),
-        verifiedBy: adminId,
-        verificationNote: dto.verificationNote,
-        tier: dto.tier ?? BusinessTier.VERIFIED,
-      },
+  async verify(id: string, dto: VerifyBusinessDto, adminId: string, ip?: string) {
+    const before = await this.prisma.business.findUnique({ where: { id }, select: { name: true, tier: true, verifiedAt: true } });
+    if (!before) throw new NotFoundException('Business not found');
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.business.update({
+        where: { id },
+        data: {
+          verifiedAt: new Date(),
+          verifiedBy: adminId,
+          verificationNote: dto.verificationNote,
+          tier: dto.tier ?? BusinessTier.VERIFIED,
+        },
+      });
+      await this.audit.record({
+        actorId: adminId, action: 'business.verify', entityType: 'Business', entityId: id, ip,
+        summary: `${before.name} verified (${row.tier.toLowerCase()}): ${dto.verificationNote}`,
+        before, after: { tier: row.tier, verifiedAt: row.verifiedAt },
+      }, tx);
+      return row;
     });
   }
 
@@ -241,9 +252,9 @@ export class BusinessesService {
    * Extends from the current expiry when still active, so renewing early
    * does not cost the business the days it already paid for.
    */
-  async setTier(id: string, tier: BusinessTier, months = 1, actorId?: string) {
+  async setTier(id: string, tier: BusinessTier, months = 1, actorId?: string, ip?: string) {
     const current = await this.prisma.business.findUnique({
-      where: { id }, select: { tier: true, subscriptionEndsAt: true },
+      where: { id }, select: { name: true, tier: true, subscriptionEndsAt: true },
     });
     if (!current) throw new NotFoundException('Business not found');
 
@@ -278,6 +289,11 @@ export class BusinessesService {
           note: endsAt ? `${months} month(s), through ${endsAt.toISOString().slice(0, 10)}` : null,
         },
       });
+      await this.audit.record({
+        actorId: actorId ?? null, action: 'business.tier', entityType: 'Business', entityId: id, ip,
+        summary: `${current.name}: ${current.tier.toLowerCase()} → ${tier.toLowerCase()}${endsAt ? `, through ${endsAt.toISOString().slice(0, 10)}` : ''}`,
+        before: { tier: current.tier, subscriptionEndsAt: current.subscriptionEndsAt }, after: { tier, subscriptionEndsAt: endsAt },
+      }, tx);
 
       return updated;
     });
@@ -370,6 +386,13 @@ export class BusinessesService {
         perUserLimit: dto.perUserLimit ?? 1,
       },
     });
+  }
+
+  async endCoupon(couponId: string, userId: string, role: Role) {
+    const c = await this.prisma.coupon.findUnique({ where: { id: couponId }, select: { id: true, business: { select: { ownerId: true } } } });
+    // Someone else's deal is "not found", so ids cannot be probed.
+    if (!c || (role !== Role.ADMIN && c.business.ownerId !== userId)) throw new NotFoundException('Deal not found');
+    return this.prisma.coupon.update({ where: { id: couponId }, data: { isActive: false }, select: { id: true, isActive: true } });
   }
 
   /**
@@ -480,7 +503,7 @@ export class BusinessesService {
       this.prisma.coupon.findMany({
         where: { businessId },
         select: {
-          id: true, title: true, discountLabel: true, validTo: true,
+          id: true, title: true, discountLabel: true, validTo: true, isActive: true,
           _count: { select: { redemptions: true } },
           redemptions: { where: { redeemedAt: { not: null } }, select: { id: true } },
         },
@@ -501,7 +524,7 @@ export class BusinessesService {
       leadsByType: leadsByType.map((l) => ({ type: l.type, count: l._count.type })),
       leadsByRoute: leadsByRoute.map((r) => ({ route: r.route, leads: Number(r.leads) })),
       coupons: coupons.map((c) => ({
-        id: c.id, title: c.title, discountLabel: c.discountLabel, validTo: c.validTo,
+        id: c.id, title: c.title, discountLabel: c.discountLabel, validTo: c.validTo, isActive: c.isActive,
         claimed: c._count.redemptions, redeemed: c.redemptions.length,
       })),
       couponSummary: {

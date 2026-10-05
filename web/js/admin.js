@@ -1202,6 +1202,12 @@ const PLACEMENTS = {
   BUS_PAGE: 'Bus profile page',
   CREATOR_PROFILE: 'Creator profiles',
   SEARCH_RESULTS: 'Bus search results',
+  WEB_HOME_HERO: 'Website: home page spotlight',
+  WEB_SECTION_SPONSOR: 'Website: magazine section sponsor',
+  WEB_SPONSORED_ARTICLE: 'Website: sponsored story card',
+  WEB_DESTINATION_SPONSOR: 'Website: place page sponsor',
+  WEB_DEALS: 'Website: deals listing',
+  WEB_NEWSLETTER: 'Website: newsletter slot',
 };
 const AD_STATUS_LABEL = { ACTIVE: 'Active', SCHEDULED: 'Scheduled', PAUSED: 'Paused', EXPIRED: 'Expired' };
 const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1303,6 +1309,14 @@ function adForm(ad){
               ${Object.entries(PLACEMENTS).map(([k, l]) =>
                 `<option value="${k}" ${(ad.placement || 'BETWEEN_STORIES') === k ? 'selected' : ''}>${l}</option>`).join('')}
             </select>
+            <div class="two-col">
+              <div><label for="ad-target-category">Section it sponsors <small>(section sponsor only)</small></label>
+                <select id="ad-target-category"><option value="">—</option>
+                  ${state.categories.map((c) => `<option value="${esc(c.id)}" ${ad.targetCategoryId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+              <div><label for="ad-target-destination">Place it sponsors <small>(place sponsor only)</small></label>
+                <select id="ad-target-destination"><option value="">—</option>
+                  ${state.destinations.map((d) => `<option value="${esc(d.id)}" ${ad.targetDestinationId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
+            </div>
             <label for="ad-routes">Show only to travellers on these routes <small>(optional)</small></label>
             <select id="ad-routes" multiple size="4">
               ${state.routes.map((r) => `<option value="${esc(r.id)}" ${(ad.routeIds || []).includes(r.id) ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
@@ -1449,6 +1463,8 @@ async function saveAd(e, id){
     overviewImageUrl: f.linkType === 'OVERVIEW' ? ($('#ad-ov-image').value || undefined) : undefined,
     // Always sent, so clearing every route means "show everywhere" rather than "leave as it was".
     routeIds: [...$('#ad-routes').selectedOptions].map((o) => o.value),
+    targetCategoryId: $('#ad-target-category').value || undefined,
+    targetDestinationId: $('#ad-target-destination').value || undefined,
   };
   if(!dto.imageUrl){ showAdError('Upload an image for the ad first.'); return; }
 

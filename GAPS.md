@@ -92,20 +92,32 @@ than a week.
   offline pack was never downloaded again after a phone cleared its cache; italics in
   stories were shown as asterisks; no page had a favicon (a console 404 on every load).
 
+## Done in step 9
+
+- The public website (`site/`): magazine, trips and places, partners and deals, write a
+  trip, advertise, about, contact, newsletter, and draft privacy and terms pages, read
+  through a read-only database role.
+- The business owner area (`web/business.html`): enquiries, deals, reviews and replies,
+  the monthly report, and the listing.
+- Control panel "Website" screen: verifying listings and setting tiers (now audited),
+  partner packages, the enquiry inbox and the newsletter export.
+- Found on the way: re-saving a listing's tier counts as a renewal and extends the
+  subscription by a month; the panel's tier dialog says so.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| **No business owner area in the web app.** `/businesses/mine`, `/:id/dashboard`, coupon creation and redemption, and review replies have no page. | 9 (`business.html`) | M |
-| **No admin screen for verifying businesses.** `/businesses/admin/pending-verification`, `/:id/verify`, `/:id/tier` and `/:id/routes` have no UI, though verification is meant to be manual. | 9 (partners admin) | M |
 | "Sign out everywhere" (`/auth/logout-all` has no UI) | 10 | S |
 | Moderation audit trail (`/moderation/audit` has no UI) | 10 (security events view) | S |
 | Traveller account: data export and deletion (`DELETE /users/me` has no UI) | 10 | M |
 | Inline scripts and handlers in `login.html`, `creator.html` and `preview.html` (CLAUDE.md known gap 7; the reader, control panel, owner portal, bus page and scan page are done) | 10 | M |
 | Development logs print recipients' email addresses (`[MAIL DISABLED] to …`) | 10 (log redaction) | S |
-| Sign-in, owner portal, admin and emails still say "Bato" | 3–11, as each is touched | S |
+| `login.html` and `creator.html` still say "Bato"; everything else says Batoma. The sign-in page should also point partners to `business.html`, as it points bus owners to the owner portal. | 10 (with their inline scripts) | S |
+| Lead contacts, like driver and company phone numbers, are stored in plain text until field encryption | 10 | M |
+| Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | 10 or later | S |
 | `API_PUBLIC_URL` must equal the origin the reader calls once `/api` is proxied through the app domain. Offline packs are cached under the address the API reports, and the reader looks stories up under its own. | 11 | S |
 | `strictNullChecks`; company verification documents (CLAUDE.md known gaps 6 and 4; BS dates are done) | 10 | M |
 
@@ -116,7 +128,9 @@ than a week.
 | **Offline map tiles.** No tile pipeline or map renderer exists, and `MapPack` rows point at example URLs. | XL | Hidden rather than faked. Needs a tile source, a hosting budget and a renderer, or the native app. |
 | Comments, reactions and bookmarks (`/engagement/*`, 7 routes) have no UI | M | Comments need moderation UI as well. |
 | Itinerary builder (`/itineraries/*`, 12 routes): templates, permits, budget, suggest, share, fork | L | The Trips tab uses editor-written guides instead. |
-| Places (`/places/*`, 7 routes): nearby, bounds, altitude check, destination pages | M | Partly superseded by guides; the public site may use destination pages. |
+| Places (`/places/*`, 7 routes): nearby, bounds, altitude check | M | Destination pages now exist on the website (`/places/<slug>`). |
+| **The app's business list and profile include unverified listings** (`GET /businesses`, `GET /businesses/:slug` filter on `isActive` only). The website shows verified listings only. | S | Decide whether the app should match the website. |
+| Images on the website have no `srcset` | S | Sizes are generated at upload in step 10 (sharp); the site picks them up then. |
 | Traveller profile and privacy settings (`/users/me`, privacy, follow, feed) have no UI | M | `hideExactLocation` and `publishDelayHours` can only be changed through the API. |
 | The legacy `operators` module (`/operators`, `/operators/vehicles`, `/operators/lost-items`, `/operators/:id/dashboard`) is superseded by `fleet` | S | Retire it, or move lost-item reports into the bus page. |
 | Article translations (CLAUDE.md known gap 1) | L | Needs a relation between language versions. |

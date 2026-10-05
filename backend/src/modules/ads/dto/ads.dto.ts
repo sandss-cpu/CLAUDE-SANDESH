@@ -60,6 +60,16 @@ export class SaveAdDto {
   /** Empty means every route. */
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true, message: 'Unknown route' })
   routeIds?: string[];
+
+  /** WEB_SECTION_SPONSOR: the magazine section it sponsors. */
+  @ValidateIf((o) => o.placement === AdPlacement.WEB_SECTION_SPONSOR)
+  @IsUUID('4', { message: 'Choose the magazine section this sponsors' })
+  targetCategoryId?: string;
+
+  /** WEB_DESTINATION_SPONSOR: the place whose page it sponsors. */
+  @ValidateIf((o) => o.placement === AdPlacement.WEB_DESTINATION_SPONSOR)
+  @IsUUID('4', { message: 'Choose the place this sponsors' })
+  targetDestinationId?: string;
 }
 
 export class AdSlotQueryDto {

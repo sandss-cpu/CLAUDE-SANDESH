@@ -15,12 +15,14 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 
 | Path | What it is |
 |---|---|
-| `backend/` | NestJS 10 + Prisma 5 + PostgreSQL |
+| `backend/` | NestJS 11 (Express 5) + Prisma 5 + PostgreSQL |
 | `web/index.html` + `web/js/reader.js` | Installable reader PWA, opened at `/b/<code>` from a bus sticker. Offline-first. Markup handlers go through `web/js/actions.js` |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
-| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview |
+| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (listings, partner packages, enquiries, newsletter) is `web/js/admin-site.js` |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
 | `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
+| `web/business.html` + `web/js/business.js` | Partner area for business owners: enquiries, deals, reviews, monthly report, listing. Signs in through `login.html` and shares the reader's `bato.auth` session |
+| `site/` | Public website (`bato-site`): Express 5 + TypeScript, HTML drawn on the server, no script on any page. Reads through the read-only `batoma_site` role; forms are forwarded to the API |
 | `web/owner.html` + `owner-*.js` | Bus owner portal. Split into script files because it is large; keep them classic scripts sharing globals, loaded in order. `owner-actions.js` registers what its markup may ask for; `owner-trips.js` is the duty log and the crew's duty screen |
 | `web/js/lib/bs-date.js` | Bikram Sambat dates, generated from `backend/src/common/utils/bs-date.ts` by `scripts/sync-web-libs.mjs`; never edit it by hand |
 | `web/config.js` | API address; overwritten by the Render static-site build |
@@ -65,10 +67,22 @@ bash scripts/trips_smoke.sh ../Bato_Test_Accounts.md         # duty log (run the
 bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, stickers, print history
 bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appraisals, crew disputes, cross-company 404s
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
+bash scripts/site_smoke.sh ../Bato_Test_Accounts.md          # website forms, newsletter, partner area and report, packages, verification
+npm run db:site-role           # after every migration: the website's read-only role, grants and row-level security
 npm run seed:trips             # demo duty log between the demo fuel fills
 npm run seed:income            # demo income on the demo trips (income records stay off)
 node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts, stops.ts or web/css/fonts.css
 npm test                       # unit tests over the pure logic, including content-for
+```
+
+The website is its own package; run these from `site/` (it needs `site/.env`, see
+`site/.env.example`, and the role from `npm run db:site-role`):
+
+```bash
+npm install
+npm run build                  # copies schema, fonts, icons and the BS calendar in, then prisma generate + tsc
+node --env-file=.env dist/src/server.js   # http://localhost:4000
+npm test                       # crawler, ad slots, /go counting, article source, forms, purge (needs OWNER_DATABASE_URL)
 ```
 
 Run the web pages with `node scripts/dev-web-server.mjs` (port 5173) from the repo root,
@@ -399,6 +413,34 @@ code and no API: a laptop demo, or `preview.html`'s "No bus" link. With a real c
 reader shows that bus's route, its saved copy when there is no signal, or "Waiting for
 signal" — never another route's stories. See `state.mode` in `reader.js`.
 
+## Public website (`site/`)
+
+**It connects as `batoma_site`, never as the tables' owner.** That role's column grants
+and row-level security policies (`backend/prisma/site-role.sql`) are what keep drafts,
+unverified listings, owners and private columns off the website, so a query in
+`site/src/data.ts` that forgets a filter still cannot leak. Selecting a column the role is
+not granted is a permission error, not an empty value: always `select` explicitly. Re-run
+`npm run db:site-role` after migrations, since new columns and tables are not granted.
+
+**No script on any page**, and the CSP says so (`script-src 'none'`, `style-src 'self'`).
+Menus are `<details>`, filters are GET forms, enquiries are POST forms. Build markup with
+the `html` tagged template (`site/src/html.ts`): it escapes everything that is not already
+`Html`. `raw()` is for markup the site's own code made, never for data.
+
+**Forms never reach the API from the internet.** The site's server checks the honeypot,
+the time token (`__FORM_TOKEN__`, stamped into each page as it is served) and its own
+rate limit, then posts to `/api/v1/site/*` with `x-site-key`. Those routes refuse anything
+without the key.
+
+**Partners are sold on the counts.** Every page returns the events it showed
+(`Rendered.events`), and they are recorded on every serve, from the page cache too. Paid
+links go through `/go/…`, one click per visit (a partial unique index). Pages are cached
+privately for that reason; do not put a shared cache in front of the HTML.
+
+**Changes reach the website at once** because API routes that change what it shows carry
+`@PurgeSite()`, which calls the site's signed `/_purge`. A new route that edits articles,
+guides, ads, listings, deals or packages needs it too.
+
 ## Known gaps
 
 Real, and worth knowing before you plan work:
@@ -406,15 +448,15 @@ Real, and worth knowing before you plan work:
 1. **Articles cannot link translations.** `Language` is a field on `Article`, not a
    relationship between versions, so a language toggle needs a schema change
 2. **No payment integration.** No eSewa, no Khalti. Tiers and ads are set by hand
-3. **No Bikram Sambat dates** anywhere
+3. ~~No Bikram Sambat dates~~ Done in Phase 3: `BsDate` (backend and `web/js/lib`)
 4. **Company verification has no document upload.** Admins check details by phone or email
-5. **Outstanding `npm audit` advisories** need NestJS 11/12, nodemailer 10 and multer 2 —
-   all major upgrades. `npm audit fix` has already taken everything that does not break
-6. **`strictNullChecks` is off.** Unit tests now exist (`npm test`, 77 of them over the
-   pure logic) but they cannot make up for the compiler not checking nulls
-7. **The CSP still allows `'unsafe-inline'` for scripts.** `render.yaml` sets a real
-   policy, but the pages carry one inline script each and 221 inline handlers, so the
-   strongest directive cannot be turned on until those move to delegated listeners
+5. ~~Outstanding `npm audit` advisories~~ Done in Phase 3 step 2 (NestJS 11, nodemailer 10,
+   multer 2): `npm audit --omit=dev` reports nothing
+6. **`strictNullChecks` is off.** Unit tests exist (`npm test`, 189 of them over the pure
+   logic) but they cannot make up for the compiler not checking nulls
+7. **The CSP still allows `'unsafe-inline'` for scripts.** The reader, control panel,
+   owner portal, partner area, bus and scan pages have no inline code any more;
+   `login.html`, `creator.html` and `preview.html` still do. The public website has none
 8. **`normalisePlate` drops Devanagari combining vowel signs**, so "बा" and "ब" produce
    the same registration key. Pinned by a test; fixing it means re-keying existing rows
    and changing the migration backfill in step

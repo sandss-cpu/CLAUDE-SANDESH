@@ -319,3 +319,83 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   contrast was checked in all three themes; section tags, the night theme's brand text,
   the rating stars and the bright-sun button were darkened to reach AA. Chips, tabs and
   the report button were raised to 48 px.
+
+## Step 9: the public website (Feature 3)
+
+- **A separate small server, `site/`** (deployed as `bato-site`): Express 5 and
+  TypeScript, pages drawn on the server from tagged templates that escape everything
+  unless it is markup made in the site's own code (`html`, `raw`). No framework and **no
+  script on any page**: the menu is a `<details>`, filters are GET forms, enquiries are
+  POST forms. Its CSP is `script-src 'none'` and `style-src 'self'`; a test fails on any
+  inline handler, inline style or script other than JSON-LD.
+- **It reads through its own database role, `batoma_site`**, never the owner. Column
+  grants keep owners, verification notes and private fields out; row-level security
+  policies show only published articles, issues and guides, verified and active
+  businesses, their photos and live coupons, and website ad slots. The API connects as
+  the tables' owner, which the policies do not bind. The role's only write is INSERT into
+  `site_events`, without RETURNING (the role cannot read the row back).
+  `npm run db:site-role` (re)applies it after migrations, with the password from
+  `SITE_DB_PASSWORD`; `prisma/site-role.sql` is the reference.
+- **Forms go through the site's server to the API**, with `x-site-key` (SITE_API_KEY,
+  compared in constant time) and the visitor's address in `x-site-client-ip`. The API
+  routes refuse anything without the key, so the API never takes public form posts from
+  the internet. The site adds a hidden honeypot field and a signed time token stamped
+  into each page as it is served (not when it is cached): under three seconds is a bot,
+  over a day is stale. A bot is told it worked; nothing is sent. Ten posts per address
+  per ten minutes, in memory. Post, redirect, get; an error shows the form again with
+  what was typed.
+- **The newsletter is double opt-in.** Only a hash of the confirmation token is stored;
+  the email link opens a page with a button, and only the POST confirms, because mail
+  scanners follow links. Subscribing and unsubscribing answer the same whether or not the
+  address is known. The export is the confirmed list with each reader's unsubscribe
+  link, and it is audited.
+- **Counting without cookies.** A visit is a salted SHA-256 of address, browser and the
+  half-hour, cut to 32 characters: it changes every half-hour and cannot be turned back
+  into an address, so no cookie notice is needed. Page views and impressions are
+  recorded on every serve, from the page cache too, because partners are sold on them;
+  bots and page testers are not counted. A click (`/go/…`) is one row per target per
+  visit: a partial unique index on `(target, "sessionHash") WHERE type = 'CLICK'` drops the
+  repeat in the database.
+- **`/go/<partner>` and `/go/ad/<id>`** record the click and redirect (302, `no-store`,
+  `noindex`) to the partner's website with `utm_source=batoma&utm_medium=referral`, to
+  WhatsApp, or to the map. Phone and Viber links stay direct: a redirect to `tel:` or
+  `viber:` is unreliable across phones. Every `/go/` link carries `rel="sponsored
+  noopener"`, and robots.txt keeps crawlers off `/go/`.
+- **Everything paid for is labelled** "Sponsored · <name>", in its own slot only, between
+  its dates. Featured and premium partners show "Featured partner" and come first in
+  lists. A sponsored story names its partner at the top and the end.
+- **Pages are kept in memory for five minutes** (`PAGE_TTL`) and dropped at once when the
+  API calls `/_purge`, signed with HMAC-SHA256 of the time under SITE_API_KEY and valid
+  for five minutes; routes that change what the site shows carry `@PurgeSite()`.
+  Browsers get `private, max-age=60, stale-while-revalidate=300`: **private on purpose**,
+  so no shared cache in front can hide views from the counts in the partner report. A
+  CDN, if one is added, must pass HTML through.
+- **The monthly partner report** counts, by Kathmandu day: website impressions and clicks
+  (`site_events`), app profile views and contact taps, enquiries from both, and coupons
+  claimed and redeemed. CSV (with a byte-order mark for Excel) and PDF, for the owner and
+  for admins; anyone else's listing is 404.
+- **Leads now hold who wrote and how to reply** (name, contact, message, channel). The
+  contact is personal data kept for that partner only; it is encrypted at rest in step 10
+  with the other contact fields.
+- **Partner packages are records of what was sold**, not the ads themselves: kind, dates,
+  price in paisa, status, notes, audited on every change. The ad for a slot is still set
+  up under Ads, with a section or place target for the two sponsor slots.
+- **The partner area is `web/business.html`** with `web/js/business.js`: overview,
+  enquiries, deals (publish, end early, redeem a code), reviews and replies, the monthly
+  report and the listing itself. It signs in through `login.html` and shares the
+  reader's session (`bato.auth`) and refresh lock. Ending a deal is a new route,
+  `PATCH /businesses/coupons/:id/end` (someone else's deal is 404).
+- **Verification and tier changes are now audited** (`business.verify`,
+  `business.tier`), and the tier route validates its input (a known tier, 1 to 24
+  months). Note that setting the same tier again is a renewal: it extends the
+  subscription by the months given.
+- **Legal pages are drafts**, marked "needs legal review" and kept out of search until a
+  lawyer has read them. The privacy draft describes what the code does today, including
+  the SOS location and anonymous bus reviews.
+- **Fonts, icons, the schema and the BS calendar are copied in at build time**
+  (`site/scripts/prepare.mjs`) from `web/` and `backend/`, so there is one source for each.
+- **Measured** with Lighthouse, mobile, on every page type (16 pages): performance 99,
+  except a place page with a Nepali name at 92–94, which fetches the 107 KB Devanagari
+  Mukta file for that one word. Accessibility and best practices are 100 everywhere.
+  SEO is 100 except Privacy and Terms, which score 66 because they are deliberately
+  `noindex` while they are drafts.

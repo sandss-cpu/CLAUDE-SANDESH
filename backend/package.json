@@ -20,6 +20,7 @@
     "seed:itinerary": "ts-node prisma/place-itinerary-demo.ts",
     "seed:trips": "ts-node prisma/fleet-trips-demo.ts",
     "seed:income": "ts-node prisma/fleet-income-demo.ts",
+    "db:site-role": "node scripts/site-role.mjs",
     "theme:set": "ts-node prisma/set-theme.ts",
     "test": "jest",
     "test:cov": "jest --coverage",

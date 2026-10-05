@@ -524,6 +524,7 @@ model Category {
   sortOrder Int     @default(0)
 
   articles Article[]
+  sponsors Advertisement[]
 
   @@map("categories")
 }
@@ -713,6 +714,7 @@ model Destination {
   businesses      Business[]
   creatorJourneys CreatorJourney[]
   guides          RouteGuide[]
+  sponsors        Advertisement[]
 
   @@map("destinations")
 }
@@ -997,6 +999,7 @@ model Business {
   guideStops         RouteGuideStop[]
   subscriptionEvents SubscriptionEvent[]
   advertisements     Advertisement[]
+  packages           PartnerPackage[]
 
   @@index([category, tier])
   @@map("businesses")
@@ -1081,14 +1084,25 @@ model Review {
   @@map("reviews")
 }
 
+enum LeadChannel {
+  APP
+  SITE
+}
+
 model BusinessLead {
-  id         String   @id @default(uuid())
+  id         String      @id @default(uuid())
   businessId String
   type       LeadType
   userId     String?
   routeId    String?
   sessionId  String?
-  createdAt  DateTime @default(now())
+  /// An enquiry: who wrote, how to reach them and what they asked. The contact is
+  /// personal data, kept only for the partner who was asked.
+  name       String?
+  contact    String?
+  message    String?
+  channel    LeadChannel @default(APP)
+  createdAt  DateTime    @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   route    Route?   @relation(fields: [routeId], references: [id])
@@ -1130,6 +1144,13 @@ enum AdPlacement {
   BUS_PAGE
   CREATOR_PROFILE
   SEARCH_RESULTS
+  /// The public website (bato-site). Sold as partner packages; each is labelled where it shows.
+  WEB_HOME_HERO
+  WEB_SECTION_SPONSOR
+  WEB_SPONSORED_ARTICLE
+  WEB_DESTINATION_SPONSOR
+  WEB_DEALS
+  WEB_NEWSLETTER
 }
 
 enum AdDurationUnit {
@@ -1147,34 +1168,39 @@ enum AdLinkType {
 /// paused (isActive false), scheduled (before startsAt), expired (after
 /// endsAt), otherwise active — so an expired ad cannot show even if no job ran.
 model Advertisement {
-  id               String          @id @default(uuid())
-  title            String
-  advertiserName   String
-  tagline          String?
-  imageUrl         String
-  placement        AdPlacement
-  durationUnit     AdDurationUnit
-  durationCount    Int
-  startsAt         DateTime
-  endsAt           DateTime
-  linkType         AdLinkType
-  externalUrl      String?
-  overviewTitle    String?
-  overviewBody     String?
-  overviewImageUrl String?
-  businessId       String?
-  isActive         Boolean         @default(true)
-  impressions      Int             @default(0)
-  clicks           Int             @default(0)
-  createdById      String
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id                  String          @id @default(uuid())
+  title               String
+  advertiserName      String
+  tagline             String?
+  imageUrl            String
+  placement           AdPlacement
+  durationUnit        AdDurationUnit
+  durationCount       Int
+  startsAt            DateTime
+  endsAt              DateTime
+  linkType            AdLinkType
+  externalUrl         String?
+  overviewTitle       String?
+  overviewBody        String?
+  overviewImageUrl    String?
+  businessId          String?
+  isActive            Boolean         @default(true)
+  impressions         Int             @default(0)
+  clicks              Int             @default(0)
+  /// WEB_SECTION_SPONSOR: the magazine section it sponsors. WEB_DESTINATION_SPONSOR: the place.
+  targetCategoryId    String?
+  targetDestinationId String?
+  createdById         String
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   /// No targets means "show on every route". With targets, the ad only appears to
   /// travellers on those corridors, so a Pokhara hotel isn't sold to a Chitwan bus.
-  routeTargets     AdRouteTarget[]
+  routeTargets        AdRouteTarget[]
 
-  business  Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
-  createdBy User      @relation("AdCreator", fields: [createdById], references: [id])
+  business          Business?    @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  createdBy         User         @relation("AdCreator", fields: [createdById], references: [id])
+  targetCategory    Category?    @relation(fields: [targetCategoryId], references: [id], onDelete: SetNull)
+  targetDestination Destination? @relation(fields: [targetDestinationId], references: [id], onDelete: SetNull)
 
   @@index([placement, isActive, startsAt, endsAt])
   @@map("advertisements")
@@ -1310,6 +1336,8 @@ enum GuideKind {
 /// places to eat and places to stay along that corridor, in travel order.
 model RouteGuide {
   id            String         @id @default(uuid())
+  /// For the public site's clean URLs: /trips/<slug>.
+  slug          String         @unique
   kind          GuideKind      @default(ROUTE)
   /// Set for ROUTE guides; null for DESTINATION ones, and the other way round.
   routeId       String?
@@ -1869,6 +1897,125 @@ model IncomeImport {
 
   @@index([operatorId, createdAt])
   @@map("income_imports")
+}
+
+// ------------------------- PUBLIC SITE -------------------------
+
+enum PackageKind {
+  HOME_HERO
+  SECTION_SPONSOR
+  SPONSORED_ARTICLE
+  DESTINATION_SPONSOR
+  DEALS
+  NEWSLETTER
+  LISTING
+}
+
+enum PackageStatus {
+  PROPOSED
+  ACTIVE
+  PAUSED
+  ENDED
+  CANCELLED
+}
+
+/// What a partner bought, for how long and at what price: the admin's record of each deal.
+/// Prices are whatever was agreed (integer paisa); the placements themselves are ads.
+model PartnerPackage {
+  id          String        @id @default(uuid())
+  businessId  String
+  kind        PackageKind
+  startsAt    DateTime
+  endsAt      DateTime
+  pricePaisa  Int?
+  status      PackageStatus @default(PROPOSED)
+  notes       String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, startsAt])
+  @@index([status, endsAt])
+  @@map("partner_packages")
+}
+
+enum SubscriberStatus {
+  PENDING
+  CONFIRMED
+  UNSUBSCRIBED
+}
+
+/// Newsletter sign-ups, double opt-in: nothing is sent until the address is confirmed.
+model NewsletterSubscriber {
+  id               String           @id @default(uuid())
+  email            String           @unique
+  status           SubscriberStatus @default(PENDING)
+  confirmTokenHash String?
+  unsubscribeToken String           @unique
+  source           String?
+  ipHash           String?
+  createdAt        DateTime         @default(now())
+  confirmedAt      DateTime?
+  unsubscribedAt   DateTime?
+
+  @@map("newsletter_subscribers")
+}
+
+enum SiteEventType {
+  PAGE_VIEW
+  IMPRESSION
+  CLICK
+}
+
+/// The public site's own analytics, append-only: no cookies, no third party. A visit is
+/// told apart only by a salted hash of address, browser and a 30-minute window, so a
+/// /go/ click counts once per visit (a partial unique index) and no person is traceable.
+model SiteEvent {
+  id           BigInt        @id @default(autoincrement())
+  type         SiteEventType
+  path         String
+  target       String?
+  businessId   String?
+  adId         String?
+  articleId    String?
+  sessionHash  String
+  referrerHost String?
+  createdAt    DateTime      @default(now())
+
+  @@index([type, createdAt])
+  @@index([businessId, type, createdAt])
+  @@index([adId, type, createdAt])
+  @@map("site_events")
+}
+
+enum EnquiryKind {
+  ADVERTISE
+  CONTACT
+}
+
+enum EnquiryStatus {
+  NEW
+  HANDLED
+}
+
+/// "Advertise with Batoma" and contact messages: the admin inbox.
+model SiteEnquiry {
+  id           String        @id @default(uuid())
+  kind         EnquiryKind
+  name         String
+  contact      String
+  organisation String?
+  message      String
+  status       EnquiryStatus @default(NEW)
+  handledById  String?
+  handledAt    DateTime?
+  ipHash       String?
+  createdAt    DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@map("site_enquiries")
 }
 
 model FuelLog {

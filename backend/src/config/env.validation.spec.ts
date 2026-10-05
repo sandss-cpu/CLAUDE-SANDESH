@@ -131,3 +131,11 @@ describe('validateEnv — private files', () => {
     }))).not.toThrow();
   });
 });
+
+describe('validateEnv — public website', () => {
+  it('needs https and a long shared key for the site in production', () => {
+    expect(() => validateEnv(prod({ SITE_URL: 'http://batoma.example', SITE_API_KEY: 'k'.repeat(40) }))).toThrow(/SITE_URL/);
+    expect(() => validateEnv(prod({ SITE_URL: 'https://batoma.example', SITE_API_KEY: 'short' }))).toThrow(/SITE_API_KEY/);
+    expect(() => validateEnv(prod({ SITE_URL: 'https://batoma.example', SITE_API_KEY: 'k'.repeat(40) }))).not.toThrow();
+  });
+});

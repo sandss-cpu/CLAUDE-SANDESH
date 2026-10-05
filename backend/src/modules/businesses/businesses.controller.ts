@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException, Body, Controller, DefaultValuePipe, Get, Ip, Param, ParseEnumPipe, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
+} from '@nestjs/common';
 import { BusinessTier, Role } from '@prisma/client';
 import { BusinessesService } from './businesses.service';
 import {
@@ -8,6 +10,7 @@ import {
 import { OptionalAuth, Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 
 @Controller('businesses')
 export class BusinessesController {
@@ -31,24 +34,29 @@ export class BusinessesController {
     return this.businesses.create(dto, userId);
   }
 
+  @PurgeSite()
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateBusinessDto, @CurrentUser() u: AuthUser) {
     return this.businesses.update(id, dto, u.id, u.role as Role);
   }
 
+  @PurgeSite()
   @Roles(Role.ADMIN, Role.MODERATOR) @Patch(':id/verify')
-  verify(@Param('id') id: string, @Body() dto: VerifyBusinessDto, @CurrentUser('id') adminId: string) {
-    return this.businesses.verify(id, dto, adminId);
+  verify(@Param('id', ParseUUIDPipe) id: string, @Body() dto: VerifyBusinessDto, @CurrentUser('id') adminId: string, @Ip() ip: string) {
+    return this.businesses.verify(id, dto, adminId, ip);
   }
 
+  @PurgeSite()
   @Roles(Role.ADMIN) @Patch(':id/tier')
   tier(
-    @Param('id') id: string,
-    @Body('tier') tier: BusinessTier,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('tier', new ParseEnumPipe(BusinessTier)) tier: BusinessTier,
     @CurrentUser('id') actorId: string,
-    @Body('months') months?: number,
+    @Ip() ip: string,
+    @Body('months', new DefaultValuePipe(1), ParseIntPipe) months: number,
   ) {
-    return this.businesses.setTier(id, tier, months ?? 1, actorId);
+    if (months < 1 || months > 24) throw new BadRequestException('Choose 1 to 24 months.');
+    return this.businesses.setTier(id, tier, months, actorId, ip);
   }
 
   /** Paid feature: appear to readers scanning on specific corridors. */
@@ -70,9 +78,17 @@ export class BusinessesController {
 
   // ---- coupons ----
 
+  @PurgeSite()
   @Post(':id/coupons')
   createCoupon(@Param('id') id: string, @Body() dto: CreateCouponDto, @CurrentUser() u: AuthUser) {
     return this.businesses.createCoupon(id, dto, u.id, u.role as Role);
+  }
+
+  /** The owner ends a deal before its date; claimed codes can still be redeemed. */
+  @PurgeSite()
+  @Patch('coupons/:couponId/end')
+  endCoupon(@Param('couponId', ParseUUIDPipe) couponId: string, @CurrentUser() u: AuthUser) {
+    return this.businesses.endCoupon(couponId, u.id, u.role as Role);
   }
 
   /** Traveller claims: "show this screen for 10% off". */

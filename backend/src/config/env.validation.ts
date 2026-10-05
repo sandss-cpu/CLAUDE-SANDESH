@@ -83,6 +83,10 @@ export function validateEnv(config: Record<string, unknown>) {
       }
       if (str('S3_ENDPOINT') && !/^https:\/\//.test(str('S3_ENDPOINT')!)) errors.push('S3_ENDPOINT must be https');
     }
+    if (str('SITE_URL')) {
+      if (!/^https:\/\//.test(str('SITE_URL')!)) errors.push('SITE_URL must be https in production');
+      if ((str('SITE_API_KEY') ?? '').length < 32) errors.push('SITE_API_KEY must be at least 32 random characters when SITE_URL is set');
+    }
     const shortLinks = str('SHORT_LINK_BASE');
     if (shortLinks && !shortLinks.startsWith('https://')) {
       errors.push('SHORT_LINK_BASE must be https in production: it is printed on every bus sticker');

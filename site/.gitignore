@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+# Copied from the backend and web/ by scripts/prepare.mjs at build time.
+prisma
+vendor
+public/fonts
+public/css/fonts.css
+public/icons

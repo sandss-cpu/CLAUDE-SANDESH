@@ -5,6 +5,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
+import { uniqueSlug } from '../../common/utils/slug.util';
 import {
   AdminGuideQueryDto, JourneyQueryDto, ReorderStopsDto, SaveGuideDto, SaveGuideStopDto,
 } from './dto/guide.dto';
@@ -219,9 +220,10 @@ export class GuidesService {
   async create(dto: SaveGuideDto, actorId: string) {
     this.assertMedia(dto.coverImageUrl);
     const target = await this.checkedTarget(dto);
+    const slug = await uniqueSlug(dto.title, async (s) => !!(await this.prisma.routeGuide.findUnique({ where: { slug: s }, select: { id: true } })));
     const guide = await this.prisma.routeGuide.create({
       data: {
-        kind: dto.kind, ...target, direction: dto.direction, title: dto.title, summary: dto.summary,
+        slug, kind: dto.kind, ...target, direction: dto.direction, title: dto.title, summary: dto.summary,
         coverImageUrl: dto.coverImageUrl, dayCount: dto.dayCount, sortOrder: dto.sortOrder ?? 0,
         status: dto.status ?? ContentStatus.DRAFT, createdById: actorId,
         publishedAt: dto.status === ContentStatus.PUBLISHED ? new Date() : null,

@@ -40,7 +40,7 @@ export class MailService {
     }
     try {
       await this.transport.sendMail({
-        from: this.config.get<string>('MAIL_FROM') ?? 'Bato <no-reply@bato.travel>',
+        from: this.config.get<string>('MAIL_FROM') ?? 'Batoma <no-reply@bato.travel>',
         to, subject, text, html,
       });
       return true;
@@ -55,7 +55,7 @@ export class MailService {
     const text = `${opts.heading}\n\n${opts.intro}\n\n${opts.url}\n\n${opts.footer}`;
     const html = `
       <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:24px;color:#1C1A2E">
-        <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5B3FA8;margin:0">Bato</p>
+        <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5B3FA8;margin:0">Batoma</p>
         <h1 style="font-size:24px;margin:8px 0 16px">${opts.heading}</h1>
         <p style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">${opts.intro}</p>
         <p style="margin:24px 0">

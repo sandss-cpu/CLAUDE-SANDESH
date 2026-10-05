@@ -37,6 +37,8 @@ import { CreatorsModule } from './modules/creators/creators.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './common/storage/storage.module';
 import { FinanceModule } from './modules/finance/finance.module';
+import { SiteModule } from './modules/site/site.module';
+import { SitePurgeModule } from './common/site-purge/site-purge.service';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { FinanceModule } from './modules/finance/finance.module';
     PrismaModule,
     AuditModule,
     StorageModule,
+    SitePurgeModule,
     AuthModule,
     UsersModule,
     QrModule,
@@ -74,6 +77,7 @@ import { FinanceModule } from './modules/finance/finance.module';
     AdsModule,
     FleetModule,
     FinanceModule,
+    SiteModule,
     GuidesModule,
     CreatorsModule,
     SettingsModule,

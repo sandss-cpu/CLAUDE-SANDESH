@@ -8,6 +8,7 @@ import {
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 
 @Controller('magazine')
 export class MagazineController {
@@ -37,20 +38,27 @@ export class MagazineController {
   @Roles(Role.EDITOR, Role.ADMIN) @Get('admin/articles/:id')
   adminArticle(@Param('id') id: string) { return this.magazine.adminGetArticle(id); }
 
+  @PurgeSite()
+
   @Roles(Role.EDITOR, Role.ADMIN) @Post('articles')
   create(@Body() dto: CreateArticleDto, @CurrentUser('id') userId: string) {
     return this.magazine.createArticle(dto, userId);
   }
+
+  @PurgeSite()
 
   @Roles(Role.EDITOR, Role.ADMIN) @Patch('articles/:id')
   update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
     return this.magazine.updateArticle(id, dto);
   }
 
+  @PurgeSite()
+
   @Roles(Role.EDITOR, Role.ADMIN) @Patch('articles/:id/publish')
   publish(@Param('id') id: string) { return this.magazine.publishArticle(id); }
 
   /** Permanent, irreversible — admin-only. Editors archive instead (PATCH status). */
+  @PurgeSite()
   @Roles(Role.ADMIN) @Delete('articles/:id')
   remove(@Param('id') id: string, @CurrentUser('id') actorId: string) {
     return this.magazine.deleteArticle(id, actorId);
@@ -62,10 +70,13 @@ export class MagazineController {
   @Roles(Role.EDITOR, Role.ADMIN) @Post('issues')
   createIssue(@Body() dto: CreateIssueDto) { return this.magazine.createIssue(dto); }
 
+  @PurgeSite()
+
   @Roles(Role.EDITOR, Role.ADMIN) @Patch('issues/:id/publish')
   publishIssue(@Param('id') id: string) { return this.magazine.publishIssue(id); }
 
   /** Promote a traveller's post into the magazine, byline intact. */
+  @PurgeSite()
   @Roles(Role.EDITOR, Role.ADMIN) @Post('elevate')
   elevate(@Body() dto: ElevatePostDto, @CurrentUser('id') editorId: string) {
     return this.magazine.elevatePost(dto, editorId);

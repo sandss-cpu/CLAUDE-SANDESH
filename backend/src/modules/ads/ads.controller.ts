@@ -10,6 +10,7 @@ import {
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 
 @Controller('ads')
 export class AdsController {
@@ -20,10 +21,14 @@ export class AdsController {
   @Roles(Role.ADMIN) @Get('admin')
   adminList(@Query() q: AdminAdQueryDto) { return this.ads.adminList(q.status); }
 
+  @PurgeSite()
+
   @Roles(Role.ADMIN) @Post('admin')
   create(@Body() dto: SaveAdDto, @CurrentUser('id') actorId: string) {
     return this.ads.create(dto, actorId);
   }
+
+  @PurgeSite()
 
   @Roles(Role.ADMIN) @Patch('admin/:id')
   update(
@@ -32,12 +37,16 @@ export class AdsController {
     return this.ads.update(id, dto, actorId);
   }
 
+  @PurgeSite()
+
   @Roles(Role.ADMIN) @Patch('admin/:id/active')
   setActive(
     @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetAdActiveDto, @CurrentUser('id') actorId: string,
   ) {
     return this.ads.setActive(id, dto.isActive, actorId);
   }
+
+  @PurgeSite()
 
   @Roles(Role.ADMIN) @Delete('admin/:id')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {

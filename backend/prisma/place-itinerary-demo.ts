@@ -7,6 +7,7 @@
  *   npm run seed:itinerary
  */
 import { GuideStopKind, PrismaClient } from '@prisma/client';
+import { slugify } from '../src/common/utils/slug.util';
 
 const prisma = new PrismaClient();
 
@@ -54,7 +55,7 @@ async function main() {
 
   const guide = await prisma.routeGuide.create({
     data: {
-      kind: 'DESTINATION', destinationId: destination.id, title,
+      slug: slugify(title), kind: 'DESTINATION', destinationId: destination.id, title,
       summary: 'The lake, the sunrise from Sarangkot and the old bazaar, at the pace the town actually deserves.',
       dayCount: 3, direction: 'BOTH', status: 'PUBLISHED', publishedAt: new Date(),
     },
