@@ -39,6 +39,7 @@ import { StorageModule } from './common/storage/storage.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { SiteModule } from './modules/site/site.module';
 import { VerificationModule } from './modules/verification/verification.module';
+import { RetentionModule } from './modules/retention/retention.module';
 import { SitePurgeModule } from './common/site-purge/site-purge.service';
 
 @Module({
@@ -80,6 +81,7 @@ import { SitePurgeModule } from './common/site-purge/site-purge.service';
     FinanceModule,
     SiteModule,
     VerificationModule,
+    RetentionModule,
     GuidesModule,
     CreatorsModule,
     SettingsModule,

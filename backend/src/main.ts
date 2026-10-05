@@ -4,9 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { JsonLogger } from './common/logging/json-logger';
+import { initSentry } from './common/logging/sentry';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
+  // Error tracking only when SENTRY_DSN is set; personal data is scrubbed either way.
+  initSentry();
+  // Redacted, and one JSON object per line in production (common/logging).
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: new JsonLogger() });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 

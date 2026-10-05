@@ -2,6 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { BusinessTier, ContentStatus, ModerationStatus, ReportStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
+/** Audit actions shown as security events, by the filter they appear under. A trailing dot matches a prefix. */
+export const SECURITY_KINDS: Record<string, string[]> = {
+  signin: ['auth.failed', 'auth.locked', 'auth.new_device', 'auth.recovery_code', 'auth.password_reset', 'auth.logout_all'],
+  accounts: ['user.role', 'user.reset_mfa', 'user.suspend', 'user.unsuspend', 'auth.mfa_enabled', 'auth.recovery_codes', 'account.delete'],
+  exports: ['account.export', 'newsletter.export', 'income.export'],
+  qr: ['qr.rotate'],
+  finance: ['income.', 'finance.', 'trip.unlock'],
+  verification: ['verification.', 'business.verify', 'business.tier'],
+};
+
 @Injectable()
 export class AdminService {
   constructor(private prisma: PrismaService) {}
@@ -110,6 +120,39 @@ export class AdminService {
   }
 
   /** Recent privileged actions across the platform. */
+  /**
+   * The security events view: sign-in failures and locks, new devices, account and role
+   * changes, exports of personal or financial data, QR code rotations, finance edits and
+   * looks at verification documents. Read from the one audit table.
+   */
+  async securityEvents(q: { kind?: string; page?: number }) {
+    const actions = q.kind && SECURITY_KINDS[q.kind] ? SECURITY_KINDS[q.kind] : Object.values(SECURITY_KINDS).flat();
+    const take = 50;
+    const page = Math.max(1, Math.min(200, q.page ?? 1));
+    const where = { OR: actions.map((a) => (a.endsWith('.') ? { action: { startsWith: a } } : { action: a })) };
+    const [rows, total, last24h] = await Promise.all([
+      this.prisma.auditEvent.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * take, take,
+        select: { id: true, action: true, entityType: true, entityId: true, summary: true, actorId: true, operatorId: true, createdAt: true, ipHash: true } }),
+      this.prisma.auditEvent.count({ where }),
+      this.prisma.auditEvent.groupBy({
+        by: ['action'], where: { ...where, createdAt: { gte: new Date(Date.now() - 86_400_000) } }, _count: { action: true },
+      }),
+    ]);
+    const actors = await this.prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.actorId).filter((x): x is string => !!x))] } }, select: { id: true, name: true, role: true } });
+    const names = new Map(actors.map((a) => [a.id, a]));
+    return {
+      items: rows.map((r) => ({
+        ...r, ipHash: undefined,
+        // Enough of the address hash to see that two events came from the same place, and no more.
+        from: r.ipHash ? r.ipHash.slice(0, 8) : null,
+        actor: r.actorId ? names.get(r.actorId) ?? { id: r.actorId, name: 'Deleted account', role: null } : null,
+        kind: Object.entries(SECURITY_KINDS).find(([, list]) => list.some((a) => (a.endsWith('.') ? r.action.startsWith(a) : r.action === a)))?.[0] ?? 'other',
+      })),
+      total, page, pages: Math.max(1, Math.ceil(total / take)),
+      last24h: Object.fromEntries(last24h.map((g) => [g.action, g._count.action])),
+    };
+  }
+
   auditLog(skip = 0, take = 100) {
     return this.prisma.moderationEntry.findMany({
       include: { moderator: { select: { id: true, name: true, role: true } } },

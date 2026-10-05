@@ -274,6 +274,7 @@ export class UsersService {
         note: days ? `Suspended for ${days} days` : 'Suspended indefinitely',
       },
     });
+    await this.audit.record({ actorId: moderatorId, action: 'user.suspend', entityType: 'User', entityId: userId, summary: `${user.name} suspended ${days ? `for ${days} days` : 'indefinitely'}` });
     return user;
   }
 
@@ -286,6 +287,7 @@ export class UsersService {
     await this.prisma.moderationEntry.create({
       data: { moderatorId, targetType: 'USER', targetId: userId, action: 'UNSUSPEND_USER' },
     });
+    await this.audit.record({ actorId: moderatorId, action: 'user.unsuspend', entityType: 'User', entityId: userId, summary: `${user.name} unsuspended` });
     return user;
   }
 

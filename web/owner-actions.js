@@ -70,6 +70,13 @@ Actions.on({
   addIncomeSource: () => addIncomeSource(),
   editIncomeSource: (el) => editIncomeSource(el.dataset.id),
   enableFinance: () => enableFinance(),
+  // sessions and recovery codes
+  signOutEverywhere: () => signOutEverywhere(),
+  downloadCodes: (el) => downloadCodes(el.dataset.codes.split(' ')),
+  codesSaved: () => finishSignIn(state.login.pending),
+  // verification documents
+  viewDocument: (el) => viewDocument(el.dataset.id),
+  deleteDocument: (el) => deleteDocument(el.dataset.id, el.dataset.label),
   disableFinance: () => disableFinance(),
 });
 
@@ -79,6 +86,8 @@ Actions.onSubmit({
   authForgot: (el, ev) => authForgot(ev),
   authReset: (el, ev) => authReset(ev),
   authMfa: (el, ev) => authMfa(ev),
+  authRecover: (el, ev) => authRecover(ev),
+  uploadDocument: (el, ev) => uploadDocument(el, ev),
   registerCompany: (el, ev) => registerCompany(ev),
   assignCrew: (el, ev) => assignCrew(ev),
   searchBuses: (el, ev) => { ev.preventDefault(); filterBuses({ q: el.elements.q.value.trim() }); },

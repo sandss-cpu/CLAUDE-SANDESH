@@ -69,7 +69,8 @@ async function siteListings(){
           <td>${esc(b.owner?.name || '—')}${b.owner?.phone ? `<br><small>${esc(b.owner.phone)}</small>` : ''}</td>
           <td>${esc(b.phone || '—')}${b.website ? `<br><small>${esc(b.website)}</small>` : ''}${b.latitude != null ? '<br><small>Has a map pin</small>' : ''}</td>
           <td>${esc(dayBoth(b.createdAt))}</td>
-          <td class="row-actions"><button class="btn btn-sm btn-primary" data-action="siteVerify" data-id="${b.id}" data-name="${esc(b.name)}">Verify…</button></td>
+          <td class="row-actions"><button class="btn btn-sm" data-action="siteDocs" data-id="${b.id}" data-name="${esc(b.name)}">Documents</button>
+            <button class="btn btn-sm btn-primary" data-action="siteVerify" data-id="${b.id}" data-name="${esc(b.name)}">Verify…</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
     <h3 class="site-gap">Partners</h3>
@@ -217,6 +218,19 @@ Actions.on({
       notify(el.dataset.status === 'HANDLED' ? 'Marked handled' : 'Reopened');
     }catch(err){ notify(err.message, 'error'); }
     renderMain();
+  },
+  siteDocs: (el) => {
+    const back = document.createElement('div');
+    back.className = 'modal-back';
+    back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="docs-title">
+      <div class="top-row"><h2 id="docs-title">${esc(el.dataset.name)}: documents</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+      <div id="biz-docs"><div class="hint">Loading…</div></div></div>`;
+    const close = () => back.remove();
+    back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-close]')) close(); });
+    back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
+    document.body.appendChild(back);
+    back.querySelector('[data-close]').focus();
+    fillDocuments(back.querySelector('#biz-docs'), { businessId: el.dataset.id });
   },
   siteVerify: async (el) => {
     const note = await askDialog({

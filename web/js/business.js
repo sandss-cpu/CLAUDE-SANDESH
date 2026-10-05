@@ -295,7 +295,10 @@
     },
 
     async listing() {
-      const b = await api(`/businesses/${encodeURIComponent(state.biz.slug)}`);
+      const [b, docs] = await Promise.all([
+        api(`/businesses/${encodeURIComponent(state.biz.slug)}`),
+        api(`/businesses/${state.biz.id}/documents`),
+      ]);
       const f = (name, label, value, type = 'text', hint = '') => `<div><label for="l-${name}">${esc(label)}</label><input id="l-${name}" name="${name}" type="${type}" value="${esc(value ?? '')}" maxlength="200">${hint ? `<p class="hint">${esc(hint)}</p>` : ''}</div>`;
       return `
         ${head('Your listing', 'What travellers see on the website and in the app. Changes show within a few minutes.')}
@@ -311,9 +314,45 @@
           </div>
           <div><label for="l-amenities">What you offer</label><input id="l-amenities" name="amenities" value="${esc((b.amenities || []).join(', '))}" maxlength="500"><p class="hint">Separate with commas: Wi-Fi, Hot water, Parking</p></div>
           <div><button class="btn" type="submit">Save</button></div>
-        </form>`;
+        </form>
+        <div class="card">
+          <h2>Verification documents</h2>
+          <p class="muted small">Batoma checks your listing with these: a PAN certificate or business licence. They are kept privately,
+            never shown to travellers, and only you and Batoma's staff can open them.</p>
+          ${docs.length ? `<ul class="list">${docs.map((d) => `<li class="row">
+              <span><b>${esc(d.label)}</b> <span class="muted small">${d.mimeType === 'application/pdf' ? 'PDF' : 'Photo'} · ${esc(fmtDay(d.createdAt))}</span></span>
+              <span class="actions"><button class="btn btn-ghost" data-action="openDoc" data-id="${esc(d.id)}">Open</button>
+                <button class="btn btn-danger" data-action="deleteDoc" data-id="${esc(d.id)}" data-label="${esc(d.label)}">Delete</button></span>
+            </li>`).join('')}</ul>` : '<p class="empty">No documents yet.</p>'}
+          <form class="stack" data-submit="uploadDoc" novalidate>
+            <div class="grid2">
+              <div><label for="doc-kind">Document</label><select id="doc-kind" name="kind">
+                <option value="PAN">PAN certificate</option><option value="BUSINESS_LICENCE">Business licence</option><option value="COMPANY_REGISTRATION">Company registration</option><option value="OTHER">Other document</option></select></div>
+              <div><label for="doc-file">Photo or PDF</label><input id="doc-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div>
+            </div>
+            <div><button class="btn" type="submit">Upload</button></div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Your account</h2>
+          <p class="muted small">Lost a phone, or shared your password? Sign out every device signed in to this account, this one too.</p>
+          <button class="btn btn-ghost" data-action="signOutEverywhere">${state.confirmEverywhere ? 'Tap again to sign out every device' : 'Sign out everywhere'}</button>
+        </div>`;
     },
   };
+
+  /* ---------- documents and sessions ---------- */
+  async function uploadDoc(form) {
+    const file = form.elements.file.files[0];
+    if (!file) throw new Error('Choose a photo or PDF of the document.');
+    if (file.size > 10 * 1024 * 1024) throw new Error('A document can be at most 10 MB.');
+    const body = new FormData();
+    body.append('kind', form.elements.kind.value);
+    body.append('file', file);
+    const res = await authed(`${API}/businesses/${state.biz.id}/documents`, { method: 'POST', body });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || 'The document could not be uploaded.');
+  }
 
   /* ---------- actions ---------- */
   async function busy(el, run) {
@@ -333,6 +372,28 @@
       render();
     }),
     downloadReport: (el) => busy(el, () => download(`/businesses/${state.biz.id}/report.${el.dataset.kind}?month=${state.month || thisMonth()}`)),
+    openDoc: (el) => busy(el, async () => {
+      const { url } = await api(`/businesses/${state.biz.id}/documents/${el.dataset.id}/link`);
+      window.open(url, '_blank', 'noopener');
+    }),
+    deleteDoc: (el) => busy(el, async () => {
+      if (!window.confirm(`Delete the ${el.dataset.label.toLowerCase()}? Batoma will no longer be able to see it.`)) return;
+      await api(`/businesses/${state.biz.id}/documents/${el.dataset.id}`, { method: 'DELETE' });
+      notify('Document deleted');
+      render();
+    }),
+    signOutEverywhere: () => {
+      if (!state.confirmEverywhere) {
+        state.confirmEverywhere = true; render();
+        setTimeout(() => { state.confirmEverywhere = false; }, 5000);
+        return;
+      }
+      state.confirmEverywhere = false;
+      api('/auth/logout-all', { method: 'POST' }).catch(() => {}).finally(() => {
+        localStorage.removeItem(AUTH_KEY);
+        signedOut('Signed out on every device.');
+      });
+    },
   });
   Actions.onChange({
     pickBusiness: (el) => { choose(el.value); state.page = 1; render(); },
@@ -360,6 +421,7 @@
       notify('Reply posted');
       render();
     }); },
+    uploadDoc: (form, e) => { e.preventDefault(); busy(form, async () => { await uploadDoc(form); notify('Document uploaded'); render(); }); },
     pickMonth: (form, e) => { e.preventDefault(); state.month = values(form).month; render(); },
     saveListing: (form, e) => { e.preventDefault(); busy(form, async () => {
       const v = values(form);

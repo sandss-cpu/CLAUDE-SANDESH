@@ -107,6 +107,77 @@ function signOut(){
   }
 }
 
+/**
+ * The traveller's own data: a copy of everything Batoma holds, signing out every
+ * device, and deleting the account (password again, so a borrowed phone cannot).
+ */
+function accountTools(){
+  const a = state.account || {};
+  return `
+    <div class="account-tools">
+      <button class="chip" data-action="exportAccount">Download my data</button>
+      <button class="chip" data-action="signOutEverywhere">${a.confirmEverywhere ? 'Tap again to sign out every device' : 'Sign out everywhere'}</button>
+      <button class="chip" data-action="askDeleteAccount">Delete my account</button>
+    </div>
+    ${a.deleting ? `
+      <form class="card delete-account" data-submit="deleteAccount" novalidate>
+        <p><b>Delete your account?</b> Your stories, reviews, saved trips and emergency contacts go with it. This cannot be undone.
+          Download your data first if you want a copy.</p>
+        <label for="del-pw">Your password</label>
+        <input id="del-pw" type="password" autocomplete="current-password">
+        <label for="del-code">Authenticator code, if you set one up</label>
+        <input id="del-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+        ${a.error ? `<p class="form-error" role="alert">${esc(a.error)}</p>` : ''}
+        <button class="btn btn-danger" type="submit">Delete my account</button>
+        <button class="btn btn-ghost" type="button" data-action="cancelDeleteAccount">Keep my account</button>
+      </form>` : ''}`;
+}
+
+async function exportAccount(){
+  try{
+    const res = await authed(`${API}/users/me/export`);
+    if(!res.ok) throw new Error('Your data could not be prepared. Try again.');
+    const url = URL.createObjectURL(await res.blob());
+    const link = Object.assign(document.createElement('a'), { href: url, download: `batoma-account-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast('Your data is downloading');
+  }catch(err){ toast(err.message); }
+}
+
+async function signOutEverywhere(){
+  state.account = state.account || {};
+  if(!state.account.confirmEverywhere){
+    state.account.confirmEverywhere = true; render();
+    setTimeout(() => { if(state.account?.confirmEverywhere){ state.account.confirmEverywhere = false; if(state.screen === 'more') render(); } }, 5000);
+    return;
+  }
+  try{ await authed(`${API}/auth/logout-all`, { method: 'POST' }); }catch(_){ /* signed out here either way */ }
+  state.account = {};
+  state.auth = null;
+  localStorage.removeItem('bato.auth');
+  render();
+  toast('Signed out on every device');
+}
+
+async function deleteAccount(form, ev){
+  ev.preventDefault();
+  const body = { password: form.querySelector('#del-pw').value || undefined, code: form.querySelector('#del-code').value.trim() || undefined };
+  try{
+    const res = await authed(`${API}/users/me`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(json.message || 'Your account could not be deleted.');
+    state.account = {};
+    state.auth = null;
+    localStorage.removeItem('bato.auth');
+    render();
+    toast('Your account is deleted');
+  }catch(err){
+    state.account = { ...(state.account || {}), deleting: true, error: err.message };
+    render();
+  }
+}
+
 /* ---------- demo content (mirrors prisma/seed.ts) ---------- */
 const DEMO = {
   route: { code:'KTM-PKR', name:'Kathmandu – Pokhara', nameNe:'काठमाडौं – पोखरा',
@@ -886,6 +957,7 @@ const SCREENS = {
       ${state.auth ? `
         <div class="num"><span>Signed in as ${esc(state.auth.user?.name || 'Traveller')}</span>
           <button class="chip" data-action="signOut">Sign out</button></div>
+        ${accountTools()}
       ` : `
         <a class="btn btn-ghost" href="/login.html?returnTo=${encodeURIComponent('index.html#more')}">
           Sign in to vlog
@@ -2601,6 +2673,10 @@ Actions.on({
   claim: (el) => claim(el.dataset.id),
   lead: (el) => lead(el.dataset.type),
   signOut: () => signOut(),
+  exportAccount: () => exportAccount(),
+  signOutEverywhere: () => signOutEverywhere(),
+  askDeleteAccount: () => { state.account = { deleting: true }; render(); document.getElementById('del-pw')?.focus(); },
+  cancelDeleteAccount: () => { state.account = {}; render(); },
   addContact: () => addContact(),
   removeContact: (el) => removeContact(el.dataset.id),
   setTheme: (el) => setTheme(el.dataset.themeName),
@@ -2622,6 +2698,7 @@ Actions.onChange({
   addPhotos: (el) => { addPhotos([...el.files]); el.value = ''; },
 });
 Actions.onSubmit({
+  deleteAccount: (el, ev) => deleteAccount(el, ev),
   sendReport: (el, ev) => sendReport(ev, el.dataset.type, el.dataset.id),
 });
 Actions.onPress({

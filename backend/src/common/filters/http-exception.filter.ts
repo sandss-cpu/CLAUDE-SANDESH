@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { reportError } from '../logging/sentry';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -43,11 +44,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
-    if (status >= 500) this.logger.error(`${req.method} ${req.url}`, (exception as Error)?.stack);
+    // Method and path only: request bodies (sign-in, income records) are never logged.
+    if (status >= 500) {
+      this.logger.error(`${req.method} ${req.path ?? req.url}`, (exception as Error)?.stack);
+      reportError(exception, { method: req.method, path: req.path ?? req.url, userId: req.user?.id });
+    }
 
     res.status(status).json({
       success: false, statusCode: status, code, message,
-      path: req.url, timestamp: new Date().toISOString(),
+      path: req.path ?? req.url, timestamp: new Date().toISOString(),
     });
   }
 }

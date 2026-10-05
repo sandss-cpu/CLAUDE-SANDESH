@@ -200,6 +200,25 @@ ok "a traveller cannot see it" 404 "$(call GET "/businesses/$BID/documents" "$(l
 call DELETE "/businesses/$BID/documents/$BDOC" "$PARTNER" >/dev/null
 rm -rf "$TMP"
 
+echo "== keeping activity for 13 months, then only counts"
+QR=$(sql "select id from qr_codes limit 1")
+OLD_DAY=$(TZ=Asia/Kathmandu date -v-14m +%Y-%m-15)
+OLD_MONTH=${OLD_DAY:0:7}
+sql "insert into scan_events (id, \"qrCodeId\", \"sessionId\", \"ipHash\", \"isFirstScan\", \"scannedAt\") values
+       (gen_random_uuid(), '$QR', 'retention-$STAMP-a', 'hash', true, '$OLD_DAY 06:00'), (gen_random_uuid(), '$QR', 'retention-$STAMP-a', 'hash', false, '$OLD_DAY 07:00'),
+       (gen_random_uuid(), '$QR', 'retention-$STAMP-b', 'hash', true, '$OLD_DAY 08:00');
+     insert into site_events (type, path, target, \"businessId\", \"sessionHash\", \"createdAt\") values
+       ('IMPRESSION', '/partners/x', 'retention-$STAMP', '$BID', 'r1', '$OLD_DAY 06:00'), ('IMPRESSION', '/partners/x', 'retention-$STAMP', '$BID', 'r2', '$OLD_DAY 06:30'),
+       ('CLICK', '/go/x', 'retention-$STAMP', '$BID', 'r1', '$OLD_DAY 06:05');" >/dev/null
+(cd "$SMOKE_DIR/.." && npm run --silent retention >/dev/null 2>&1)
+ok "old scans are gone one by one" 0 "$(sql "select count(*) from scan_events where \"sessionId\" like 'retention-$STAMP-%'")"
+ok "but counted by day: 3 scans, 2 first scans, 2 devices" "3|2|2" "$(sql "select scans, \"firstScans\", sessions from scan_daily where \"qrCodeId\"='$QR' and day='$OLD_DAY'")"
+ok "old website events too" 0 "$(sql "select count(*) from site_events where target='retention-$STAMP'")"
+ok "kept as daily counts" "CLICK:1 IMPRESSION:2" "$(sql "select string_agg(type || ':' || count, ' ' order by type::text) from site_event_daily where target='retention-$STAMP'")"
+ok "the partner's report for that month still shows them" "2 1" "$(call GET "/businesses/$BID/report?month=$OLD_MONTH" "$PARTNER" >/dev/null; get "f\"{data['totals']['impressions']} {data['totals']['clicks']}\"")"
+ok "no address hash older than 13 months is left" 0 "$(sql "select count(*) from audit_events where \"ipHash\" is not null and \"createdAt\" < now() - interval '13 months'")"
+sql "delete from scan_daily where \"qrCodeId\"='$QR' and day='$OLD_DAY'; delete from site_event_daily where target='retention-$STAMP';" >/dev/null
+
 echo "== encrypted at rest"
 OWNER=$(login owner.fleet@bato.test)
 CID=$(sql "select id from operators where slug like 'himalayan%' limit 1")

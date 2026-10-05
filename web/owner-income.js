@@ -612,6 +612,7 @@ async function enableFinance(){
   try{
     const settings = await api(`/fleet/companies/${state.companyId}/finance`);
     let code = null;
+    let codes = null;
     if(!settings.authenticatorReady){
       const setup = await api('/auth/mfa/setup', { method: 'POST' });
       // The QR is drawn by Batoma's own API from the otpauth link; nothing else goes in.
@@ -623,9 +624,10 @@ async function enableFinance(){
           <p class="small">On this phone? <a href="${esc(setup.otpauthUri)}">Open in your authenticator app</a>, or type this key:
           <code class="secret">${esc(setup.secret.replace(/(.{4})/g, '$1 ').trim())}</code></p></div>`,
         fields: [{ name: 'code', label: '6-digit code', required: true, maxlength: 6, placeholder: '123456', full: true }],
-        onSubmit: async (v) => { await api('/auth/mfa/setup/confirm', { method: 'POST', body: { code: v.code } }); return v.code; },
+        onSubmit: async (v) => { codes = (await api('/auth/mfa/setup/confirm', { method: 'POST', body: { code: v.code } })).recoveryCodes; return v.code; },
       });
       if(!code) return;
+      if(codes?.length) await showRecoveryCodes(codes);
     } else {
       code = await askDialog({
         title: 'Turn on income records', confirmLabel: 'Turn on',

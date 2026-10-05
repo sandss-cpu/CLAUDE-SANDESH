@@ -202,7 +202,31 @@ const LOGIN_VIEWS = {
         <input id="mfacode" inputmode="numeric" maxlength="6" placeholder="123456" autofocus required>
         ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
         <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Sign in'}</button>
-      </form>`;
+      </form>
+      <button class="btn btn-ghost" style="margin-top:8px" data-action="loginStep" data-step="recover">Lost your phone? Use a recovery code</button>`;
+  },
+  recover(){
+    const l = state.login;
+    return `
+      <h1>Use a recovery code</h1>
+      <p class="sub">Enter one of the ten codes you saved when you set up your authenticator. Each works once.</p>
+      <form data-submit="loginSubmitRecover">
+        <label for="rcode">Recovery code</label>
+        <input id="rcode" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="k7m2p-xq4hz" maxlength="20" autofocus required>
+        ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+        <button class="btn btn-primary" type="submit" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Sign in'}</button>
+      </form>
+      <button class="btn btn-ghost" style="margin-top:8px" data-action="loginStep" data-step="mfa">Use the authenticator instead</button>`;
+  },
+  codes(){
+    const l = state.login;
+    return `
+      <h1>Save your recovery codes</h1>
+      <p class="sub">If you lose your phone, each code lets you sign in once. Keep them somewhere safe and private, not on the phone
+        with the authenticator. They are shown only now.</p>
+      <ol class="codes">${l.codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+      <button class="btn btn-ghost" data-action="downloadRecoveryCodes">Save as a text file</button>
+      <button class="btn btn-primary" style="margin-top:8px" data-action="recoveryCodesSaved">I have saved them</button>`;
   },
   enrol(){
     const l = state.login;
@@ -305,8 +329,39 @@ async function loginSubmitEnrolConfirm(e){
   l.error = ''; l.busy = true; renderLogin();
   try{
     const data = await api('/auth/mfa/enrol/confirm', { method: 'POST', body: { challengeToken: l.challengeToken, code } });
+    // The codes come once, before the panel opens.
+    if(data.recoveryCodes?.length){ Object.assign(l, { busy: false, step: 'codes', codes: data.recoveryCodes, pending: data }); renderLogin(); return; }
     onSignedIn(data);
   }catch(err){ l.busy = false; l.error = err.message; renderLogin(); }
+}
+
+async function loginSubmitRecover(e){
+  e.preventDefault();
+  const l = state.login;
+  const code = $('#rcode').value.trim();
+  l.error = ''; l.busy = true; renderLogin();
+  try{
+    const data = await api('/auth/mfa/recover', { method: 'POST', body: { challengeToken: l.challengeToken, code } });
+    onSignedIn(data);
+    notify(`Signed in with a recovery code. ${data.recoveryCodesLeft} left${data.recoveryCodesLeft <= 2 ? ': ask another admin to reset your authenticator.' : '.'}`, data.recoveryCodesLeft <= 2 ? 'error' : 'ok');
+  }catch(err){ l.busy = false; l.error = err.message; renderLogin(); }
+}
+
+function downloadRecoveryCodes(){
+  const l = state.login;
+  const text = `Batoma control panel recovery codes for ${l.email || 'your account'}\nEach works once. Made ${new Date().toISOString().slice(0, 10)}.\n\n${l.codes.join('\n')}\n`;
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'batoma-recovery-codes.txt' });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+async function signOutEverywhere(){
+  const ok = await askDialog({ title: 'Sign out everywhere?', confirmLabel: 'Sign out everywhere', danger: true,
+    message: 'Every device signed in to this account is signed out at once, this one too.' });
+  if(!ok) return;
+  try{ await api('/auth/logout-all', { method: 'POST' }); }catch(_){ /* signed out below either way */ }
+  signOut('Signed out on every device.');
 }
 
 function onSignedIn(data){
@@ -440,6 +495,7 @@ function renderSidebar(){
     <div class="signout">
       <button class="btn btn-ghost btn-sm" data-action="openPalettePicker">🎨 Appearance</button>
       <button class="btn btn-ghost btn-sm" data-action="signOut">Sign out</button>
+      <button class="btn btn-ghost btn-sm" data-action="signOutEverywhere">Sign out everywhere</button>
     </div>`;
 }
 
@@ -1643,6 +1699,8 @@ async function viewCompany(id){
             <button class="btn btn-sm" data-action="adminBusSticker" data-id="${b.id}" data-format="pdf" data-size="seat">Seat</button>
             <button class="btn btn-sm" data-action="adminBusSticker" data-id="${b.id}" data-format="png">PNG</button>` : '—'}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">No buses registered yet.</div>'}
+      <h3 style="margin:18px 0 8px">Verification documents</h3>
+      <div id="cmp-docs" data-operator="${esc(c.id)}"><div class="hint">Loading…</div></div>
       <h3 style="margin:18px 0 8px">Verification history</h3>
       ${c.history.length ? `<ul style="margin:0;padding-left:18px">${c.history.map((h) => `<li>${fmtDate(h.createdAt)}: ${esc(h.action)} by ${esc(h.moderator?.name || '—')}${h.note ? `. ${esc(h.note)}` : ''}</li>`).join('')}</ul>`
         : '<div class="empty">No decisions yet.</div>'}
@@ -1658,6 +1716,30 @@ async function viewCompany(id){
   back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
   document.body.appendChild(back);
   back.querySelector('[data-close]').focus();
+  fillDocuments(back.querySelector('#cmp-docs'), { operatorId: c.id });
+}
+
+const DOC_KIND_LABEL = {
+  PAN: 'PAN certificate', COMPANY_REGISTRATION: 'Company registration', BLUEBOOK: 'Bluebook',
+  ROUTE_PERMIT: 'Route permit', BUSINESS_LICENCE: 'Business licence', OTHER: 'Other document',
+};
+
+/** Documents a company or business sent for verification. Each open is recorded in the audit log. */
+async function fillDocuments(box, owner){
+  if(!box) return;
+  try{
+    const docs = await api(`/admin/verification-documents?${new URLSearchParams(owner)}`);
+    box.innerHTML = docs.length ? `<ul class="doc-list">${docs.map((d) => `<li>
+        <span><b>${esc(DOC_KIND_LABEL[d.kind] || d.kind)}</b> <span class="hint">${d.mimeType === 'application/pdf' ? 'PDF' : 'Photo'} · ${fmtDay(d.createdAt)}</span></span>
+        <button class="btn btn-sm" data-action="openVerificationDoc" data-id="${esc(d.id)}">Open</button></li>`).join('')}</ul>
+        <p class="hint">Links last five minutes; every look is in the security events.</p>`
+      : '<div class="empty">No documents sent yet. Ask the owner to upload a PAN or registration certificate.</div>';
+  }catch(err){ box.innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+}
+
+async function openVerificationDoc(id){
+  try{ const { url } = await api(`/admin/verification-documents/${id}/link`); window.open(url, '_blank', 'noopener'); }
+  catch(err){ notify(err.message, 'error'); }
 }
 
 /* =========================== route guides =========================== */
@@ -2382,6 +2464,11 @@ Actions.on({
   goSection: (el) => goSection(el.dataset.key),
   openPalettePicker: () => openPalettePicker(),
   signOut: () => signOut(),
+  signOutEverywhere: () => signOutEverywhere(),
+  loginStep: (el) => { Object.assign(state.login, { step: el.dataset.step, error: '', busy: false }); renderLogin(); },
+  downloadRecoveryCodes: () => downloadRecoveryCodes(),
+  recoveryCodesSaved: () => onSignedIn(state.login.pending),
+  openVerificationDoc: (el) => openVerificationDoc(el.dataset.id),
   backdrop: (el, ev) => { if(ev.target === el) CLOSERS[el.dataset.closer]?.(); },
   pickFile: (el) => document.getElementById(el.dataset.target)?.click(),
   // articles and issues
@@ -2441,6 +2528,7 @@ Actions.onSubmit({
   loginSubmitCode: (el, ev) => loginSubmitCode(ev),
   loginSubmitMfa: (el, ev) => loginSubmitMfa(ev),
   loginSubmitEnrolConfirm: (el, ev) => loginSubmitEnrolConfirm(ev),
+  loginSubmitRecover: (el, ev) => loginSubmitRecover(ev),
   saveArticle: (el, ev) => saveArticle(ev, nullIfBlank(el.dataset.id)),
   saveAd: (el, ev) => saveAd(ev, nullIfBlank(el.dataset.id)),
   saveGuide: (el, ev) => saveGuide(ev, nullIfBlank(el.dataset.id)),

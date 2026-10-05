@@ -171,10 +171,18 @@ export class SiteService {
     const to = new Date(`${new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 7)}-01T00:00:00+05:45`);
     const day = Prisma.sql`to_char(("createdAt" + interval '345 minutes')::date, 'YYYY-MM-DD')`;
     const [site, leads, issued, redeemed] = await Promise.all([
+      // Recent events one by one; after 13 months only the daily counts are kept (retention job).
       this.prisma.$queryRaw<Array<{ day: string; type: string; n: bigint }>>`
-        SELECT ${day} AS day, type::text AS type, count(*) AS n FROM site_events
-        WHERE "businessId" = ${businessId} AND "createdAt" >= ${from} AND "createdAt" < ${to} AND type IN ('IMPRESSION', 'CLICK')
-        GROUP BY 1, 2`,
+        SELECT day, type, sum(n)::bigint AS n FROM (
+          SELECT ${day} AS day, type::text AS type, count(*) AS n FROM site_events
+          WHERE "businessId" = ${businessId} AND "createdAt" >= ${from} AND "createdAt" < ${to} AND type IN ('IMPRESSION', 'CLICK')
+          GROUP BY 1, 2
+          UNION ALL
+          SELECT to_char(day, 'YYYY-MM-DD'), type::text, sum(count) FROM site_event_daily
+          WHERE "businessId" = ${businessId} AND day >= ${`${m}-01`}::date AND day < ${new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 10)}::date
+            AND type IN ('IMPRESSION', 'CLICK')
+          GROUP BY 1, 2
+        ) counted GROUP BY 1, 2`,
       this.prisma.$queryRaw<Array<{ day: string; type: string; n: bigint }>>`
         SELECT ${day} AS day, type::text AS type, count(*) AS n FROM business_leads
         WHERE "businessId" = ${businessId} AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1, 2`,

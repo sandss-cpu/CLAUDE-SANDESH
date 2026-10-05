@@ -6,6 +6,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuditService } from '../../common/audit/audit.service';
 import { sendFile } from '../../common/utils/send-file';
 import {
   DayQueryDto, FinanceSettingsDto, ImportFormDto, ReportQueryDto, SaveSheetDto, SourceDto, UpdateSourceDto,
@@ -23,7 +24,15 @@ const PHOTO_UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits:
  */
 @Controller('fleet')
 export class FinanceController {
-  constructor(private income: IncomeService, private imports: IncomeImportService, private reports: IncomeReportsService) {}
+  constructor(private income: IncomeService, private imports: IncomeImportService, private reports: IncomeReportsService, private audit: AuditService) {}
+
+  /** A company's money leaving the system as a file is a security event. */
+  private exported(cid: string, uid: string, ip: string, kind: string, q: ReportQueryDto) {
+    return this.audit.record({
+      actorId: uid, action: 'income.export', entityType: 'Operator', entityId: cid, operatorId: cid, ip,
+      summary: `Downloaded the income report as ${kind}${q.from || q.to ? ` (${q.from ?? '…'} to ${q.to ?? '…'})` : ''}`,
+    });
+  }
 
   // ---- settings and sources ----
 
@@ -109,13 +118,17 @@ export class FinanceController {
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('companies/:cid/income/report.csv')
-  async reportCsv(@Param('cid') cid: string, @Query() q: ReportQueryDto, @CurrentUser('id') uid: string, @Res() res: Response) {
-    sendFile(res, await this.reports.csv(cid, q, uid));
+  async reportCsv(@Param('cid') cid: string, @Query() q: ReportQueryDto, @CurrentUser('id') uid: string, @Ip() ip: string, @Res() res: Response) {
+    const file = await this.reports.csv(cid, q, uid);
+    await this.exported(cid, uid, ip, 'CSV', q);
+    sendFile(res, file);
   }
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('companies/:cid/income/report.pdf')
-  async reportPdf(@Param('cid') cid: string, @Query() q: ReportQueryDto, @CurrentUser('id') uid: string, @Res() res: Response) {
-    sendFile(res, await this.reports.pdf(cid, q, uid));
+  async reportPdf(@Param('cid') cid: string, @Query() q: ReportQueryDto, @CurrentUser('id') uid: string, @Ip() ip: string, @Res() res: Response) {
+    const file = await this.reports.pdf(cid, q, uid);
+    await this.exported(cid, uid, ip, 'PDF', q);
+    sendFile(res, file);
   }
 }

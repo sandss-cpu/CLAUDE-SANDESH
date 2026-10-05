@@ -18,7 +18,8 @@ export class SmsService {
 
   async send(phone: string, text: string): Promise<boolean> {
     if (!this.isConfigured) {
-      this.logger.warn(`[SMS DISABLED] to ${phone}: ${text}`);
+      // The text holds a sign-in code, so it is never written to a log.
+      this.logger.warn(`[SMS DISABLED] to ${phone}: ${text.length} characters not sent`);
       return false;
     }
     try {

@@ -182,9 +182,11 @@ async function editDriver(id){
 /* ================= company ================= */
 
 SCREENS.company = async () => {
-  const [company, qr] = await Promise.all([
+  const [company, qr, documents] = await Promise.all([
     api(`/fleet/companies/${state.companyId}`),
     api(`/fleet/companies/${state.companyId}/qr`),
+    // Only owners may see the company's documents; the API refuses everyone else.
+    isOwner() ? api(`/fleet/companies/${state.companyId}/documents`) : Promise.resolve(null),
   ]);
   state.company = company;
   state.qr = qr;
@@ -228,8 +230,60 @@ SCREENS.company = async () => {
       rotate: canManage() ? 'rotateCompanyQr' : '',
       live: company.verification === 'VERIFIED',
     })}
+    ${documents ? documentsPanel(documents) : ''}
     ${financePanel()}`;
 };
+
+const DOC_KINDS = [['PAN', 'PAN certificate'], ['COMPANY_REGISTRATION', 'Company registration'], ['BLUEBOOK', 'Bluebook'], ['ROUTE_PERMIT', 'Route permit'], ['OTHER', 'Other document']];
+
+/** Proof for Batoma's check: kept privately, seen only by the company's owners and Batoma's staff. */
+function documentsPanel(docs){
+  return `
+  <section class="panel">
+    <div class="panel-head"><h2>Verification documents</h2></div>
+    <p class="hint">Batoma checks your company with these: a PAN or registration certificate, and a bus's bluebook or route permit.
+      They are kept privately, never shown to passengers, and only owners and Batoma's staff can open them.</p>
+    ${docs.length ? docs.map((d) => `
+      <div class="crew-card">
+        <span><b>${esc(d.label)}</b><div class="muted small">${d.mimeType === 'application/pdf' ? 'PDF' : 'Photo'} · ${Math.max(1, Math.round(d.sizeBytes / 1024))} KB · ${fmtDay(d.createdAt)}</div></span>
+        <span class="pills"><button class="btn btn-ghost btn-sm" data-action="viewDocument" data-id="${esc(d.id)}">Open</button>
+          <button class="btn btn-ghost btn-sm" data-action="deleteDocument" data-id="${esc(d.id)}" data-label="${esc(d.label)}">Delete</button></span>
+      </div>`).join('') : empty('No documents yet.')}
+    <form class="doc-upload" data-submit="uploadDocument" novalidate>
+      <div class="field"><label for="doc-kind">Document</label>
+        <select id="doc-kind" name="kind">${DOC_KINDS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
+      <div class="field"><label for="doc-file">Photo or PDF</label><input id="doc-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div>
+      <button class="btn btn-primary btn-sm" type="submit">Upload</button>
+    </form>
+  </section>`;
+}
+
+async function uploadDocument(form, ev){
+  ev.preventDefault();
+  const file = form.elements.file.files[0];
+  if(!file){ notify('Choose a photo or PDF of the document.', 'error'); return; }
+  const body = new FormData();
+  body.append('kind', form.elements.kind.value);
+  // Photos are shrunk on the phone first, for weak connections; the API draws them again anyway.
+  body.append('file', file.type.startsWith('image/') ? (await prepareImage(file, 2400)) : file);
+  const btn = form.querySelector('button[type="submit"]'); btn.disabled = true;
+  try{ await api(`/fleet/companies/${state.companyId}/documents`, { method: 'POST', body }); notify('Document uploaded'); renderApp(); }
+  catch(err){ notify(err.message, 'error'); btn.disabled = false; }
+}
+
+async function viewDocument(id){
+  try{
+    const { url } = await api(`/fleet/companies/${state.companyId}/documents/${id}/link`);
+    window.open(url, '_blank', 'noopener');
+  }catch(err){ notify(err.message, 'error'); }
+}
+
+async function deleteDocument(id, label){
+  const ok = await askDialog({ title: `Delete ${label}?`, confirmLabel: 'Delete', danger: true, message: 'Batoma will no longer be able to see it.' });
+  if(!ok) return;
+  try{ await api(`/fleet/companies/${state.companyId}/documents/${id}`, { method: 'DELETE' }); notify('Document deleted'); renderApp(); }
+  catch(err){ notify(err.message, 'error'); }
+}
 
 async function editCompany(){
   const c = state.company;

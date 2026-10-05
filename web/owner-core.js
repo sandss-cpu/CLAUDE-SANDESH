@@ -434,8 +434,8 @@ const AUTH_VIEWS = {
     <form data-submit="authRegister" novalidate>
       <div class="field"><label for="name">Your name</label><input id="name" autocomplete="name" required minlength="2" maxlength="60" value="${esc(l.name)}"></div>
       <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" required value="${esc(l.email)}"></div>
-      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required>
-        <div class="hint">At least 8 characters.</div></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="10" required>
+        <div class="hint">At least 10 characters. Three or four unrelated words work well.</div></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Creating account…' : 'Create account'}</button>
     </form>
@@ -463,19 +463,36 @@ const AUTH_VIEWS = {
     <h2>Choose a new password</h2>
     <p class="muted">You'll be signed out on every other device.</p>
     <form data-submit="authReset" novalidate>
-      <div class="field"><label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="field"><label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="10" required>
+        <div class="hint">At least 10 characters.</div></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Saving…' : 'Save new password'}</button>
     </form>`,
   mfa: (l) => `
     <h2>Authenticator code</h2>
-    <p class="muted">This account can also manage Batoma itself, so it needs the 6-digit code from your authenticator app.</p>
+    <p class="muted">Enter the 6-digit code from your authenticator app.</p>
     <form data-submit="authMfa" novalidate>
       <div class="field"><label for="code">6-digit code</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
       ${authAlerts(l)}
       <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Checking…' : 'Sign in'}</button>
     </form>
-    <div class="auth-links"><button class="link" data-action="authGo" data-step="signin">Use a different account</button></div>`,
+    <div class="auth-links">
+      <button class="link" data-action="authGo" data-step="recover">Lost your phone? Use a recovery code</button>
+      <button class="link" data-action="authGo" data-step="signin">Use a different account</button>
+    </div>`,
+  recover: (l) => `
+    <h2>Use a recovery code</h2>
+    <p class="muted">Enter one of the ten codes you saved when you set up your authenticator. Each works once.</p>
+    <form data-submit="authRecover" novalidate>
+      <div class="field"><label for="rcode">Recovery code</label><input id="rcode" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="k7m2p-xq4hz" maxlength="20" required></div>
+      ${authAlerts(l)}
+      <button class="btn btn-primary" type="submit" ${l.busy ? 'disabled' : ''}>${l.busy ? 'Checking…' : 'Sign in'}</button>
+    </form>
+    <div class="auth-links"><button class="link" data-action="authGo" data-step="mfa">Use the authenticator instead</button></div>`,
+  codes: (l) => `
+    <h2>Save your recovery codes</h2>
+    ${recoveryCodesHtml(l.codes)}
+    <button class="btn btn-primary" data-action="codesSaved">I have saved them</button>`,
   mfaEnrol: (l) => `
     <h2>Set up your authenticator</h2>
     <p class="muted">${esc(l.notice || 'This account needs an authenticator app before it can be used.')}</p>
@@ -557,7 +574,7 @@ async function authRegister(e){
   Object.assign(state.login, { name, email });
   if(name.length < 2){ state.login.error = 'Enter your name.'; renderAuth(); return; }
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ state.login.error = 'Enter a valid email address.'; renderAuth(); return; }
-  if(password.length < 8){ state.login.error = 'Use at least 8 characters for your password.'; renderAuth(); return; }
+  if(password.length < 10){ state.login.error = 'Use at least 10 characters for your password.'; renderAuth(); return; }
   authBusy();
   try{
     const data = await publicPost('/auth/email/register', { name, email, password, app: 'owner' });
@@ -584,7 +601,7 @@ async function authForgot(e){
 async function authReset(e){
   e.preventDefault();
   const password = $('#password').value;
-  if(password.length < 8){ state.login.error = 'Use at least 8 characters for your password.'; renderAuth(); return; }
+  if(password.length < 10){ state.login.error = 'Use at least 10 characters for your password.'; renderAuth(); return; }
   const token = state.login.resetToken; authBusy();
   try{
     const data = await publicPost('/auth/password/reset', { token, password });
@@ -593,6 +610,45 @@ async function authReset(e){
     if(err.status === 400 && /link/i.test(err.message)) authGo('linkFailed', { error: err.message }); else authFail(err);
   }
 }
+/** Ten one-time codes, shown once, with a way to keep them off this screen. */
+function recoveryCodesHtml(codes){
+  return `<p class="muted">If you lose your phone, each of these lets you sign in once. Keep them somewhere safe and private,
+      not on the phone with the authenticator. They are shown only now.</p>
+    <ol class="codes">${(codes || []).map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+    <button class="btn btn-ghost btn-sm" type="button" data-action="downloadCodes" data-codes="${esc((codes || []).join(' '))}">Save as a text file</button>`;
+}
+function downloadCodes(codes){
+  const text = `Batoma recovery codes for ${state.auth?.user?.email || 'your account'}\nEach works once. Made ${new Date().toISOString().slice(0, 10)}.\n\n${codes.join('\n')}\n`;
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'batoma-recovery-codes.txt' });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+/** After setting up an authenticator while signed in (turning on income records, say). */
+function showRecoveryCodes(codes){
+  return openForm({ title: 'Save your recovery codes', html: recoveryCodesHtml(codes), fields: [], submitLabel: 'I have saved them', onSubmit: async () => true });
+}
+async function authRecover(e){
+  e.preventDefault();
+  const code = $('#rcode').value.trim();
+  if(code.replace(/[^a-z0-9]/gi, '').length !== 10){ state.login.error = 'A recovery code has 10 letters and numbers, like k7m2p-xq4hz.'; renderAuth(); return; }
+  const challengeToken = state.login.challengeToken; authBusy();
+  try{
+    const data = await publicPost('/auth/mfa/recover', { challengeToken, code });
+    await finishSignIn(data);
+    notify(`Signed in with a recovery code. ${data.recoveryCodesLeft} left${data.recoveryCodesLeft <= 2 ? ': set up your authenticator again soon.' : '.'}`, data.recoveryCodesLeft <= 2 ? 'error' : 'ok');
+  }catch(err){
+    if(err.status === 401 && /expired/i.test(err.message)) authGo('signin', { error: 'That took too long. Sign in again.' }); else authFail(err);
+  }
+}
+async function signOutEverywhere(){
+  const ok = await askDialog({ title: 'Sign out everywhere?', confirmLabel: 'Sign out everywhere',
+    message: 'Every phone and computer signed in to this account is signed out at once, this one too. Use it if you lost a phone or shared your password.' });
+  if(!ok) return;
+  try{ await api('/auth/logout-all', { method: 'POST' }); }catch(err){ if(!err.silent){ notify(err.message, 'error'); return; } }
+  signOut('Signed out on every device. Sign in again to continue.');
+}
+
 async function authMfa(e){
   e.preventDefault();
   const code = $('#code').value.trim();
@@ -620,7 +676,12 @@ async function authEnrol(e){
   const code = $('#code').value.trim();
   if(!/^\d{6}$/.test(code)){ state.login.error = 'Enter the 6 digits from your authenticator app.'; renderAuth(); return; }
   const { challengeToken, enrol, notice } = state.login; authBusy();
-  try{ await finishSignIn(await publicPost('/auth/mfa/enrol/confirm', { challengeToken, code })); }
+  try{
+    const data = await publicPost('/auth/mfa/enrol/confirm', { challengeToken, code });
+    // The codes are shown before the portal opens, once.
+    if(data.recoveryCodes?.length){ authGo('codes', { codes: data.recoveryCodes, pending: data }); return; }
+    await finishSignIn(data);
+  }
   catch(err){
     if(err.status === 401 && /expired/i.test(err.message)) authGo('signin', { error: 'That took too long. Sign in again.' });
     else { Object.assign(state.login, { busy: false, error: err.message, enrol, notice }); renderAuth(); }
@@ -732,6 +793,7 @@ function renderShell(){
       <a href="bus.html" target="_blank" rel="noopener">Passenger bus page ↗</a>
       <button data-action="toggleTheme">${document.documentElement.dataset.theme === 'night' ? '☀ Light mode' : '🌙 Dark mode'}</button>
       <button data-action="signOut">Sign out</button>
+      <button data-action="signOutEverywhere">Sign out everywhere</button>
     </div>`;
   if(window.innerWidth <= 900 && c){
     const nav = $('#side nav');

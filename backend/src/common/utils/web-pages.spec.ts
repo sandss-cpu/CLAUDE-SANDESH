@@ -11,7 +11,8 @@ const read = (file: string) => readFileSync(join(WEB, file), 'utf8');
 const pages = readdirSync(WEB).filter((f) => f.endsWith('.html'));
 
 /** Pages whose code lives in web/js and runs through actions.js; they must stay that way. */
-const NO_INLINE_CODE = ['index.html', 'admin.html', 'owner.html', 'bus.html', 'scan.html', 'business.html'];
+/** Every page: none carries inline script or handlers any more (known gap 7, closed in step 10). */
+const NO_INLINE_CODE = pages;
 
 describe('web pages', () => {
   it.each(pages)('%s loads nothing from another origin', (page) => {

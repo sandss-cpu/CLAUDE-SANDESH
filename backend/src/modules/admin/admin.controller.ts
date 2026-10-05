@@ -16,6 +16,11 @@ export class AdminController {
   @Get('subscriptions')
   subscriptions() { return this.admin.subscriptions(); }
 
+  @Get('security-events')
+  securityEvents(@Query('kind') kind?: string, @Query('page') page?: string) {
+    return this.admin.securityEvents({ kind, page: Number(page ?? 1) || 1 });
+  }
+
   @Get('audit-log')
   audit(@Query('skip') skip?: string, @Query('take') take?: string) {
     return this.admin.auditLog(Number(skip ?? 0), Number(take ?? 100));
