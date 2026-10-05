@@ -139,6 +139,8 @@ enum ReportReason {
   SEXUAL_CONTENT
   COPYRIGHT
   UNSAFE_BUSINESS
+  /// A bus company says a review names the wrong driver or conductor; a moderator re-attributes it.
+  WRONG_CREW
   OTHER
 }
 
@@ -162,38 +164,40 @@ enum ModerationAct {
   UPDATE
   PAUSE
   RESUME
+  /// A bus review moved to another trip's crew, or to "crew unknown".
+  REASSIGN_CREW
 }
 
 // ------------------------- IDENTITY -------------------------
 
 model User {
-  id            String   @id @default(uuid())
-  phone         String?  @unique
-  email         String?  @unique
-  name          String
-  avatarUrl     String?
-  bio           String?
-  homeDistrict  String?
-  language      Language @default(NE)
-  role          Role     @default(READER)
-  isPhoneVerified Boolean @default(false)
+  id                String    @id @default(uuid())
+  phone             String?   @unique
+  email             String?   @unique
+  name              String
+  avatarUrl         String?
+  bio               String?
+  homeDistrict      String?
+  language          Language  @default(NE)
+  role              Role      @default(READER)
+  isPhoneVerified   Boolean   @default(false)
   /// argon2id. Null for phone-only accounts.
-  passwordHash    String?
+  passwordHash      String?
   /// Email sign-in is refused until the owner has clicked the emailed link.
-  emailVerifiedAt DateTime?
-  isSuspended   Boolean  @default(false)
-  suspendedUntil DateTime?
+  emailVerifiedAt   DateTime?
+  isSuspended       Boolean   @default(false)
+  suspendedUntil    DateTime?
   /// TOTP second factor. Mandatory for privileged roles — an SMS code alone
   /// is not an acceptable gate on platform administration (SIM-swap risk).
-  totpSecret     String?
-  totpConfirmedAt DateTime?
+  totpSecret        String?
+  totpConfirmedAt   DateTime?
   // privacy
-  hideExactLocation Boolean @default(true)
-  publishDelayHours Int     @default(0) // solo-traveller safety: delay geo publish
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  hideExactLocation Boolean   @default(true)
+  publishDelayHours Int       @default(0) // solo-traveller safety: delay geo publish
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  articles          Article[]         @relation("ArticleAuthor")
+  articles          Article[]          @relation("ArticleAuthor")
   posts             Post[]
   comments          Comment[]
   reactions         Reaction[]
@@ -204,31 +208,32 @@ model User {
   redemptions       CouponRedemption[]
   refreshTokens     RefreshToken[]
   emailTokens       EmailToken[]
-  ownedBusinesses   Business[]        @relation("BusinessOwner")
-  adsCreated        Advertisement[]   @relation("AdCreator")
-  reportsMade       Report[]          @relation("Reporter")
-  moderationActions ModerationEntry[] @relation("Moderator")
+  ownedBusinesses   Business[]         @relation("BusinessOwner")
+  adsCreated        Advertisement[]    @relation("AdCreator")
+  reportsMade       Report[]           @relation("Reporter")
+  moderationActions ModerationEntry[]  @relation("Moderator")
   emergencyContacts EmergencyContact[]
   sosEvents         SosEvent[]
-  following         Follow[]          @relation("Follower")
-  followers         Follow[]          @relation("Following")
+  following         Follow[]           @relation("Follower")
+  followers         Follow[]           @relation("Following")
   operatorLinks     OperatorAdmin[]
   busReviews        RideFeedback[]
-  creatorProfile    CreatorProfile?   @relation("CreatorUser")
+  creatorProfile    CreatorProfile?    @relation("CreatorUser")
   placementsMade    ContentPlacement[] @relation("PlacementAuthor")
+  appraisalsWritten DriverAppraisal[]  @relation("Appraiser")
 
   @@index([role])
   @@map("users")
 }
 
 model OtpCode {
-  id        String   @id @default(uuid())
-  phone     String
-  codeHash  String
-  expiresAt DateTime
-  attempts  Int      @default(0)
+  id         String    @id @default(uuid())
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([phone, createdAt])
   @@map("otp_codes")
@@ -256,16 +261,16 @@ model EmailToken {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   /// All tokens rotated from one login share a familyId. Presenting an
   /// already-revoked token means it was stolen, so the whole family dies.
   familyId  String
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([familyId])
@@ -286,16 +291,16 @@ model Follow {
 // ------------------------- ROUTES, OPERATORS, QR -------------------------
 
 model Route {
-  id          String  @id @default(uuid())
-  code        String  @unique          // e.g. KTM-PKR
-  name        String                    // Kathmandu – Pokhara
-  nameNe      String?
-  startPlace  String
-  endPlace    String
-  distanceKm  Int?
+  id           String   @id @default(uuid())
+  code         String   @unique // e.g. KTM-PKR
+  name         String // Kathmandu – Pokhara
+  nameNe       String?
+  startPlace   String
+  endPlace     String
+  distanceKm   Int?
   typicalHours Float?
-  description String?
-  createdAt   DateTime @default(now())
+  description  String?
+  createdAt    DateTime @default(now())
 
   vehicles        Vehicle[]
   qrCodes         QrCode[]
@@ -345,21 +350,21 @@ enum QrKind {
 
 /// A bus company, or an individual owner with one bus.
 model Operator {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  logoUrl   String?
-  contactPhone String?
-  contactEmail String?
-  address   String?
+  id               String               @id @default(uuid())
+  name             String
+  slug             String               @unique
+  logoUrl          String?
+  contactPhone     String?
+  contactEmail     String?
+  address          String?
   /// Company registration or PAN number, checked during verification.
-  registrationNo String?
-  description String?
-  isActive  Boolean  @default(true)
+  registrationNo   String?
+  description      String?
+  isActive         Boolean              @default(true)
   verification     OperatorVerification @default(PENDING)
   verifiedAt       DateTime?
   verificationNote String?
-  createdAt DateTime @default(now())
+  createdAt        DateTime             @default(now())
 
   vehicles      Vehicle[]
   qrCodes       QrCode[]
@@ -368,6 +373,7 @@ model Operator {
   notifications FleetNotification[]
   placements    ContentPlacement[]
   trips         Trip[]
+  appraisals    DriverAppraisal[]
 
   @@index([verification])
   @@map("operators")
@@ -378,9 +384,9 @@ model OperatorAdmin {
   operatorId String
   userId     String
   role       OperatorMemberRole @default(OWNER)
-  createdAt  DateTime @default(now())
-  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+  operator   Operator           @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([operatorId, userId])
   @@index([userId])
@@ -388,45 +394,45 @@ model OperatorAdmin {
 }
 
 model Vehicle {
-  id         String  @id @default(uuid())
-  operatorId String
-  routeId    String?
+  id                  String    @id @default(uuid())
+  operatorId          String
+  routeId             String?
   /// Registration number as written on the plate, e.g. "BA 2 KHA 3456".
-  plateNo    String
+  plateNo             String
   /// plateNo upper-cased without spaces or punctuation. Unique across Bato, so one
   /// physical bus can only ever belong to one company.
-  plateKey   String  @unique
-  label      String?
-  seatCount  Int?
-  make       String?
-  model      String?
-  year       Int?
-  busType    String?
-  colour     String?
-  amenities  String[] @default([])
-  photoUrl   String?
-  status     BusStatus @default(ACTIVE)
-  odometerKm Int     @default(0)
-  serviceIntervalKm   Int @default(10000)
-  serviceIntervalDays Int @default(90)
+  plateKey            String    @unique
+  label               String?
+  seatCount           Int?
+  make                String?
+  model               String?
+  year                Int?
+  busType             String?
+  colour              String?
+  amenities           String[]  @default([])
+  photoUrl            String?
+  status              BusStatus @default(ACTIVE)
+  odometerKm          Int       @default(0)
+  serviceIntervalKm   Int       @default(10000)
+  serviceIntervalDays Int       @default(90)
   /// Archived buses leave public search and their QR codes stop working.
-  isActive   Boolean @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
 
-  operator     Operator       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  route        Route?         @relation(fields: [routeId], references: [id])
-  qrCodes      QrCode[]
-  rideFeedback RideFeedback[]
-  lostItems    LostItem[]
-  maintenance  MaintenanceRecord[]
-  incidents    BusIncident[]
-  documents    BusDocument[]
-  fuelLogs     FuelLog[]
-  assignments  DriverAssignment[]
+  operator      Operator            @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  route         Route?              @relation(fields: [routeId], references: [id])
+  qrCodes       QrCode[]
+  rideFeedback  RideFeedback[]
+  lostItems     LostItem[]
+  maintenance   MaintenanceRecord[]
+  incidents     BusIncident[]
+  documents     BusDocument[]
+  fuelLogs      FuelLog[]
+  assignments   DriverAssignment[]
   notifications FleetNotification[]
-  placements   ContentPlacement[]
-  trips        Trip[]
+  placements    ContentPlacement[]
+  trips         Trip[]
 
   @@unique([operatorId, plateNo])
   @@index([operatorId, isActive])
@@ -435,22 +441,22 @@ model Vehicle {
 
 /// A physical sticker. shortCode is what appears in the URL: /r/{shortCode}
 model QrCode {
-  id         String  @id @default(uuid())
-  shortCode  String  @unique
+  id         String    @id @default(uuid())
+  shortCode  String    @unique
   operatorId String?
   vehicleId  String?
   routeId    String?
   seatNo     String?
   placement  String? // SEAT_BACK, WINDOW, POSTER
-  kind       QrKind  @default(SEAT)
-  isActive   Boolean @default(true)
+  kind       QrKind    @default(SEAT)
+  isActive   Boolean   @default(true)
   printedAt  DateTime?
   replacedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
-  operator Operator? @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  vehicle  Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  route    Route?    @relation(fields: [routeId], references: [id])
+  operator Operator?      @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  route    Route?         @relation(fields: [routeId], references: [id])
   scans    ScanEvent[]
   reviews  RideFeedback[]
   prints   QrPrint[]
@@ -479,13 +485,13 @@ model QrPrint {
 }
 
 model ScanEvent {
-  id        String   @id @default(uuid())
-  qrCodeId  String
-  sessionId String
-  ipHash    String?
-  userAgent String?
-  isFirstScan Boolean @default(true)
-  scannedAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  qrCodeId    String
+  sessionId   String
+  ipHash      String?
+  userAgent   String?
+  isFirstScan Boolean  @default(true)
+  scannedAt   DateTime @default(now())
 
   qrCode QrCode @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
 
@@ -500,13 +506,13 @@ model ScanEvent {
 // ------------------------- MAGAZINE -------------------------
 
 model Category {
-  id       String  @id @default(uuid())
-  slug     String  @unique
-  name     String
-  nameNe   String?
-  colorHex String  @default("F4A024")
-  icon     String?
-  sortOrder Int    @default(0)
+  id        String  @id @default(uuid())
+  slug      String  @unique
+  name      String
+  nameNe    String?
+  colorHex  String  @default("F4A024")
+  icon      String?
+  sortOrder Int     @default(0)
 
   articles Article[]
 
@@ -514,16 +520,16 @@ model Category {
 }
 
 model Issue {
-  id          String        @id @default(uuid())
-  number      Int           @unique
-  title       String
-  titleNe     String?
-  strapline   String?
+  id            String        @id @default(uuid())
+  number        Int           @unique
+  title         String
+  titleNe       String?
+  strapline     String?
   coverImageUrl String?
-  season      String?
-  status      ContentStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime      @default(now())
+  season        String?
+  status        ContentStatus @default(DRAFT)
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
 
   articles Article[]
 
@@ -531,27 +537,27 @@ model Issue {
 }
 
 model Article {
-  id           String        @id @default(uuid())
-  slug         String        @unique
-  title        String
-  subtitle     String?
-  body         String        // markdown
-  coverImageUrl String?
-  audioUrl     String?       // pre-generated TTS, cached offline
-  readMinutes  Int           @default(3)
-  language     Language      @default(EN)
-  status       ContentStatus @default(DRAFT)
-  isSponsored  Boolean       @default(false)
-  isFeatured   Boolean       @default(false)
+  id                String        @id @default(uuid())
+  slug              String        @unique
+  title             String
+  subtitle          String?
+  body              String // markdown
+  coverImageUrl     String?
+  audioUrl          String? // pre-generated TTS, cached offline
+  readMinutes       Int           @default(3)
+  language          Language      @default(EN)
+  status            ContentStatus @default(DRAFT)
+  isSponsored       Boolean       @default(false)
+  isFeatured        Boolean       @default(false)
   /// set when a community post is elevated into the magazine
-  sourcePostId String?       @unique
-  categoryId   String?
-  issueId      String?
-  authorId     String?
+  sourcePostId      String?       @unique
+  categoryId        String?
+  issueId           String?
+  authorId          String?
   sponsorBusinessId String?
-  publishedAt  DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  publishedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   category   Category? @relation(fields: [categoryId], references: [id])
   issue      Issue?    @relation(fields: [issueId], references: [id])
@@ -676,24 +682,24 @@ model AuditEvent {
 }
 
 model Destination {
-  id          String  @id @default(uuid())
-  slug        String  @unique
-  name        String
-  nameNe      String?
-  district    String
-  province    String?
-  latitude    Float
-  longitude   Float
-  description String?
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  nameNe       String?
+  district     String
+  province     String?
+  latitude     Float
+  longitude    Float
+  description  String?
   heroImageUrl String?
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
 
-  articles ArticleDestination[]
-  posts    Post[]
-  places   Place[]
-  businesses Business[]
+  articles        ArticleDestination[]
+  posts           Post[]
+  places          Place[]
+  businesses      Business[]
   creatorJourneys CreatorJourney[]
-  guides   RouteGuide[]
+  guides          RouteGuide[]
 
   @@map("destinations")
 }
@@ -711,35 +717,35 @@ model ArticleDestination {
 // ------------------------- USER-GENERATED CONTENT -------------------------
 
 model Post {
-  id            String           @id @default(uuid())
-  authorId      String
-  title         String
-  body          String
-  template      PostTemplate     @default(FREEFORM)
-  coverImageUrl String?
-  destinationId String?
-  latitude      Float?
-  longitude     Float?
-  locationName  String?
-  status        ContentStatus    @default(DRAFT)
-  moderation    ModerationStatus @default(PENDING)
+  id             String           @id @default(uuid())
+  authorId       String
+  title          String
+  body           String
+  template       PostTemplate     @default(FREEFORM)
+  coverImageUrl  String?
+  destinationId  String?
+  latitude       Float?
+  longitude      Float?
+  locationName   String?
+  status         ContentStatus    @default(DRAFT)
+  moderation     ModerationStatus @default(PENDING)
   moderationNote String?
   /// Client-generated id so an offline draft syncs exactly once.
   /// Kept separate from moderationNote, which moderators overwrite.
-  clientDraftId String?
+  clientDraftId  String?
   /// true once an editor promotes it into a magazine issue
-  isElevated    Boolean          @default(false)
-  publishedAt   DateTime?
+  isElevated     Boolean          @default(false)
+  publishedAt    DateTime?
   /// honours User.publishDelayHours for solo-traveller safety
-  visibleFrom   DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  visibleFrom    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  destination Destination? @relation(fields: [destinationId], references: [id])
-  photos      PostPhoto[]
-  votes       PostVote[]
-  elevatedTo  Article?     @relation("ElevatedPost")
+  author         User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  destination    Destination?         @relation(fields: [destinationId], references: [id])
+  photos         PostPhoto[]
+  votes          PostVote[]
+  elevatedTo     Article?             @relation("ElevatedPost")
   journeyEntries CreatorJourneyPost[]
 
   @@unique([authorId, clientDraftId])
@@ -840,9 +846,9 @@ model Place {
   osmId         String?
   createdAt     DateTime  @default(now())
 
-  destination   Destination?    @relation(fields: [destinationId], references: [id])
+  destination    Destination?     @relation(fields: [destinationId], references: [id])
   itineraryStops ItineraryStop[]
-  guideStops    RouteGuideStop[]
+  guideStops     RouteGuideStop[]
 
   @@index([type])
   @@map("places")
@@ -850,19 +856,19 @@ model Place {
 
 /// Downloadable offline map bundle metadata (MBTiles pack served from CDN).
 model MapPack {
-  id         String   @id @default(uuid())
-  slug       String   @unique
-  name       String
-  region     String
-  version    Int      @default(1)
-  sizeBytes  BigInt
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  region      String
+  version     Int      @default(1)
+  sizeBytes   BigInt
   downloadUrl String
-  checksum   String?
-  minLat     Float
-  minLng     Float
-  maxLat     Float
-  maxLng     Float
-  updatedAt  DateTime @updatedAt
+  checksum    String?
+  minLat      Float
+  minLng      Float
+  maxLat      Float
+  maxLng      Float
+  updatedAt   DateTime @updatedAt
 
   @@map("map_packs")
 }
@@ -870,21 +876,21 @@ model MapPack {
 // ------------------------- ITINERARIES -------------------------
 
 model Itinerary {
-  id            String      @id @default(uuid())
-  userId        String?
-  title         String
-  summary       String?
-  dayCount      Int         @default(1)
-  budgetStyle   BudgetStyle @default(STANDARD)
+  id               String      @id @default(uuid())
+  userId           String?
+  title            String
+  summary          String?
+  dayCount         Int         @default(1)
+  budgetStyle      BudgetStyle @default(STANDARD)
   estimatedCostNpr Int?
-  isTemplate    Boolean     @default(false)
-  isPublic      Boolean     @default(false)
-  shareToken    String?     @unique
-  sourceArticleId String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  isTemplate       Boolean     @default(false)
+  isPublic         Boolean     @default(false)
+  shareToken       String?     @unique
+  sourceArticleId  String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  user User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   days ItineraryDay[]
 
   @@index([isTemplate])
@@ -892,7 +898,7 @@ model Itinerary {
 }
 
 model ItineraryDay {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   itineraryId String
   dayNumber   Int
   title       String?
@@ -924,15 +930,15 @@ model ItineraryStop {
 }
 
 model Permit {
-  id          String  @id @default(uuid())
-  code        String  @unique  // TIMS, ACAP, SNP
-  name        String
-  region      String
-  costNprSaarc Int?
+  id             String  @id @default(uuid())
+  code           String  @unique // TIMS, ACAP, SNP
+  name           String
+  region         String
+  costNprSaarc   Int?
   costNprForeign Int?
-  costNprNepali Int?
-  whereToObtain String
-  notes       String?
+  costNprNepali  Int?
+  whereToObtain  String
+  notes          String?
 
   @@map("permits")
 }
@@ -940,42 +946,42 @@ model Permit {
 // ------------------------- BUSINESS PLATFORM -------------------------
 
 model Business {
-  id          String           @id @default(uuid())
-  slug        String           @unique
-  name        String
-  category    BusinessCategory
-  description String?
-  ownerId     String?
-  destinationId String?
-  district    String?
-  address     String?
-  latitude    Float?
-  longitude   Float?
-  phone       String?
-  whatsapp    String?
-  viber       String?
-  website     String?
-  priceRange  String?          // NPR 1500-4000
-  amenities   String[]         @default([])
-  tier        BusinessTier     @default(FREE)
-  isActive    Boolean          @default(true)
-  verifiedAt  DateTime?
-  verifiedBy  String?
-  verificationNote String?
+  id                 String           @id @default(uuid())
+  slug               String           @unique
+  name               String
+  category           BusinessCategory
+  description        String?
+  ownerId            String?
+  destinationId      String?
+  district           String?
+  address            String?
+  latitude           Float?
+  longitude          Float?
+  phone              String?
+  whatsapp           String?
+  viber              String?
+  website            String?
+  priceRange         String? // NPR 1500-4000
+  amenities          String[]         @default([])
+  tier               BusinessTier     @default(FREE)
+  isActive           Boolean          @default(true)
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  verificationNote   String?
   subscriptionEndsAt DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  owner        User?       @relation("BusinessOwner", fields: [ownerId], references: [id])
-  destination  Destination? @relation(fields: [destinationId], references: [id])
-  photos       BusinessPhoto[]
-  routeTargets BusinessRouteTarget[]
-  coupons      Coupon[]
-  reviews      Review[]
-  leads        BusinessLead[]
-  sponsoredArticles Article[]
-  itineraryStops    ItineraryStop[]
-  guideStops        RouteGuideStop[]
+  owner              User?                 @relation("BusinessOwner", fields: [ownerId], references: [id])
+  destination        Destination?          @relation(fields: [destinationId], references: [id])
+  photos             BusinessPhoto[]
+  routeTargets       BusinessRouteTarget[]
+  coupons            Coupon[]
+  reviews            Review[]
+  leads              BusinessLead[]
+  sponsoredArticles  Article[]
+  itineraryStops     ItineraryStop[]
+  guideStops         RouteGuideStop[]
   subscriptionEvents SubscriptionEvent[]
   advertisements     Advertisement[]
 
@@ -984,11 +990,11 @@ model Business {
 }
 
 model BusinessPhoto {
-  id         String @id @default(uuid())
+  id         String   @id @default(uuid())
   businessId String
   url        String
   caption    String?
-  sortOrder  Int    @default(0)
+  sortOrder  Int      @default(0)
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@map("business_photos")
@@ -1011,7 +1017,7 @@ model Coupon {
   businessId     String
   title          String
   description    String?
-  discountLabel  String   // "10% off", "Free tea"
+  discountLabel  String // "10% off", "Free tea"
   validFrom      DateTime @default(now())
   validTo        DateTime
   maxRedemptions Int?
@@ -1081,14 +1087,14 @@ model BusinessLead {
 /// Billing lifecycle audit. Separate from ModerationEntry because the
 /// scheduler has no moderator to attribute an expiry to.
 model SubscriptionEvent {
-  id          String       @id @default(uuid())
-  businessId  String
-  fromTier    BusinessTier
-  toTier      BusinessTier
-  reason      String       // UPGRADED | RENEWED | EXPIRED | CANCELLED
-  actorId     String?      // null when the nightly job did it
-  note        String?
-  createdAt   DateTime     @default(now())
+  id         String       @id @default(uuid())
+  businessId String
+  fromTier   BusinessTier
+  toTier     BusinessTier
+  reason     String // UPGRADED | RENEWED | EXPIRED | CANCELLED
+  actorId    String? // null when the nightly job did it
+  note       String?
+  createdAt  DateTime     @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
@@ -1128,7 +1134,7 @@ enum AdLinkType {
 /// paused (isActive false), scheduled (before startsAt), expired (after
 /// endsAt), otherwise active — so an expired ad cannot show even if no job ran.
 model Advertisement {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   title            String
   advertiserName   String
   tagline          String?
@@ -1144,12 +1150,12 @@ model Advertisement {
   overviewBody     String?
   overviewImageUrl String?
   businessId       String?
-  isActive         Boolean        @default(true)
-  impressions      Int            @default(0)
-  clicks           Int            @default(0)
+  isActive         Boolean         @default(true)
+  impressions      Int             @default(0)
+  clicks           Int             @default(0)
   createdById      String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
   /// No targets means "show on every route". With targets, the ad only appears to
   /// travellers on those corridors, so a Pokhara hotel isn't sold to a Chitwan bus.
   routeTargets     AdRouteTarget[]
@@ -1245,7 +1251,7 @@ model CreatorJourneyPost {
   postId    String
   dayNumber Int?
   note      String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   journey CreatorJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   post    Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -1366,32 +1372,32 @@ model AdRouteTarget {
 /// A passenger's review of one bus. The owner sees the words and the scores, never
 /// who wrote them: a passenger will not rate a driver honestly with their name attached.
 model RideFeedback {
-  id          String   @id @default(uuid())
-  vehicleId   String?
-  routeId     String?
+  id             String           @id @default(uuid())
+  vehicleId      String?
+  routeId        String?
   /// Device session for signed-out reviewers; used only to stop repeat reviews.
-  sessionId   String?
-  userId      String?
-  ipHash      String?
+  sessionId      String?
+  userId         String?
+  ipHash         String?
   /// Set when the review came from scanning the sticker on that bus.
-  qrCodeId    String?
+  qrCodeId       String?
   /// Set by the server when the review is written: the trip running at the moment of the
   /// scan, else the crew assigned then, else nobody ("crew unknown"). Never sent by the client.
-  tripId      String?
-  driverId    String?
-  conductorId String?
-  overall     Int
-  cleanliness Int?
-  driving     Int?
-  punctuality Int?
-  staff       Int?
-  comment     String?
-  suggestion  String?
-  tripDate    DateTime?
-  moderation  ModerationStatus @default(APPROVED)
+  tripId         String?
+  driverId       String?
+  conductorId    String?
+  overall        Int
+  cleanliness    Int?
+  driving        Int?
+  punctuality    Int?
+  staff          Int?
+  comment        String?
+  suggestion     String?
+  tripDate       DateTime?
+  moderation     ModerationStatus @default(APPROVED)
   ownerReply     String?
   ownerRepliedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt      DateTime         @default(now())
 
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   route     Route?   @relation(fields: [routeId], references: [id])
@@ -1409,13 +1415,13 @@ model RideFeedback {
 }
 
 model LostItem {
-  id          String   @id @default(uuid())
-  vehicleId   String?
-  seatNo      String?
-  description String
+  id           String   @id @default(uuid())
+  vehicleId    String?
+  seatNo       String?
+  description  String
   contactPhone String
-  status      String   @default("OPEN")
-  createdAt   DateTime @default(now())
+  status       String   @default("OPEN")
+  createdAt    DateTime @default(now())
 
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
 
@@ -1425,11 +1431,11 @@ model LostItem {
 // ------------------------- SAFETY -------------------------
 
 model EmergencyNumber {
-  id       String  @id @default(uuid())
-  district String?
-  label    String
-  phone    String
-  category String  // POLICE, AMBULANCE, HOSPITAL, RESCUE, EMBASSY, TOURIST_POLICE
+  id         String  @id @default(uuid())
+  district   String?
+  label      String
+  phone      String
+  category   String // POLICE, AMBULANCE, HOSPITAL, RESCUE, EMBASSY, TOURIST_POLICE
   isNational Boolean @default(false)
 
   @@index([district])
@@ -1497,22 +1503,22 @@ enum MaintenanceKind {
 }
 
 model MaintenanceRecord {
-  id          String          @id @default(uuid())
-  vehicleId   String
-  kind        MaintenanceKind @default(ROUTINE_SERVICE)
-  servicedAt  DateTime
-  odometerKm  Int
-  title       String
-  note        String?
-  workshop    String?
-  costNpr     Int?
-  partsReplaced String[]      @default([])
-  photos      String[]        @default([])
+  id            String          @id @default(uuid())
+  vehicleId     String
+  kind          MaintenanceKind @default(ROUTINE_SERVICE)
+  servicedAt    DateTime
+  odometerKm    Int
+  title         String
+  note          String?
+  workshop      String?
+  costNpr       Int?
+  partsReplaced String[]        @default([])
+  photos        String[]        @default([])
   /// Optional overrides for the next service; otherwise the bus's intervals apply.
-  nextDueDate DateTime?
-  nextDueKm   Int?
-  createdById String?
-  createdAt   DateTime        @default(now())
+  nextDueDate   DateTime?
+  nextDueKm     Int?
+  createdById   String?
+  createdAt     DateTime        @default(now())
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
@@ -1543,22 +1549,22 @@ enum IncidentStatus {
 
 /// Breakdowns and emergency repairs on the road.
 model BusIncident {
-  id          String           @id @default(uuid())
-  vehicleId   String
-  kind        IncidentKind     @default(BREAKDOWN)
-  severity    IncidentSeverity @default(MAJOR)
-  status      IncidentStatus   @default(OPEN)
-  occurredAt  DateTime
-  location    String?
-  odometerKm  Int?
-  description String
-  photos      String[]         @default([])
-  driverId    String?
-  resolvedAt  DateTime?
+  id             String           @id @default(uuid())
+  vehicleId      String
+  kind           IncidentKind     @default(BREAKDOWN)
+  severity       IncidentSeverity @default(MAJOR)
+  status         IncidentStatus   @default(OPEN)
+  occurredAt     DateTime
+  location       String?
+  odometerKm     Int?
+  description    String
+  photos         String[]         @default([])
+  driverId       String?
+  resolvedAt     DateTime?
   resolutionNote String?
   repairCostNpr  Int?
-  reportedById String?
-  createdAt   DateTime         @default(now())
+  reportedById   String?
+  createdAt      DateTime         @default(now())
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driver  Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
@@ -1617,14 +1623,15 @@ model Driver {
   isActive         Boolean    @default(true)
   createdAt        DateTime   @default(now())
 
-  operator    Operator           @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  assignments DriverAssignment[]
-  incidents   BusIncident[]
-  tripsDriven    Trip[]          @relation("TripDriver")
-  tripsConducted Trip[]          @relation("TripConductor")
-  tripsHelped    Trip[]          @relation("TripHelper")
-  reviewsAsDriver    RideFeedback[] @relation("ReviewDriver")
-  reviewsAsConductor RideFeedback[] @relation("ReviewConductor")
+  operator           Operator           @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  assignments        DriverAssignment[]
+  incidents          BusIncident[]
+  tripsDriven        Trip[]             @relation("TripDriver")
+  tripsConducted     Trip[]             @relation("TripConductor")
+  tripsHelped        Trip[]             @relation("TripHelper")
+  reviewsAsDriver    RideFeedback[]     @relation("ReviewDriver")
+  reviewsAsConductor RideFeedback[]     @relation("ReviewConductor")
+  appraisals         DriverAppraisal[]
 
   @@index([operatorId, isActive])
   @@map("drivers")
@@ -1698,6 +1705,57 @@ model Trip {
   @@index([operatorId, departAt])
   @@index([driverId, departAt])
   @@map("trips")
+}
+
+enum AppraisalOutcome {
+  NONE
+  COMMENDATION
+  BONUS
+  TRAINING
+  WARNING
+}
+
+enum AppraisalStatus {
+  DRAFT
+  FINAL
+}
+
+/// A company's appraisal of one crew member over a period. Scores are 1 to 5 (checked in
+/// SQL). A draft starts with scores suggested from the scorecard (kept in `suggested`, so
+/// the screen can show what the data said beside what the owner chose). A final appraisal
+/// can no longer be changed, only acknowledged once it has been discussed with the driver.
+model DriverAppraisal {
+  id               String           @id @default(uuid())
+  operatorId       String
+  driverId         String
+  periodStart      DateTime         @db.Date
+  periodEnd        DateTime         @db.Date
+  drivingScore     Int?
+  punctualityScore Int?
+  conductScore     Int?
+  safetyScore      Int?
+  vehicleCareScore Int?
+  attendanceScore  Int?
+  /// The scorecard's suggestion for each score and what it was based on, when the draft was made.
+  suggested        Json?
+  comments         String?
+  strengths        String?
+  goals            String?
+  outcome          AppraisalOutcome @default(NONE)
+  appraiserId      String?
+  status           AppraisalStatus  @default(DRAFT)
+  finalisedAt      DateTime?
+  acknowledgedAt   DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  operator  Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  appraiser User?    @relation("Appraiser", fields: [appraiserId], references: [id], onDelete: SetNull)
+
+  @@index([operatorId, createdAt])
+  @@index([driverId, periodEnd])
+  @@map("driver_appraisals")
 }
 
 model FuelLog {

@@ -102,7 +102,7 @@ async function replyReview(id){
 async function reportReview(id){
   const done = await openForm({
     title: 'Report this review to Batoma', submitLabel: 'Send report',
-    intro: 'You can’t delete reviews yourself. A Batoma moderator will check this one and remove it if it breaks the rules, for example if it is fake, abusive or about a different bus.',
+    intro: 'You can’t delete reviews yourself. A Batoma moderator will check this one and remove it if it breaks the rules, for example if it is fake, abusive or about a different bus. If it names the wrong driver or conductor, choose that reason: the moderator checks your trip log and moves it to the right crew.',
     fields: [
       { name: 'reason', label: 'Reason', type: 'select', required: true, full: true, options: [['', 'Choose a reason'], ...REPORT_REASONS] },
       { name: 'detail', label: 'Details for the moderator', type: 'textarea', full: true, maxlength: 1000 },
@@ -118,18 +118,21 @@ async function reportReview(id){
 /* ================= crew ================= */
 
 SCREENS.crew = async () => {
-  const drivers = await loadDrivers(true);
+  const [drivers, appraisals] = await Promise.all([
+    loadDrivers(true),
+    api(`/fleet/companies/${state.companyId}/appraisals`),
+  ]);
   state.records.drivers = drivers;
   const active = drivers.filter((d) => d.isActive);
   const licenceIssues = active.filter((d) => ['EXPIRED', 'EXPIRING'].includes(d.licence.state)).length;
   return `
     ${pageHead('Crew', `${plural(active.length, 'active crew member')}${licenceIssues ? ` · ${plural(licenceIssues, 'licence')} need renewing` : ''}`,
-      canManage() ? `<button class="btn btn-primary" data-action="addDriver">+ Add crew member</button>` : '')}
+      `${isOwner() ? `<a class="btn btn-ghost" href="#leaderboard">Leaderboard</a>` : ''}${canManage() ? `<button class="btn btn-primary" data-action="addDriver">+ Add crew member</button>` : ''}`)}
     <section class="panel">
       ${drivers.length ? `<div class="table-wrap"><table>
         <thead><tr><th>Name</th><th>Job</th><th>Phone</th><th>Licence</th><th>Bus</th><th>Breakdowns</th><th>Status</th><th></th></tr></thead>
         <tbody>${drivers.map((d) => `<tr>
-          <td><b>${esc(d.name)}</b>${d.note ? `<div class="muted small">${esc(d.note)}</div>` : ''}</td>
+          <td><a href="#driver/${esc(d.id)}"><b>${esc(d.name)}</b></a>${d.note ? `<div class="muted small">${esc(d.note)}</div>` : ''}</td>
           <td>${esc(DRIVER_ROLE[d.role])}</td>
           <td><a href="tel:${esc(d.phone.replace(/\s/g, ''))}">${esc(d.phone)}</a></td>
           <td>${d.licenceNumber ? esc(d.licenceNumber) : '<span class="muted">—</span>'}
@@ -137,11 +140,13 @@ SCREENS.crew = async () => {
           <td>${d.buses.length ? d.buses.map((b) => `<a href="#bus/${esc(b.id)}/crew"><span class="plate">${esc(b.registrationNo)}</span></a>`).join(' ') : '<span class="muted">Not assigned</span>'}</td>
           <td>${d.incidents || '—'}</td>
           <td>${d.isActive ? pill(['Active', 'good']) : pill(['Inactive', ''])}</td>
-          <td>${canManage() ? `<button class="link" data-action="editDriver" data-id="${esc(d.id)}">Edit</button>` : ''}</td>
+          <td class="nowrap"><a href="#driver/${esc(d.id)}">Scorecard</a>${canManage() ? ` · <button class="link" data-action="editDriver" data-id="${esc(d.id)}">Edit</button>` : ''}</td>
         </tr>`).join('')}</tbody></table></div>`
         : empty('No crew yet. Add your drivers and conductors, then assign them to buses.')}
     </section>
-    <p class="hint">Batoma reminds you 30 days before a driving licence expires. Assign crew to a bus from that bus’s Crew tab.</p>`;
+    ${appraisalsPanel(appraisals)}
+    <p class="hint">Batoma reminds you 30 days before a driving licence expires. Assign crew to a bus from that bus’s Crew tab.
+      Each crew member’s scorecard brings together their trips, fuel, incidents and passenger reviews for any period.</p>`;
 };
 
 const driverFields = (isEdit) => [

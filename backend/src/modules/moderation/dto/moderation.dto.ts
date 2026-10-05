@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Length } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { ModerationAct, ReportReason, TargetType } from '@prisma/client';
 
 export class CreateReportDto {
@@ -15,4 +15,11 @@ export class ModerateDto {
   @IsString() targetId: string;
   @IsEnum(ModerationAct) action: ModerationAct;
   @IsOptional() @IsString() @Length(0, 1000) note?: string;
+}
+
+export class ReassignCrewDto {
+  /** Another trip of the same bus; null or absent means "crew unknown". */
+  @IsOptional() @IsUUID() tripId?: string | null;
+  /** Why: kept in the moderation log and the audit trail. */
+  @IsString() @Length(3, 500) note: string;
 }

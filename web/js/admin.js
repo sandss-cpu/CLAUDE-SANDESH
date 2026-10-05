@@ -319,7 +319,7 @@ function onSignedIn(data){
   }
   saveAuth(data);
   state.login = freshLoginState();
-  state.screen = role === 'ADMIN' ? 'overview' : (role === 'EDITOR' ? 'articles' : 'moderation');
+  state.screen = defaultScreen(role);
   renderRoot();
 }
 
@@ -414,6 +414,11 @@ const SECTIONS = [
   ['moderation', 'Moderation', ['MODERATOR', 'ADMIN']],
   ['users', 'Users', ['MODERATOR', 'ADMIN']],
 ];
+
+/** Where each role starts: a moderator cannot load articles, so must never land on them. */
+function defaultScreen(role){
+  return role === 'ADMIN' ? 'overview' : role === 'EDITOR' ? 'articles' : 'moderation';
+}
 
 function visibleSections(){
   const role = state.auth?.user?.role;
@@ -769,7 +774,8 @@ async function publishIssue(id){
 
 const REASON_LABEL = {
   SPAM: 'Spam', HARASSMENT: 'Harassment', MISINFORMATION: 'Misinformation', ILLEGAL: 'Illegal or dangerous',
-  SEXUAL_CONTENT: 'Sexual content', COPYRIGHT: 'Copyright', UNSAFE_BUSINESS: 'Unsafe business', OTHER: 'Other',
+  SEXUAL_CONTENT: 'Sexual content', COPYRIGHT: 'Copyright', UNSAFE_BUSINESS: 'Unsafe business',
+  WRONG_CREW: 'Wrong crew named', OTHER: 'Other',
 };
 
 const queueTotal = (q) => q.reportedItems + q.pendingPosts + q.pendingComments + q.pendingReviews + (q.pendingBusReviews || 0);
@@ -891,6 +897,8 @@ function reportCard(g){
             ${p.text ? `<p>${esc(p.text)}</p>` : ''}
             ${author && g.targetType !== 'USER' ? `<div class="hint">By ${esc(author.name)}${author.isSuspended ? ' · suspended' : ''}</div>` : ''}
             ${p.note ? `<div class="hint">${esc(p.note)}</div>` : ''}
+            ${p.crew ? `<div class="hint">Crew named: ${p.crew.driver ? `driver ${esc(p.crew.driver)}` : 'no driver'}${p.crew.conductor ? `, conductor ${esc(p.crew.conductor)}` : ''}
+              · ${p.crew.fromTrip ? 'from the trip log' : p.crew.driver || p.crew.conductor ? 'from the bus’s roster' : 'crew unknown'} · written ${fmtDate(p.writtenAt)}</div>` : ''}
           </div>
         </div>` : `
         <div class="empty" style="padding:6px 0">This content has already been removed. Close the reports to clear it from the queue.</div>`}
@@ -901,8 +909,10 @@ function reportCard(g){
             <li><b>${esc(REASON_LABEL[d.reason] || d.reason)}:</b> ${esc(d.detail)}
               <span class="hint">· ${esc(d.reporter)}, ${fmtDate(d.at)}</span></li>`).join('')}</ul>
         </details>` : ''}
+      ${g.wrongCrew && p ? crewFixPanel(g.targetId) : ''}
       <div class="row-actions" style="margin-top:12px">
         ${p ? `
+          ${g.wrongCrew && state.moderation.crewFix?.reviewId !== g.targetId ? `<button class="btn btn-sm btn-brand" data-action="openCrewFix" data-id="${g.targetId}">Fix the crew</button>` : ''}
           <button class="btn btn-sm" data-action="decideReport" data-key="${key}" data-act="APPROVE">Keep it</button>
           ${['POST', 'COMMENT', 'BUS_REVIEW'].includes(g.targetType) ? `<button class="btn btn-sm" data-action="decideReport" data-key="${key}" data-act="HIDE">Hide</button>` : ''}
           <button class="btn btn-sm btn-danger" data-action="decideReport" data-key="${key}" data-act="DELETE">${removeLabel(g.targetType)}</button>
@@ -911,6 +921,51 @@ function reportCard(g){
         ` : `<button class="btn btn-sm" data-action="decideReport" data-key="${key}" data-act="APPROVE">Close reports</button>`}
       </div>
     </article>`;
+}
+
+/* ---- crew disputes: a bus company says a review names the wrong driver ---- */
+
+/** The bus's trips around the review, to move it to the right crew or to "crew unknown". */
+function crewFixPanel(reviewId){
+  const fix = state.moderation.crewFix;
+  if(fix?.reviewId !== reviewId) return '';
+  const o = fix.options;
+  const trip = (t) => `<label class="crew-option"><input type="radio" name="tripId" value="${t.id}" ${t.current ? 'checked' : ''}>
+    <span><b>${esc(fmtDate(t.departAt))}</b> · ${esc(t.route || 'No route')} ${t.direction === 'REVERSE' ? '(return)' : ''}
+      · driver ${esc(t.driver || 'not recorded')}${t.conductor ? `, conductor ${esc(t.conductor)}` : ''}${t.current ? ' · <i>named now</i>' : ''}</span></label>`;
+  return `<form class="crew-fix" data-submit="reassignCrew" data-id="${reviewId}">
+    <p class="hint">Review written ${esc(fmtDate(o.review.writtenAt))} on ${esc(o.review.bus.plateNo || '')} (${esc(o.review.bus.company || '')}).
+      ${o.disputes.map((d) => d.detail ? `The company says: “${esc(d.detail)}”` : '').join(' ')}</p>
+    <fieldset><legend>Who was on duty?</legend>
+      ${o.trips.length ? o.trips.map(trip).join('') : '<p class="hint">This bus logged no trips in the day before the review.</p>'}
+      <label class="crew-option"><input type="radio" name="tripId" value="" ${o.review.tripId ? '' : 'checked'}><span><b>Crew unknown</b> · take the review off every crew member</span></label>
+    </fieldset>
+    <label for="crew-note-${reviewId}">Note for the audit log</label>
+    <input id="crew-note-${reviewId}" name="note" required minlength="3" maxlength="500" placeholder="e.g. Trip log shows Hari drove the 07:00 run">
+    <div class="row-actions" style="margin-top:10px">
+      <button class="btn btn-sm btn-brand" type="submit">Move the review</button>
+      <button class="btn btn-sm" type="button" data-action="closeCrewFix">Cancel</button>
+    </div>
+    <p class="hint">Only who the review is about changes. Its stars and words stay as the passenger wrote them, and the reviewer is never shown.</p>
+  </form>`;
+}
+
+async function openCrewFix(reviewId){
+  try{
+    state.moderation.crewFix = { reviewId, options: await api(`/moderation/bus-reviews/${reviewId}/crew`) };
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+async function reassignCrew(form, ev){
+  ev.preventDefault();
+  const tripId = form.elements.tripId.value || null;
+  try{
+    await api(`/moderation/bus-reviews/${form.dataset.id}/crew`, { method: 'POST', body: { tripId, note: form.elements.note.value.trim() } });
+    state.moderation.crewFix = null;
+    notify(tripId ? 'Review moved to that trip’s crew. The dispute is closed.' : 'Review is now “crew unknown”. The dispute is closed.');
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
 }
 
 async function screenModeration(){
@@ -2316,6 +2371,8 @@ Actions.on({
   // moderation and users
   moderate: (el) => moderate(el.dataset.type, el.dataset.id, el.dataset.act),
   decideReport: (el) => decideReport(el.dataset.key, el.dataset.act),
+  openCrewFix: (el) => openCrewFix(el.dataset.id),
+  closeCrewFix: () => { state.moderation.crewFix = null; renderMain(); },
   setModerationTab: (el) => { state.moderation.tab = el.dataset.tab; renderMain(); },
   suspendUser: (el) => suspendUser(el.dataset.id),
   unsuspendUser: (el) => unsuspendUser(el.dataset.id),
@@ -2365,6 +2422,7 @@ Actions.onSubmit({
   saveStop: (el, ev) => saveStop(ev, nullIfBlank(el.dataset.id)),
   createIssue: (el, ev) => createIssue(ev),
   searchFleet: (el, ev) => { ev.preventDefault(); state.fleet.q = el.elements.q.value.trim(); renderMain(); },
+  reassignCrew: (el, ev) => reassignCrew(el, ev),
 });
 
 Actions.onChange({
@@ -2394,8 +2452,8 @@ loadAuth();
 if(state.auth && !['EDITOR','MODERATOR','ADMIN'].includes(state.auth.user?.role)){
   state.auth = null; localStorage.removeItem('bato.admin.auth');
 }
-if(state.auth){
-  const role = state.auth.user.role;
-  if(!visibleSections().length) state.screen = 'articles';
+// A reload keeps the session but not the screen: start where this role is allowed to be.
+if(state.auth && !visibleSections().some(([key]) => key === state.screen)){
+  state.screen = defaultScreen(state.auth.user.role);
 }
 renderRoot();

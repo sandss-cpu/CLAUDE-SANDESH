@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Ip, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role, TargetType } from '@prisma/client';
 import { ModerationService } from './moderation.service';
-import { CreateReportDto, ModerateDto } from './dto/moderation.dto';
+import { CreateReportDto, ModerateDto, ReassignCrewDto } from './dto/moderation.dto';
 import { OptionalAuth } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -50,6 +50,17 @@ export class ModerationController {
   @Roles(Role.MODERATOR, Role.ADMIN) @Post('act')
   act(@Body() dto: ModerateDto, @CurrentUser('id') moderatorId: string) {
     return this.moderation.act(dto, moderatorId);
+  }
+
+  /** A bus company's crew dispute: the review's current crew and the bus's trips around it. */
+  @Roles(Role.MODERATOR, Role.ADMIN) @Get('bus-reviews/:id/crew')
+  crewOptions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.moderation.crewOptions(id);
+  }
+
+  @Roles(Role.MODERATOR, Role.ADMIN) @Post('bus-reviews/:id/crew')
+  reassignCrew(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReassignCrewDto, @CurrentUser('id') moderatorId: string, @Ip() ip: string) {
+    return this.moderation.reassignCrew(id, dto, moderatorId, ip);
   }
 
   @Roles(Role.MODERATOR, Role.ADMIN) @Get('audit')

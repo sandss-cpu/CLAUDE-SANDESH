@@ -193,3 +193,45 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   network content can show. Inline scripts would save one, and the brief rules them out.
   In production the `/api` rewrite (step 11) removes the cross-origin preflight, and
   Render serves the files with Brotli.
+
+## Step 6: scorecards and appraisals (Feature 5, part two)
+
+- **Passenger scores are a Bayesian average with C = 10**, the prior being the company's
+  own mean over the same period, computed per score (overall, driving, punctuality,
+  staff) because part scores are optional. Under 10 reviews a driver is shown "Not
+  enough reviews yet": no score to judge on and no rank. The prior is rounded to two
+  places before use; the fixture in `scorecard.spec.ts` works every figure by hand.
+- **Reviews count towards whoever the server attributed them to**: the logged trip, or
+  the roster at the time. The scorecard says how many came from a logged trip.
+- **Fuel is measured per tank, not per trip.** A trip's kilometres are placed in the
+  full-to-full stretch their odometer readings fall in (split across a refill), and use
+  that stretch's km/l. Two drivers sharing a tank share its figure; the scorecard says
+  how many trips the number rests on. The driver is compared with **the same buses**
+  driven by anyone, the fair comparison, as well as with the company average the brief
+  asks for: a minibus and a coach burn very differently whoever drives.
+- **Comment themes come from a word list, not sentiment analysis**: English words (whole
+  words, `*` for stems) and Nepali phrases, counted once per review. A negated mention of
+  praise ("not safe") counts as the matching complaint. Devanagari has no reliable word
+  boundary in a regex, so Nepali phrases match anywhere.
+- **Suggested appraisal scores only where the data can speak.** Driving, punctuality and
+  conduct come from passenger scores (10 or more of that score); safety from accidents,
+  less a point for three or more complaints about unsafe driving; vehicle care from km/l
+  against the same buses; attendance from trips against the company's average per
+  driver. Anything else is left empty for the owner, never guessed. What the data said
+  is frozen into the draft (`suggested`), beside what the owner chose.
+- **Owners and managers write appraisals; only owners see the leaderboard.** A final
+  appraisal cannot be changed or deleted, only acknowledged once it has been discussed
+  with the driver. Every step is audited. SQL checks keep scores in 1–5 and refuse a
+  final appraisal with a score missing.
+- **Crew disputes go to Batoma moderation** (`ReportReason.WRONG_CREW`). Only the bus
+  company can raise one, it never counts towards auto-hiding the review, and a
+  moderator settles it by moving the review to another trip of the same bus or to
+  "crew unknown". The stars and words stay as written; the reviewer is never shown.
+  Owners still cannot move or edit a review themselves.
+- **The appraisal PDF draws text in script runs.** The vendored Mukta files are split
+  by script, and the Devanagari one has only the space and the danda besides its
+  letters, so punctuation and digits are drawn with the Latin file. Dates are the
+  Kathmandu day, in AD and BS.
+- **A demo duty log** (`npm run seed:trips`, also run by the fleet demo) lays trips
+  between the demo fuel fills, ending at least two days ago, so the demo scorecards have
+  something to show and nothing collides with a test run.

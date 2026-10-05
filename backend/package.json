@@ -18,6 +18,7 @@
     "seed:guides": "ts-node prisma/guides-demo.ts",
     "seed:creators": "ts-node prisma/creators-demo.ts",
     "seed:itinerary": "ts-node prisma/place-itinerary-demo.ts",
+    "seed:trips": "ts-node prisma/fleet-trips-demo.ts",
     "theme:set": "ts-node prisma/set-theme.ts",
     "test": "jest",
     "test:cov": "jest --coverage",

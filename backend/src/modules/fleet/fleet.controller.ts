@@ -6,6 +6,8 @@ import { FleetRecordsService } from './fleet-records.service';
 import { BusReviewsService } from './bus-reviews.service';
 import { TripsService } from './trips.service';
 import { StickersService } from './stickers.service';
+import { ScorecardService } from './scorecard.service';
+import { AppraisalsService } from './appraisals.service';
 import { FleetAccessService } from './fleet-access.service';
 import type { Response } from 'express';
 import { sendFile as send } from '../../common/utils/send-file';
@@ -14,6 +16,7 @@ import {
   DriverDto, FuelDto, IncidentDto, MaintenanceDto, OwnerReportDto, ReplyDto, ResolveIncidentDto,
   ReviewListQueryDto, UpdateBusDto, UpdateCompanyDto,
   EndTripDto, StartTripDto, StickerQueryDto, TripListQueryDto, UnlockTripDto, UpdateTripDto,
+  AppraisalListQueryDto, CreateAppraisalDto, ScorecardQueryDto, UpdateAppraisalDto,
 } from './dto/fleet.dto';
 
 
@@ -30,7 +33,63 @@ export class FleetController {
     private trips: TripsService,
     private stickers: StickersService,
     private access: FleetAccessService,
+    private scorecards: ScorecardService,
+    private appraisals: AppraisalsService,
   ) {}
+
+  // ---- scorecards and appraisals (owners and managers; the leaderboard is owners only) ----
+
+  @Get('drivers/:id/scorecard')
+  scorecard(@Param('id') id: string, @Query() q: ScorecardQueryDto, @CurrentUser('id') uid: string) {
+    return this.scorecards.scorecard(id, q.from, q.to, uid);
+  }
+
+  @Get('companies/:cid/leaderboard')
+  leaderboard(@Param('cid') cid: string, @Query() q: ScorecardQueryDto, @CurrentUser('id') uid: string) {
+    return this.scorecards.leaderboard(cid, q.from, q.to, uid);
+  }
+
+  @Get('companies/:cid/appraisals')
+  companyAppraisals(@Param('cid') cid: string, @Query() q: AppraisalListQueryDto, @CurrentUser('id') uid: string) {
+    return this.appraisals.forCompany(cid, q, uid);
+  }
+
+  @Get('drivers/:id/appraisals')
+  driverAppraisals(@Param('id') id: string, @CurrentUser('id') uid: string) { return this.appraisals.forDriver(id, uid); }
+
+  @Post('drivers/:id/appraisals')
+  createAppraisal(@Param('id') id: string, @Body() dto: CreateAppraisalDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.appraisals.create(id, dto, uid, ip);
+  }
+
+  @Get('appraisals/:aid')
+  appraisal(@Param('aid') aid: string, @CurrentUser('id') uid: string) { return this.appraisals.one(aid, uid); }
+
+  @Patch('appraisals/:aid')
+  updateAppraisal(@Param('aid') aid: string, @Body() dto: UpdateAppraisalDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.appraisals.update(aid, dto, uid, ip);
+  }
+
+  @Post('appraisals/:aid/finalise')
+  finaliseAppraisal(@Param('aid') aid: string, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.appraisals.finalise(aid, uid, ip);
+  }
+
+  @Post('appraisals/:aid/acknowledge')
+  acknowledgeAppraisal(@Param('aid') aid: string, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.appraisals.acknowledge(aid, uid, ip);
+  }
+
+  @Delete('appraisals/:aid')
+  deleteAppraisal(@Param('aid') aid: string, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.appraisals.remove(aid, uid, ip);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Get('appraisals/:aid/pdf')
+  async appraisalPdf(@Param('aid') aid: string, @CurrentUser('id') uid: string, @Res() res: Response) {
+    send(res, await this.appraisals.pdf(aid, uid));
+  }
 
   // ---- trips: the duty log (crew accounts can start and end them) ----
 

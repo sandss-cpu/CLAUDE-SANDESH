@@ -63,6 +63,8 @@ bash scripts/fleet_smoke.sh ../Bato_Test_Accounts.md
 bash scripts/programming_smoke.sh ../Bato_Test_Accounts.md   # route programming
 bash scripts/trips_smoke.sh ../Bato_Test_Accounts.md         # duty log (run the API with THROTTLE_DISABLED=true)
 bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, stickers, print history
+bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appraisals, crew disputes, cross-company 404s
+npm run seed:trips             # demo duty log between the demo fuel fills
 node ../scripts/sync-web-libs.mjs                               # after changing common/utils/bs-date.ts or web/css/fonts.css
 npm test                       # unit tests over the pure logic, including content-for
 ```
@@ -131,7 +133,11 @@ when a signed-in user should be recognised but anonymous access is still allowed
   OWNER or MANAGER, and non-members get 404. Every service method calls
   `access.company()` or `access.bus()` first; new endpoints must too.
   `StickersService` owns the one active BUS code per bus (`ensureBusCode`, a partial
-  unique index backs it) and draws stickers with pdfkit; every download is a `QrPrint`
+  unique index backs it) and draws stickers with pdfkit; every download is a `QrPrint`.
+  `scorecard.ts` holds the pure scorecard maths (Bayesian C = 10, the 10-review threshold,
+  per-tank fuel, comment themes, appraisal suggestions), `ScorecardService` loads one
+  company's period once for it, and `AppraisalsService` runs drafts, finalising and
+  acknowledging. A final appraisal is immutable; every step is audited
 - **ads**: twelve placements, and `AdRouteTarget` aims an ad at corridors. `slot()` serves
   targeted ads first and fills the rest with untargeted ones; an ad targeted elsewhere
   never appears, and with no `routeId` only untargeted ads show
@@ -295,8 +301,11 @@ by killing whatever `lsof -ti :3000` returns.
 - **Bus reviews are anonymous to the owner.** A passenger will not rate a driver honestly
   with their name attached. `ownerReviewView()` never includes `userId`, `sessionId` or
   `ipHash`, and moderators' previews don't either
-- **Owners can't delete reviews.** They reply publicly or report to Bato; otherwise the
-  ratings would only ever go up
+- **Owners can't delete reviews.** They reply publicly or report to Batoma; otherwise the
+  ratings would only ever go up. Nor can they move a review between drivers: a review
+  that names the wrong crew is disputed (`WRONG_CREW`) and a moderator re-attributes it
+- **A driver with fewer than 10 reviews has no passenger score to judge on**, however
+  good the few are. The leaderboard lists them unranked rather than last
 - **Bus company verification is manual**, for the same reason as business verification
 - **Coupons exist for attribution, not discounts.** `CouponRedemption` is the proof
   shown on the business dashboard that the platform sent a real customer. It is what

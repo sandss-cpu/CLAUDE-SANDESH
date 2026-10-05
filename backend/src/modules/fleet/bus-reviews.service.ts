@@ -451,12 +451,16 @@ export class BusReviewsService {
     return ownerReviewView(updated);
   }
 
-  /** Owners can't delete reviews; they report them, and a Bato moderator decides. */
+  /**
+   * Owners can't delete reviews; they report them, and a Batoma moderator decides. A report
+   * that the review names the wrong crew (WRONG_CREW) goes to moderation too: owners can
+   * never move a review between drivers themselves.
+   */
   async report(reviewId: string, dto: OwnerReportDto, userId: string, ip?: string) {
     await this.reviewForMember(reviewId, userId, 'VIEW');
     return this.moderation.report(
       { targetType: TargetType.BUS_REVIEW, targetId: reviewId, reason: dto.reason, detail: dto.detail },
-      userId, ip,
+      userId, ip, true,
     );
   }
 }

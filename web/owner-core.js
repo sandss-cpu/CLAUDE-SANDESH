@@ -43,7 +43,8 @@ const VERIFICATION = {
 };
 const REPORT_REASONS = [
   ['SPAM', 'Spam or fake'], ['HARASSMENT', 'Abusive or hateful'], ['MISINFORMATION', 'False or misleading'],
-  ['SEXUAL_CONTENT', 'Sexual content'], ['ILLEGAL', 'Illegal or dangerous'], ['OTHER', 'Something else'],
+  ['SEXUAL_CONTENT', 'Sexual content'], ['ILLEGAL', 'Illegal or dangerous'],
+  ['WRONG_CREW', 'Names the wrong driver or conductor'], ['OTHER', 'Something else'],
 ];
 const PARTS = [['cleanliness', 'Cleanliness'], ['driving', 'Safe driving'], ['punctuality', 'On time'], ['staff', 'Staff']];
 
@@ -684,7 +685,7 @@ function renderShell(){
       ${companyBox}
     </div>
     ${c ? `<nav aria-label="Owner portal">
-      ${(isCrew() ? CREW_NAV : NAV).map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') ? 'aria-current="page"' : ''}>
+      ${(isCrew() ? CREW_NAV : NAV).map(([key, label, icon]) => `<a href="#${key}" ${screen === key || (key === 'buses' && screen === 'bus') || (key === 'crew' && ['driver', 'appraisal', 'leaderboard'].includes(screen)) ? 'aria-current="page"' : ''}>
         <span class="ico" aria-hidden="true">${icon}</span>${label}
         ${key === 'reminders' && state.unread ? `<span class="badge" aria-label="${state.unread} unread">${state.unread}</span>` : ''}</a>`).join('')}
     </nav>` : ''}

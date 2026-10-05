@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ContentStatus, ModerationAct, ModerationStatus, ReportStatus, TargetType } from '@prisma/client';
+import { ContentStatus, ModerationAct, ModerationStatus, ReportReason, ReportStatus, TargetType } from '@prisma/client';
 import { createHash } from 'crypto';
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CreateReportDto, ModerateDto } from './dto/moderation.dto';
+import { CreateReportDto, ModerateDto, ReassignCrewDto } from './dto/moderation.dto';
 
 /** Distinct people whose open reports take a live vlog or comment out of public view. */
 export const AUTO_HIDE_AT = 3;
@@ -18,18 +19,29 @@ const excerpt = (s?: string | null, max = 280) =>
  */
 @Injectable()
 export class ModerationService {
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(private prisma: PrismaService, private config: ConfigService, private audit: AuditService) {}
 
-  async report(dto: CreateReportDto, reporterId?: string, ip?: string) {
+  /**
+   * `fromCompany` is set only by the owner portal's own report route, after it has
+   * checked membership: a crew dispute (WRONG_CREW) can only come from the bus company,
+   * the one party that knows who was really driving.
+   */
+  async report(dto: CreateReportDto, reporterId?: string, ip?: string, fromCompany = false) {
     if (!reporterId && !dto.sessionId) {
       throw new BadRequestException('Reload the page and try reporting again.');
+    }
+    const crewDispute = dto.reason === ReportReason.WRONG_CREW;
+    if (crewDispute && (!fromCompany || dto.targetType !== TargetType.BUS_REVIEW)) {
+      throw new ForbiddenException('Only the bus company can say a review names the wrong crew.');
     }
     await this.assertTargetExists(dto.targetType, dto.targetId);
 
     // One open report per person per item: repeat taps and double submits change nothing.
+    // A crew dispute is its own question, so it does not collide with a report about the words.
     const existing = await this.prisma.report.findFirst({
       where: {
         targetType: dto.targetType, targetId: dto.targetId, status: ReportStatus.OPEN,
+        reason: crewDispute ? ReportReason.WRONG_CREW : { not: ReportReason.WRONG_CREW },
         ...(reporterId ? { reporterId } : { reporterId: null, sessionId: dto.sessionId }),
       },
       select: { id: true },
@@ -48,7 +60,8 @@ export class ModerationService {
       },
     });
 
-    const hidden = await this.autoHideIfNeeded(dto.targetType, dto.targetId);
+    // A wrong name on the crew says nothing about what the passenger wrote: it never hides a review.
+    const hidden = crewDispute ? false : await this.autoHideIfNeeded(dto.targetType, dto.targetId);
     return { reported: true, duplicate: false, hidden };
   }
 
@@ -80,7 +93,7 @@ export class ModerationService {
     const hideable: TargetType[] = [TargetType.POST, TargetType.COMMENT, TargetType.BUS_REVIEW];
     if (!hideable.includes(targetType)) return false;
     const open = await this.prisma.report.findMany({
-      where: { targetType, targetId, status: ReportStatus.OPEN },
+      where: { targetType, targetId, status: ReportStatus.OPEN, reason: { not: ReportReason.WRONG_CREW } },
       select: { reporterId: true, ipHash: true, sessionId: true },
     });
     const people = new Set(open.map((r) => r.reporterId ?? `net:${r.ipHash ?? r.sessionId}`));
@@ -174,7 +187,8 @@ export class ModerationService {
       this.prisma.rideFeedback.findMany({
         where: { id: { in: ids(TargetType.BUS_REVIEW) } },
         select: {
-          id: true, overall: true, comment: true, suggestion: true, moderation: true, ownerReply: true,
+          id: true, overall: true, comment: true, suggestion: true, moderation: true, ownerReply: true, createdAt: true,
+          tripId: true, driver: { select: { name: true } }, conductor: { select: { name: true } },
           vehicle: { select: { plateNo: true, operator: { select: { name: true } } } },
         },
       }),
@@ -229,12 +243,14 @@ export class ModerationService {
               title: `${r.overall}★`,
               text: excerpt([r.comment, r.suggestion && `Suggestion: ${r.suggestion}`, r.ownerReply && `Owner replied: ${r.ownerReply}`].filter(Boolean).join('\n')),
               visibility: r.moderation === ModerationStatus.APPROVED ? 'Live' : 'Hidden until reviewed',
+              writtenAt: r.createdAt,
+              crew: { driver: r.driver?.name ?? null, conductor: r.conductor?.name ?? null, fromTrip: !!r.tripId },
             };
           }
           break;
         }
       }
-      return { ...g, preview };
+      return { ...g, wrongCrew: !!g.reasons[ReportReason.WRONG_CREW], preview };
     });
   }
 
@@ -391,6 +407,98 @@ export class ModerationService {
     });
 
     return { moderated: true, action: dto.action };
+  }
+
+  // ================= crew disputes =================
+
+  /**
+   * What a moderator needs to settle a crew dispute: who the review names now, and every
+   * trip that bus logged around the time it was written. The reviewer is never included.
+   */
+  async crewOptions(reviewId: string) {
+    const review = await this.prisma.rideFeedback.findUnique({
+      where: { id: reviewId },
+      select: {
+        id: true, overall: true, createdAt: true, vehicleId: true, tripId: true,
+        driver: { select: { id: true, name: true } }, conductor: { select: { id: true, name: true } },
+        vehicle: { select: { plateNo: true, label: true, operator: { select: { name: true } } } },
+      },
+    });
+    if (!review || !review.vehicleId) throw new NotFoundException('That review is no longer available.');
+    // Passengers usually review during the ride or soon after it: a day before, an hour after.
+    const trips = await this.prisma.trip.findMany({
+      where: {
+        vehicleId: review.vehicleId,
+        departAt: { gte: new Date(review.createdAt.getTime() - 24 * 3_600_000), lte: new Date(review.createdAt.getTime() + 3_600_000) },
+      },
+      orderBy: { departAt: 'desc' },
+      take: 20,
+      select: {
+        id: true, departAt: true, arriveAt: true, direction: true, status: true,
+        driver: { select: { name: true } }, conductor: { select: { name: true } }, route: { select: { name: true } },
+      },
+    });
+    const disputes = await this.prisma.report.findMany({
+      where: { targetType: TargetType.BUS_REVIEW, targetId: reviewId, reason: ReportReason.WRONG_CREW, status: ReportStatus.OPEN },
+      select: { detail: true, createdAt: true },
+    });
+    return {
+      review: {
+        id: review.id, overall: review.overall, writtenAt: review.createdAt, tripId: review.tripId,
+        driver: review.driver?.name ?? null, conductor: review.conductor?.name ?? null,
+        bus: { plateNo: review.vehicle?.plateNo, label: review.vehicle?.label, company: review.vehicle?.operator.name },
+      },
+      disputes,
+      trips: trips.map((t) => ({
+        id: t.id, departAt: t.departAt, arriveAt: t.arriveAt, direction: t.direction, status: t.status,
+        route: t.route?.name ?? null, driver: t.driver?.name ?? null, conductor: t.conductor?.name ?? null,
+        current: t.id === review.tripId,
+      })),
+    };
+  }
+
+  /**
+   * Moves a review to another trip of the same bus, taking that trip's crew, or to nobody
+   * ("crew unknown"). The scores and words are untouched: only who they are about changes.
+   */
+  async reassignCrew(reviewId: string, dto: ReassignCrewDto, moderatorId: string, ip?: string) {
+    const review = await this.prisma.rideFeedback.findUnique({
+      where: { id: reviewId },
+      select: { id: true, vehicleId: true, tripId: true, driverId: true, conductorId: true, vehicle: { select: { operatorId: true, plateNo: true } } },
+    });
+    if (!review || !review.vehicleId) throw new NotFoundException('That review is no longer available.');
+
+    let crew = { tripId: null as string | null, driverId: null as string | null, conductorId: null as string | null };
+    let label = 'crew unknown';
+    if (dto.tripId) {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: dto.tripId },
+        select: { id: true, vehicleId: true, driverId: true, conductorId: true, departAt: true, driver: { select: { name: true } } },
+      });
+      if (!trip || trip.vehicleId !== review.vehicleId) {
+        throw new BadRequestException('Choose a trip of the same bus.');
+      }
+      crew = { tripId: trip.id, driverId: trip.driverId, conductorId: trip.conductorId };
+      label = `the trip of ${trip.departAt.toISOString()} (driver ${trip.driver?.name ?? 'not recorded'})`;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.rideFeedback.update({ where: { id: reviewId }, data: crew });
+      await tx.moderationEntry.create({
+        data: { moderatorId, targetType: TargetType.BUS_REVIEW, targetId: reviewId, action: ModerationAct.REASSIGN_CREW, note: dto.note },
+      });
+      await tx.report.updateMany({
+        where: { targetType: TargetType.BUS_REVIEW, targetId: reviewId, reason: ReportReason.WRONG_CREW, status: ReportStatus.OPEN },
+        data: { status: ReportStatus.ACTIONED },
+      });
+      await this.audit.record({
+        actorId: moderatorId, action: 'review.crew', entityType: 'RideFeedback', entityId: reviewId,
+        operatorId: review.vehicle?.operatorId ?? null, ip,
+        summary: `Review on ${review.vehicle?.plateNo ?? 'a bus'} moved to ${label}: ${dto.note}`,
+        before: { tripId: review.tripId, driverId: review.driverId, conductorId: review.conductorId }, after: crew,
+      }, tx);
+    });
+    return { reassigned: true, ...crew };
   }
 
   auditTrail(targetType: TargetType, targetId: string) {

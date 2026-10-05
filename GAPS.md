@@ -70,13 +70,18 @@ than a week.
 - A unit test keeps the pages honest: no third-party scripts or stylesheets, no inline
   code on the converted pages, and every pre-cached file exists.
 
+## Done in step 6
+
+- Driver scorecards for any period, the owners' leaderboard, appraisals with a printable
+  English and Nepali PDF, and crew disputes settled by moderators.
+- A moderator signed in on a reload no longer lands on Articles, which they cannot load.
+
 ## Remaining gaps
 
 ### Covered by later Phase 3 steps
 
 | Gap | Step | Effort |
 |---|---|---|
-| Driver scorecards and appraisals (review attribution to trip and crew is done) | 6 | L |
 | Income records | 7 | L |
 | Reading UI: summaries, "In brief", "Keep reading", the stops timeline | 8 | L |
 | **No business owner area in the web app.** `/businesses/mine`, `/:id/dashboard`, coupon creation and redemption, and review replies have no page. | 9 (`business.html`) | M |

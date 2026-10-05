@@ -60,10 +60,14 @@ ok "still one active code" 1 "$(sql "select count(*) from qr_codes where \"vehic
 ok "the replacement is audited" 1 "$(sql "select count(*) from audit_events where action='qr.rotate' and \"createdAt\" >= '$START' and summary like '%$OLD%$NEW%'")"
 
 echo "== archive and restore"
+# Archiving takes the crew off the bus; remember who was on it so the clean-up puts them back.
+CREW_ROWS=$(sql "select string_agg('''' || id || '''', ',') from driver_assignments where \"vehicleId\"='$BUS' and \"endedAt\" is null")
 sql "update qr_codes set \"isActive\"=false where \"vehicleId\"='$BUS' and kind='BUS'" >/dev/null
 ok "archive the bus" 200 "$(call PATCH "/fleet/buses/$BUS/archive" "$OWNER" '{"archived":true}')"
 ok "restoring it" 200 "$(call PATCH "/fleet/buses/$BUS/archive" "$OWNER" '{"archived":false}')"
 ok "gives it a working code again" 1 "$(sql "select count(*) from qr_codes where \"vehicleId\"='$BUS' and kind='BUS' and \"isActive\"")"
+ok "archiving took the crew off it" 0 "$(sql "select count(*) from driver_assignments where \"vehicleId\"='$BUS' and \"endedAt\" is null")"
+[ -n "$CREW_ROWS" ] && sql "update driver_assignments set \"endedAt\"=null where id in ($CREW_ROWS)" >/dev/null
 
 echo "== clean up"
 # Back to the sticker the bus had, so printed test stickers keep working.

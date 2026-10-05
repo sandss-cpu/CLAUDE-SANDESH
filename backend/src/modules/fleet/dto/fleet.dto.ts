@@ -4,7 +4,7 @@ import {
   IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min,
 } from 'class-validator';
 import {
-  BusDocumentType, BusStatus, DriverRole, IncidentKind, IncidentSeverity, MaintenanceKind,
+  AppraisalOutcome, AppraisalStatus, BusDocumentType, BusStatus, DriverRole, IncidentKind, IncidentSeverity, MaintenanceKind,
   OperatorMemberRole, OperatorVerification, ReportReason,
 } from '@prisma/client';
 
@@ -460,4 +460,46 @@ export class StickerQueryDto {
 
   @IsOptional() @IsIn(['a6', 'seat'], { message: 'Choose A6 or seat-back' })
   size?: 'a6' | 'seat';
+}
+
+// ---------------- scorecards and appraisals ----------------
+
+const KTM_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export class ScorecardQueryDto {
+  /** Kathmandu days, YYYY-MM-DD, both included. Without them: the last 90 days. */
+  @blankToUndefined() @IsOptional() @Matches(KTM_DAY, { message: 'Dates must be written as YYYY-MM-DD' }) from?: string;
+  @blankToUndefined() @IsOptional() @Matches(KTM_DAY, { message: 'Dates must be written as YYYY-MM-DD' }) to?: string;
+}
+
+export class CreateAppraisalDto {
+  @Matches(KTM_DAY, { message: 'Choose when the period starts' }) periodStart: string;
+  @Matches(KTM_DAY, { message: 'Choose when the period ends' }) periodEnd: string;
+}
+
+/** A score of 1 to 5, or null to clear it while the appraisal is a draft. */
+const score = () => (target: object, key: string) => {
+  nullableNumber()(target, key);
+  IsOptional()(target, key);
+  IsInt({ message: 'Scores are whole numbers from 1 to 5' })(target, key);
+  Min(1)(target, key);
+  Max(5)(target, key);
+};
+
+export class UpdateAppraisalDto {
+  @score() drivingScore?: number | null;
+  @score() punctualityScore?: number | null;
+  @score() conductScore?: number | null;
+  @score() safetyScore?: number | null;
+  @score() vehicleCareScore?: number | null;
+  @score() attendanceScore?: number | null;
+  @trim() @IsOptional() @IsString() @MaxLength(4000) comments?: string | null;
+  @trim() @IsOptional() @IsString() @MaxLength(2000) strengths?: string | null;
+  @trim() @IsOptional() @IsString() @MaxLength(2000) goals?: string | null;
+  @IsOptional() @IsEnum(AppraisalOutcome) outcome?: AppraisalOutcome;
+}
+
+export class AppraisalListQueryDto {
+  @blankToUndefined() @IsOptional() @IsEnum(AppraisalStatus) status?: AppraisalStatus;
+  @blankToUndefined() @IsOptional() @IsUUID() driverId?: string;
 }

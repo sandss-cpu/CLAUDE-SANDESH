@@ -53,6 +53,13 @@ Actions.on({
   addMember: () => addMember(),
   removeMember: (el) => removeMember(el.dataset.id),
   rotateCompanyQr: () => rotateCompanyQr(),
+  // scorecards, appraisals, leaderboard
+  scorecardRange: (el) => scorecardRange(el.dataset.range),
+  driverReviews: (el) => driverReviews(el.dataset.id),
+  newAppraisal: (el) => newAppraisal(el.dataset.id),
+  appraisalPdf: (el) => downloadFile(`/fleet/appraisals/${el.dataset.id}/pdf`),
+  acknowledgeAppraisal: (el) => acknowledgeAppraisal(el.dataset.id),
+  deleteAppraisal: (el) => deleteAppraisal(el.dataset.id),
 });
 
 Actions.onSubmit({
@@ -64,6 +71,8 @@ Actions.onSubmit({
   registerCompany: (el, ev) => registerCompany(ev),
   assignCrew: (el, ev) => assignCrew(ev),
   searchBuses: (el, ev) => { ev.preventDefault(); filterBuses({ q: el.elements.q.value.trim() }); },
+  scorecardCustom: (el, ev) => scorecardCustom(el, ev),
+  saveAppraisal: (el, ev) => saveAppraisal(el, ev),
 });
 
 Actions.onChange({
