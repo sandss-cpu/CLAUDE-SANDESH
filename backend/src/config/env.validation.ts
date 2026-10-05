@@ -1,3 +1,5 @@
+import { FieldCrypto } from '../common/crypto/field-crypto';
+
 /**
  * Fail-fast environment validation.
  *
@@ -37,8 +39,21 @@ export function validateEnv(config: Record<string, unknown>) {
     errors.push('JWT_SECRET must be at least 32 characters');
   }
 
+  // Encryption keys, when given, must be usable: a typo would otherwise surface as
+  // unreadable phone numbers long after the fact.
+  if (str('FIELD_ENCRYPTION_KEYS') || str('BLIND_INDEX_KEY')) {
+    try {
+      FieldCrypto.fromEnv({ FIELD_ENCRYPTION_KEYS: str('FIELD_ENCRYPTION_KEYS'), FIELD_ENCRYPTION_KEY_ID: str('FIELD_ENCRYPTION_KEY_ID'), BLIND_INDEX_KEY: str('BLIND_INDEX_KEY') } as NodeJS.ProcessEnv);
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+  }
+
   // ---- production-only, and non-negotiable ----
   if (isProd) {
+    // Personal fields are encrypted at rest; without keys they would be written in clear.
+    if (!str('FIELD_ENCRYPTION_KEYS')) errors.push('FIELD_ENCRYPTION_KEYS is required in production (see SECURITY.md)');
+    if (!str('BLIND_INDEX_KEY')) errors.push('BLIND_INDEX_KEY is required in production (see SECURITY.md)');
     // Rate limits are what stand between sign-in and a password-guessing script.
     if (/^(1|true|yes)$/i.test(str('THROTTLE_DISABLED') ?? '')) {
       errors.push('THROTTLE_DISABLED is for local test runs only; remove it in production');

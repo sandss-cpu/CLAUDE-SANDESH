@@ -53,12 +53,15 @@ h = hmac.new(k, struct.pack('>Q', int(time.time()) // 30), hashlib.sha1).digest(
 print(f"{(struct.unpack('>I', h[o:o+4])[0] & 0x7fffffff) % 1000000:06d}")
 PY
 }
+secret_of(){ # email -> the account's authenticator secret, decrypted (it is encrypted at rest)
+  node "$SMOKE_DIR/field-decrypt.mjs" "$(sql "select \"totpSecret\" from users where email='$1'")"
+}
 login(){ # email -> access token; answers the authenticator step if the account is asked for one
   local body="{\"email\":\"$1\",\"password\":\"$(pw "$1")\"}"
   call POST /auth/email/login "" "$body" >/dev/null
   if [ "$(get "bool(data.get('challengeToken'))")" = "true" ]; then
     local ch; ch=$(get "data['challengeToken']")
-    local secret; secret=$(sql "select \"totpSecret\" from users where email='$1'")
+    local secret; secret=$(secret_of "$1")
     body="{\"challengeToken\":\"$ch\",\"code\":\"$(totp "$secret")\"}"
     call POST /auth/mfa/verify "" "$body" >/dev/null
   fi
@@ -68,7 +71,7 @@ staff_login(){ # email -> access token, through the authenticator step
   local body="{\"email\":\"$1\",\"password\":\"$(pw "$1")\"}"
   call POST /auth/email/login "" "$body" >/dev/null
   local ch; ch=$(get "data['challengeToken']")
-  local secret; secret=$(sql "select \"totpSecret\" from users where email='$1'")
+  local secret; secret=$(secret_of "$1")
   body="{\"challengeToken\":\"$ch\",\"code\":\"$(totp "$secret")\"}"
   call POST /auth/mfa/verify "" "$body" >/dev/null; get "data['accessToken']"
 }

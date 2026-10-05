@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { SmsService } from './sms.service';
 import { MfaService } from './mfa.service';
 import { MailService } from './mail.service';
+import { LoginGuardService } from './login-guard.service';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { MailService } from './mail.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SmsService, MfaService, MailService],
+  providers: [AuthService, JwtStrategy, SmsService, MfaService, MailService, LoginGuardService],
   exports: [AuthService, MfaService, MailService],
 })
 export class AuthModule {}

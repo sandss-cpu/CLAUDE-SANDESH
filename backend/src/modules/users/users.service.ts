@@ -1,13 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ContentStatus, ModerationStatus, Prisma, Role } from '@prisma/client';
+import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../../common/audit/audit.service';
+import { MfaService } from '../auth/mfa.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { isPrivileged } from '../auth/mfa.service';
 import { AdminUserQueryDto, SetRoleDto, UpdatePrivacyDto, UpdateProfileDto } from './dto/user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private audit: AuditService, private mfa: MfaService) {}
 
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -198,7 +201,8 @@ export class UsersService {
 
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { role: dto.role },
+      // Tokens issued under the old role end now, not when they expire.
+      data: { role: dto.role, sessionsValidFrom: new Date(Math.floor(Date.now() / 1000) * 1000) },
       select: { id: true, name: true, role: true, totpConfirmedAt: true },
     });
 
@@ -215,6 +219,11 @@ export class UsersService {
         note: `Role changed from ${before.role} to ${dto.role}`,
       },
     });
+    await this.audit.record({
+      actorId, action: 'user.role', entityType: 'User', entityId: userId,
+      summary: `${before.name}: role changed from ${before.role.toLowerCase()} to ${dto.role.toLowerCase()}`,
+      before: { role: before.role }, after: { role: dto.role },
+    });
 
     return {
       ...user,
@@ -227,8 +236,10 @@ export class UsersService {
   async resetMfa(userId: string, actorId: string) {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { totpSecret: null, totpConfirmedAt: null },
+      data: { totpSecret: null, totpConfirmedAt: null, sessionsValidFrom: new Date(Math.floor(Date.now() / 1000) * 1000) },
     });
+    await this.prisma.recoveryCode.deleteMany({ where: { userId } });
+    await this.audit.record({ actorId, action: 'user.reset_mfa', entityType: 'User', entityId: userId, summary: 'Authenticator reset by an administrator' });
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null }, data: { revokedAt: new Date() },
     });
@@ -247,6 +258,7 @@ export class UsersService {
       where: { id: userId },
       data: {
         isSuspended: true,
+        sessionsValidFrom: new Date(Math.floor(Date.now() / 1000) * 1000),
         suspendedUntil: days ? new Date(Date.now() + days * 86_400_000) : null,
       },
       select: { id: true, name: true, isSuspended: true, suspendedUntil: true },
@@ -277,9 +289,67 @@ export class UsersService {
     return user;
   }
 
-  /** Deletes the account and everything cascading from it (privacy request). */
-  async deleteAccount(userId: string) {
-    await this.prisma.user.delete({ where: { id: userId } });
+  /**
+   * Everything Batoma holds about the signed-in person, as one JSON file: the right of
+   * access under Nepal's Individual Privacy Act. Secrets (password hash, authenticator,
+   * session and recovery tokens) are left out; encrypted fields come out readable.
+   */
+  async exportAccount(userId: string, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, name: true, email: true, phone: true, bio: true, avatarUrl: true, homeDistrict: true, language: true, role: true,
+        emailVerifiedAt: true, isPhoneVerified: true, hideExactLocation: true, publishDelayHours: true, createdAt: true, updatedAt: true,
+        totpConfirmedAt: true,
+        posts: true, comments: true, reactions: true, postVotes: true, bookmarks: true, itineraries: true, reviews: true,
+        redemptions: true, emergencyContacts: { select: { name: true, phone: true } }, sosEvents: true,
+        following: { select: { followingId: true, createdAt: true } }, followers: { select: { followerId: true, createdAt: true } },
+        busReviews: true, creatorProfile: true,
+        operatorLinks: { select: { role: true, createdAt: true, operator: { select: { name: true } } } },
+        ownedBusinesses: { select: { name: true, slug: true, createdAt: true } },
+        knownDevices: { select: { label: true, firstSeenAt: true, lastSeenAt: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('Account not found');
+    const newsletter = user.email
+      ? await this.prisma.newsletterSubscriber.findUnique({ where: { email: user.email }, select: { status: true, createdAt: true, confirmedAt: true, unsubscribedAt: true } })
+      : null;
+    await this.audit.record({ actorId: userId, action: 'account.export', entityType: 'User', entityId: userId, ip, summary: 'Downloaded their own data' });
+    const body = JSON.stringify({ exportedAt: new Date().toISOString(), note: 'Everything Batoma holds about this account. Write through the contact page to correct anything.', account: user, newsletter }, null, 2);
+    return { body: Buffer.from(body), contentType: 'application/json; charset=utf-8', filename: `batoma-account-${new Date().toISOString().slice(0, 10)}.json` };
+  }
+
+  /**
+   * Deletes the account and everything cascading from it (privacy request). The person
+   * proves it is them again: the password if the account has one, and the authenticator
+   * code if one is set up. Accounts that run a company or hold staff records are closed
+   * by Batoma instead, so nothing that others depend on disappears.
+   */
+  async deleteAccount(userId: string, proof: { password?: string; code?: string }, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, passwordHash: true, totpConfirmedAt: true, operatorLinks: { where: { role: 'OWNER' }, select: { operatorId: true } } },
+    });
+    if (!user) throw new NotFoundException('Account not found');
+    if (user.role !== Role.READER && user.role !== Role.CONTRIBUTOR && user.role !== Role.BUSINESS_OWNER) {
+      throw new ForbiddenException('Staff accounts are closed by an administrator.');
+    }
+    if (user.operatorLinks.length) throw new BadRequestException('You own a bus company on Batoma. Hand it to another owner, or ask Batoma to close it, first.');
+    if (user.passwordHash && !(proof.password && (await argon2.verify(user.passwordHash, proof.password).catch(() => false)))) {
+      throw new BadRequestException('Enter your password to delete your account.');
+    }
+    if (user.totpConfirmedAt && !(proof.code && (await this.mfa.verify(userId, proof.code)))) {
+      throw new BadRequestException('Enter the code from your authenticator app to delete your account.');
+    }
+    try {
+      await this.prisma.user.delete({ where: { id: userId } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+        throw new BadRequestException('Something on Batoma still depends on this account. Write to us through the contact page and we will close it.');
+      }
+      throw e;
+    }
+    await this.audit.record({ actorId: null, action: 'account.delete', entityType: 'User', entityId: userId, ip, summary: 'An account was deleted at its owner\'s request' });
     return { deleted: true };
   }
 }

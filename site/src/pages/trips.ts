@@ -2,7 +2,7 @@ import * as data from '../data';
 import { isoDate } from '../format';
 import { html, raw } from '../html';
 import { absolute, page } from '../layout';
-import { adSlot, articleCard, articleEvents, crumbs, guideCard, mediaUrl, partnerCard, partnerEvents, Rendered, stopRow } from '../parts';
+import { adSlot, articleCard, articleEvents, crumbs, guideCard, img, mediaUrl, partnerCard, partnerEvents, Rendered, stopRow } from '../parts';
 
 export async function trips(): Promise<Rendered> {
   const path = '/trips';
@@ -77,7 +77,7 @@ export async function trip(slug: string, back: boolean): Promise<Rendered | null
     <a href="/trips/${g.slug}"${!back ? raw(' aria-current="page"') : ''}>${g.route!.startPlace} → ${g.route!.endPlace}</a>
     <a href="/trips/${g.slug}?dir=back"${back ? raw(' aria-current="page"') : ''}>${g.route!.endPlace} → ${g.route!.startPlace}</a>
   </nav>` : ''}
-  ${g.coverImageUrl ? html`<figure class="cover"><img src="${mediaUrl(g.coverImageUrl)}" alt="" width="1200" height="750" decoding="async"></figure>` : ''}
+  ${g.coverImageUrl ? html`<figure class="cover">${img(g.coverImageUrl, '', { sizes: '(min-width: 760px) 720px, 100vw', width: 1200, height: 750, lazy: false })}</figure>` : ''}
   ${placeAd.html}
   ${[...days.entries()].map(([day, list]) => html`
   <h2>${day ? `Day ${day}` : `On the road from ${from}`}</h2>
@@ -130,7 +130,7 @@ export async function place(slug: string): Promise<Rendered | null> {
     <h1>${d.name}${d.nameNe ? html` <span class="ne" lang="ne">${d.nameNe}</span>` : ''}</h1>
     ${d.description ? html`<p class="lede">${d.description}</p>` : ''}
   </header>
-  ${d.heroImageUrl ? html`<figure class="cover"><img src="${mediaUrl(d.heroImageUrl)}" alt="" width="1200" height="600" decoding="async"></figure>` : ''}
+  ${d.heroImageUrl ? html`<figure class="cover">${img(d.heroImageUrl, '', { sizes: '(min-width: 1120px) 1088px, 100vw', width: 1200, height: 600, lazy: false })}</figure>` : ''}
   ${ad.html}
   ${guides.length ? html`<section aria-labelledby="h-g"><h2 id="h-g">Trips</h2><div class="grid">${guides.map(guideCard)}</div></section>` : ''}
   ${partners.length ? html`<section aria-labelledby="h-p"><div class="sec-head"><h2 id="h-p">Where to stay, eat and go</h2><a href="/partners?place=${d.slug}">All in ${d.name} →</a></div><div class="grid">${partners.map(partnerCard)}</div></section>` : ''}

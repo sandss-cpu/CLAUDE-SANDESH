@@ -1,4 +1,7 @@
+import { randomBytes } from 'crypto';
 import { otpMayBeReturnedInResponse, phoneLoginEnabled, validateEnv } from './env.validation';
+
+const KEYS = { FIELD_ENCRYPTION_KEYS: `v1:${randomBytes(32).toString('base64')}`, BLIND_INDEX_KEY: randomBytes(32).toString('base64') };
 
 const SECRET = 'x'.repeat(40);
 const base = { DATABASE_URL: 'postgresql://u:p@localhost:5432/db', JWT_SECRET: SECRET };
@@ -14,6 +17,7 @@ const prod = (extra: Record<string, unknown> = {}) => ({
   PUBLIC_WEB_URL: 'https://app.example.com',
   API_PUBLIC_URL: 'https://api.example.com',
   SIGNED_URL_SECRET: 'y'.repeat(40),
+  ...KEYS,
   ...extra,
 });
 
@@ -137,5 +141,16 @@ describe('validateEnv — public website', () => {
     expect(() => validateEnv(prod({ SITE_URL: 'http://batoma.example', SITE_API_KEY: 'k'.repeat(40) }))).toThrow(/SITE_URL/);
     expect(() => validateEnv(prod({ SITE_URL: 'https://batoma.example', SITE_API_KEY: 'short' }))).toThrow(/SITE_API_KEY/);
     expect(() => validateEnv(prod({ SITE_URL: 'https://batoma.example', SITE_API_KEY: 'k'.repeat(40) }))).not.toThrow();
+  });
+});
+
+describe('validateEnv — field encryption', () => {
+  it('needs both keys in production', () => {
+    expect(() => validateEnv(prod({ FIELD_ENCRYPTION_KEYS: undefined }))).toThrow(/FIELD_ENCRYPTION_KEYS is required/);
+    expect(() => validateEnv(prod({ BLIND_INDEX_KEY: undefined }))).toThrow(/BLIND_INDEX_KEY/);
+  });
+  it('refuses a malformed key anywhere, so a typo cannot make fields unreadable later', () => {
+    expect(() => validateEnv({ ...base, FIELD_ENCRYPTION_KEYS: 'v1:tooshort', BLIND_INDEX_KEY: KEYS.BLIND_INDEX_KEY })).toThrow(/32 bytes/);
+    expect(() => validateEnv({ ...base, ...KEYS })).not.toThrow();
   });
 });

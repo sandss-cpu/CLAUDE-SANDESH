@@ -22,6 +22,7 @@ export class StorageController {
     // Even a file that slipped past every check cannot run script on this origin.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; sandbox");
     res.setHeader('Referrer-Policy', 'no-referrer');
+    if (key.endsWith('.pdf')) res.setHeader('Content-Disposition', 'attachment; filename="document.pdf"');
     res.send(body);
   }
 }

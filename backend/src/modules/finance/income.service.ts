@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { NotAnImageError, reencode } from '../../common/media/images';
 import { formatBs } from '../../common/utils/bs-date';
 import { addDays, DAY_RE, ktmDayStart, ktmToday } from '../../common/utils/ktm-period';
 import { MfaService } from '../auth/mfa.service';
@@ -24,13 +25,6 @@ export const DEFAULT_SOURCES: Array<[string, IncomeSourceKind]> = [
 const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
 const dayOf = (d: Date) => d.toISOString().slice(0, 10);
 
-/** What a photo of a statement really is, from its first bytes, never its name. */
-export function imageKind(b: Buffer): 'jpg' | 'png' | 'webp' | null {
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
-  if (b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
-  if (b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP') return 'webp';
-  return null;
-}
 
 export function entryView(e: IncomeEntry & { source?: { name: string; kind: string } | null }, now = Date.now()) {
   return {
@@ -316,10 +310,13 @@ export class IncomeService {
     const { entry, operator } = await this.access.entry(entryId, userId, 'ENTER');
     if (Date.now() >= entry.lockedAt.getTime()) throw new ConflictException('This entry is more than 7 days old and can no longer be changed.');
     if (!file?.buffer?.length) throw new BadRequestException('Choose a photo of the statement.');
-    const kind = imageKind(file.buffer);
-    if (!kind) throw new BadRequestException('That file is not a real photo. Take the picture again, or save it as JPG or PNG.');
-    const key = `income/${operator.id}/${randomUUID()}.${kind}`;
-    await this.storage.put(key, file.buffer);
+    // Drawn again from its pixels: the phone's location and other metadata are not kept.
+    const clean = await reencode(file.buffer).catch((e) => {
+      if (e instanceof NotAnImageError) throw new BadRequestException('That file is not a real photo. Take the picture again, or save it as JPG or PNG.');
+      throw e;
+    });
+    const key = `income/${operator.id}/${randomUUID()}.webp`;
+    await this.storage.put(key, clean.buffer);
     await this.prisma.$transaction(async (tx) => {
       await tx.incomeEntry.update({ where: { id: entryId }, data: { attachmentKey: key, updatedById: userId } });
       await this.audit.record({

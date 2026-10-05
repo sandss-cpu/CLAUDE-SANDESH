@@ -16,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: { sub: string; scope?: string }): Promise<AuthUser> {
+  async validate(payload: { sub: string; scope?: string; iat?: number }): Promise<AuthUser> {
     /**
      * Challenge and enrolment tokens are signed with the same key but carry a
      * scope. They must never be accepted as a session token, or the second
@@ -30,10 +30,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       where: { id: payload.sub },
       select: {
         id: true, role: true, phone: true,
-        isSuspended: true, suspendedUntil: true, totpConfirmedAt: true,
+        isSuspended: true, suspendedUntil: true, totpConfirmedAt: true, sessionsValidFrom: true,
       },
     });
     if (!user) throw new UnauthorizedException('Account not found');
+
+    // "Sign out everywhere", a password reset or a role change ends tokens already issued.
+    if (user.sessionsValidFrom && (payload.iat ?? 0) * 1000 < user.sessionsValidFrom.getTime()) {
+      throw new UnauthorizedException('This session has ended. Please sign in again.');
+    }
 
     const stillSuspended =
       user.isSuspended && (!user.suspendedUntil || user.suspendedUntil > new Date());

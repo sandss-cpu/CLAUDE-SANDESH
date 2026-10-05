@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
 import { Language, Role } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -25,4 +25,9 @@ export class UpdatePrivacyDto {
 
 export class SetRoleDto {
   @IsEnum(Role) role: Role;
+}
+
+export class DeleteAccountDto {
+  @IsOptional() @IsString() @MaxLength(128) password?: string;
+  @IsOptional() @IsString() @MaxLength(6) code?: string;
 }

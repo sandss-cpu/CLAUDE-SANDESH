@@ -91,6 +91,8 @@ export class StorageService {
     if (this.driver === 's3') {
       return presignGet(this.objectUrl(key), this.s3!.creds, seconds, new Date(), {
         'response-cache-control': 'private, no-store',
+        // A PDF is saved, never opened inside the browser on the bucket's origin.
+        ...(key.endsWith('.pdf') ? { 'response-content-disposition': 'attachment' } : {}),
       });
     }
     const exp = Math.floor(Date.now() / 1000) + seconds;

@@ -21,6 +21,7 @@
     "seed:trips": "ts-node prisma/fleet-trips-demo.ts",
     "seed:income": "ts-node prisma/fleet-income-demo.ts",
     "db:site-role": "node scripts/site-role.mjs",
+    "fields:encrypt": "ts-node prisma/encrypt-fields.ts",
     "theme:set": "ts-node prisma/set-theme.ts",
     "test": "jest",
     "test:cov": "jest --coverage",
@@ -53,7 +54,8 @@
     "pdfkit": "^0.20.2",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
@@ -76,6 +78,7 @@
     "@prisma/engines@5.22.0": true,
     "argon2@0.41.1": true,
     "fsevents@2.3.3": true,
-    "prisma@5.22.0": true
+    "prisma@5.22.0": true,
+    "sharp@0.35.5": true
   }
 }

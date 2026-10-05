@@ -3,7 +3,7 @@ import { CATEGORY_LABEL, dayBoth, intlNumber, SCHEMA_TYPE } from '../format';
 import { html, raw } from '../html';
 import { absolute, page, sponsoredLabel } from '../layout';
 import {
-  adSlot, crumbs, dealCard, field, formError, formGuards, FormState, isFeaturedTier, mediaUrl, partnerCard, partnerEvents, Rendered, sentNote,
+  adSlot, crumbs, dealCard, field, formError, formGuards, FormState, img, isFeaturedTier, mediaUrl, partnerCard, partnerEvents, Rendered, sentNote,
 } from '../parts';
 
 export async function partners(filters: { place?: string; type?: string }): Promise<Rendered> {
@@ -63,7 +63,7 @@ export async function partner(slug: string, form?: FormState & { sent?: boolean 
     <h1>${p.name}</h1>
     <p class="byline badges"><span class="verified">Verified by Batoma</span>${isFeaturedTier(p.tier) ? raw('<span class="badge" title="Pays for a higher place">Featured partner</span>') : ''}${p.priceRange ? html`<span>${p.priceRange}</span>` : ''}</p>
   </header>
-  ${p.photos.length ? html`<div class="photos">${p.photos.map((ph) => html`<figure><img src="${mediaUrl(ph.url)}" alt="${ph.caption ?? p.name}" loading="lazy" decoding="async" width="640" height="420">${ph.caption ? html`<figcaption>${ph.caption}</figcaption>` : ''}</figure>`)}</div>` : ''}
+  ${p.photos.length ? html`<div class="photos">${p.photos.map((ph) => html`<figure>${img(ph.url, ph.caption ?? p.name, { sizes: '(min-width: 760px) 300px, 100vw', width: 640, height: 420 })}${ph.caption ? html`<figcaption>${ph.caption}</figcaption>` : ''}</figure>`)}</div>` : ''}
   <div class="two-col">
     <div>
       ${p.description ? html`<p class="lede">${p.description}</p>` : ''}
@@ -150,7 +150,7 @@ export async function offer(id: string): Promise<Rendered | null> {
   <p>${sponsoredLabel(ad.advertiserName)}</p>
   <h1>${ad.overviewTitle ?? ad.title}</h1>
   ${ad.tagline ? html`<p class="lede">${ad.tagline}</p>` : ''}
-  ${ad.overviewImageUrl || ad.imageUrl ? html`<figure class="cover"><img src="${mediaUrl(ad.overviewImageUrl ?? ad.imageUrl)}" alt="" width="1200" height="600" decoding="async"></figure>` : ''}
+  ${ad.overviewImageUrl || ad.imageUrl ? html`<figure class="cover">${img(ad.overviewImageUrl ?? ad.imageUrl, '', { sizes: '(min-width: 760px) 720px, 100vw', width: 1200, height: 600, lazy: false })}</figure>` : ''}
   ${ad.overviewBody ? html`<div class="story-body">${ad.overviewBody.split(/\n{2,}/).map((p) => html`<p>${p}</p>`)}</div>` : ''}
   ${ad.business ? html`<p><a class="btn" href="/partners/${ad.business.slug}">About ${ad.business.name}</a></p>` : ''}
   ${ad.linkType === 'EXTERNAL' && ad.externalUrl ? html`<p><a class="btn btn-ghost" href="/go/ad/${ad.id}" rel="sponsored noopener">Visit ${ad.advertiserName}</a></p>` : ''}

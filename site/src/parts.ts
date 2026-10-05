@@ -24,8 +24,25 @@ export function tone(key: string | null | undefined): string {
   return `tone-${h % 6}`;
 }
 
+/**
+ * Uploads are stored at 480, 960 and up to 1600 pixels wide, named `<id>-<width>.webp`
+ * (backend common/media/images.ts), so the sizes can be offered from the address alone.
+ */
+const WIDTHS = [480, 960, 1600];
+export function srcset(url: string): string | null {
+  const m = /^(.*)-(\d{2,4})\.webp$/.exec(url);
+  if (!m) return null;
+  const top = Number(m[2]);
+  return [...WIDTHS.filter((w) => w < top), top].map((w) => `${m[1]}-${w}.webp ${w}w`).join(', ');
+}
+export function img(url: string, alt: string, opts: { sizes: string; width: number; height: number; lazy?: boolean }): Html {
+  const src = mediaUrl(url);
+  const set = srcset(src);
+  return html`<img src="${src}"${set ? raw(` srcset="${esc(set)}" sizes="${esc(opts.sizes)}"`) : ''} alt="${alt}"${opts.lazy === false ? '' : raw(' loading="lazy"')} decoding="async" width="${opts.width}" height="${opts.height}">`;
+}
+
 function picture(url: string | null | undefined, alt: string, key: string, label?: string): Html {
-  if (url) return html`<div class="pic"><img src="${mediaUrl(url)}" alt="${alt}" loading="lazy" decoding="async" width="640" height="400"></div>`;
+  if (url) return html`<div class="pic">${img(url, alt, { sizes: '(min-width: 980px) 360px, (min-width: 640px) 50vw, 100vw', width: 640, height: 400 })}</div>`;
   return html`<div class="pic ph ${tone(key)}" aria-hidden="true"><span>${label ?? ''}</span></div>`;
 }
 
@@ -116,7 +133,7 @@ export function adSlot(ad: LiveAd | undefined, path: string): { html: Html; even
     html: html`<aside class="ad${wide ? ' ad-wide' : ''}" aria-label="${SLOT_LABEL[ad.placement] ?? 'Sponsored'}">
   <p class="ad-head"><span class="ad-slot">${SLOT_LABEL[ad.placement] ?? 'Sponsored'}</span>${sponsoredLabel(ad.advertiserName)}</p>
   <a class="ad-link" href="/go/ad/${ad.id}" rel="sponsored noopener">
-    <img src="${mediaUrl(ad.imageUrl)}" alt="" loading="lazy" decoding="async" width="640" height="320">
+    ${img(ad.imageUrl, '', { sizes: '(min-width: 760px) 640px, 100vw', width: 640, height: 320 })}
     <span class="ad-text"><strong>${ad.title}</strong>${ad.tagline ? html`<span>${ad.tagline}</span>` : ''}</span>
   </a>
 </aside>`,

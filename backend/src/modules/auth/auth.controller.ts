@@ -4,10 +4,12 @@ import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import {
   EmailLoginDto, EmailOnlyDto, EmailRegisterDto, MfaVerifyDto, PasswordResetDto, RefreshDto,
-  RequestOtpDto, TokenDto, VerifyOtpDto, MfaSetupConfirmDto,
+  RequestOtpDto, TokenDto, VerifyOtpDto, MfaSetupConfirmDto, MfaRecoverDto,
 } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ClientContext } from '../../common/decorators/client-context.decorator';
+import type { SignInContext } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
@@ -29,8 +31,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @Post('otp/verify')
-  verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(dto);
+  verifyOtp(@Body() dto: VerifyOtpDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.verifyOtp(dto, ctx);
   }
 
   // ---- email + password ----
@@ -45,8 +47,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @Post('email/verify')
-  verifyEmail(@Body() dto: TokenDto) {
-    return this.auth.verifyEmail(dto.token);
+  verifyEmail(@Body() dto: TokenDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.verifyEmail(dto.token, ctx);
   }
 
   @Public()
@@ -59,8 +61,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @Post('email/login')
-  loginEmail(@Body() dto: EmailLoginDto) {
-    return this.auth.loginEmail(dto);
+  loginEmail(@Body() dto: EmailLoginDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.loginEmail(dto, ctx);
   }
 
   @Public()
@@ -73,16 +75,24 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @Post('password/reset')
-  resetPassword(@Body() dto: PasswordResetDto) {
-    return this.auth.resetPassword(dto);
+  resetPassword(@Body() dto: PasswordResetDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.resetPassword(dto, ctx);
   }
 
   /** Step 3 — authenticator code for admins, editors, moderators, operators. */
   @Public()
   @Throttle({ default: { limit: 8, ttl: 900_000 } })
   @Post('mfa/verify')
-  verifyMfa(@Body() dto: MfaVerifyDto) {
-    return this.auth.verifyMfa(dto.challengeToken, dto.code);
+  verifyMfa(@Body() dto: MfaVerifyDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.verifyMfa(dto.challengeToken, dto.code, ctx);
+  }
+
+  /** Step 3 without the phone: one of the recovery codes given when the authenticator was set up. */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @Post('mfa/recover')
+  recoverMfa(@Body() dto: MfaRecoverDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.recoverMfa(dto.challengeToken, dto.code, ctx);
   }
 
   /** First-time setup: returns the otpauth:// URI to scan. */
@@ -96,8 +106,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 8, ttl: 900_000 } })
   @Post('mfa/enrol/confirm')
-  confirmEnrolment(@Body() dto: MfaVerifyDto) {
-    return this.auth.completeEnrolment(dto.challengeToken, dto.code);
+  confirmEnrolment(@Body() dto: MfaVerifyDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.completeEnrolment(dto.challengeToken, dto.code, ctx);
   }
 
   /**
@@ -112,8 +122,15 @@ export class AuthController {
 
   @Throttle({ default: { limit: 8, ttl: 900_000 } })
   @Post('mfa/setup/confirm')
-  confirmSetup(@CurrentUser('id') userId: string, @Body() dto: MfaSetupConfirmDto) {
-    return this.mfa.confirmEnrolment(userId, dto.code);
+  confirmSetup(@CurrentUser('id') userId: string, @Body() dto: MfaSetupConfirmDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.confirmSetup(userId, dto.code, ctx);
+  }
+
+  /** New recovery codes, replacing the old ones; needs a current authenticator code. */
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @Post('mfa/recovery-codes')
+  recoveryCodes(@CurrentUser('id') userId: string, @Body() dto: MfaSetupConfirmDto, @ClientContext() ctx: SignInContext) {
+    return this.auth.regenerateRecoveryCodes(userId, dto.code, ctx);
   }
 
   @Public() @Post('refresh')
@@ -127,7 +144,7 @@ export class AuthController {
   }
 
   @Post('logout-all')
-  logoutAll(@CurrentUser('id') userId: string) {
-    return this.auth.logoutAll(userId);
+  logoutAll(@CurrentUser('id') userId: string, @ClientContext() ctx: SignInContext) {
+    return this.auth.logoutAll(userId, ctx);
   }
 }

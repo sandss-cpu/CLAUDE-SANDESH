@@ -38,6 +38,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './common/storage/storage.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { SiteModule } from './modules/site/site.module';
+import { VerificationModule } from './modules/verification/verification.module';
 import { SitePurgeModule } from './common/site-purge/site-purge.service';
 
 @Module({
@@ -78,6 +79,7 @@ import { SitePurgeModule } from './common/site-purge/site-purge.service';
     FleetModule,
     FinanceModule,
     SiteModule,
+    VerificationModule,
     GuidesModule,
     CreatorsModule,
     SettingsModule,

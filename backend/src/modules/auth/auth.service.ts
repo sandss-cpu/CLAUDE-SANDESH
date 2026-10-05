@@ -8,6 +8,10 @@ import { EmailTokenType, Role, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../../common/audit/audit.service';
+import { deviceLabel } from './device-label';
+import { LoginGuardService } from './login-guard.service';
+import { passwordProblem } from './password-policy';
 import { SmsService } from './sms.service';
 import { MailService } from './mail.service';
 import { isPrivileged, MfaService } from './mfa.service';
@@ -29,6 +33,9 @@ const RESET_TTL_MS = 60 * 60_000;
 let dummyHash: Promise<string> | null = null;
 const getDummyHash = () => (dummyHash ??= argon2.hash(crypto.randomBytes(16).toString('hex')));
 
+/** Where a sign-in came from: the address (hashed before it is stored) and the browser. */
+export interface SignInContext { ip?: string | null; userAgent?: string | null }
+
 /** Token scopes. A scoped token cannot be used as a normal session. */
 export const SCOPE_MFA_PENDING = 'mfa_pending';
 export const SCOPE_MFA_ENROL = 'mfa_enrol';
@@ -44,6 +51,8 @@ export class AuthService {
     private sms: SmsService,
     private mfa: MfaService,
     private mail: MailService,
+    private guard: LoginGuardService,
+    private audit: AuditService,
   ) {}
 
   private assertPhoneLogin() {
@@ -106,7 +115,7 @@ export class AuthService {
 
   // ---------------- step 2: verify, then branch on privilege ----------------
 
-  async verifyOtp(dto: VerifyOtpDto) {
+  async verifyOtp(dto: VerifyOtpDto, ctx: SignInContext = {}) {
     this.assertPhoneLogin();
     const phone = normalisePhone(dto.phone);
     const maxAttempts = Number(this.config.get('OTP_MAX_ATTEMPTS') ?? 5);
@@ -148,23 +157,23 @@ export class AuthService {
       });
     }
 
-    return { isNewUser: isNew, ...(await this.completeSignIn(user)) };
+    return { isNewUser: isNew, ...(await this.completeSignIn(user, ctx)) };
   }
 
   /**
    * The last step of every sign-in method, so phone and email cannot drift
    * apart on who needs a second factor.
    */
-  private async completeSignIn(user: User) {
+  private async completeSignIn(user: User, ctx: SignInContext = {}) {
     const stillSuspended =
       user.isSuspended && (!user.suspendedUntil || user.suspendedUntil > new Date());
     if (stillSuspended) throw new ForbiddenException('This account is suspended.');
 
-    // Ordinary travellers, and bus companies without income records, are done here.
+    // Ordinary travellers, and bus companies without income records, are done here,
+    // unless they chose to set up an authenticator, which is then always asked for.
     const financeOwner = !isPrivileged(user.role) && await this.ownsFinanceCompany(user.id);
-    if (!isPrivileged(user.role) && !financeOwner) {
-      const tokens = await this.issueTokens(user.id, user.role);
-      return { mfaRequired: false, user: this.publicUser(user), ...tokens };
+    if (!isPrivileged(user.role) && !financeOwner && !user.totpConfirmedAt) {
+      return this.session(user, ctx);
     }
 
     // Privileged roles, and owners whose company keeps its income in Batoma, must present
@@ -196,6 +205,8 @@ export class AuthService {
    */
   async registerEmail(dto: EmailRegisterDto) {
     const email = normaliseEmail(dto.email);
+    const weak = passwordProblem(dto.password, { email, name: dto.name });
+    if (weak) throw new BadRequestException(weak);
     const existing = await this.prisma.user.findUnique({ where: { email } });
     const generic = { sent: true, message: 'Check your inbox for a link to confirm your email.' };
 
@@ -225,32 +236,37 @@ export class AuthService {
     return { ...generic, devLink };
   }
 
-  async verifyEmail(rawToken: string) {
+  async verifyEmail(rawToken: string, ctx: SignInContext = {}) {
     const record = await this.consumeLinkToken(rawToken, EmailTokenType.VERIFY);
     const user = await this.prisma.user.update({
       where: { id: record.userId },
       data: { emailVerifiedAt: new Date() },
     });
-    return { verified: true, ...(await this.completeSignIn(user)) };
+    return { verified: true, ...(await this.completeSignIn(user, ctx)) };
   }
 
-  async loginEmail(dto: EmailLoginDto) {
+  async loginEmail(dto: EmailLoginDto, ctx: SignInContext = {}) {
     const email = normaliseEmail(dto.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
+    // Locked accounts and addresses are refused before the password is even checked.
+    const keys = this.guard.keys({ userId: user?.id, identifier: email }, ctx.ip);
+    await this.guard.assertOpen(keys);
 
     const ok = await argon2
       .verify(user?.passwordHash ?? (await getDummyHash()), dto.password)
       .catch(() => false);
     if (!user || !user.passwordHash || !ok) {
+      await this.guard.failed(keys, { userId: user?.id, what: 'Password sign-in', ip: ctx.ip });
       throw new UnauthorizedException('Email or password is incorrect.');
     }
+    await this.guard.succeeded(keys);
     if (!user.emailVerifiedAt) {
       throw new ForbiddenException({
         code: 'EMAIL_NOT_VERIFIED',
         message: 'Confirm your email first. We can send the link again.',
       });
     }
-    return this.completeSignIn(user);
+    return this.completeSignIn(user, ctx);
   }
 
   async forgotPassword(emailRaw: string, app?: LinkApp) {
@@ -262,15 +278,20 @@ export class AuthService {
     return { ...generic, devLink };
   }
 
-  async resetPassword(dto: PasswordResetDto) {
+  async resetPassword(dto: PasswordResetDto, ctx: SignInContext = {}) {
+    const pending = await this.prisma.emailToken.findUnique({ where: { tokenHash: this.hash(dto.token) }, include: { user: { select: { email: true, name: true } } } });
+    const weak = passwordProblem(dto.password, { email: pending?.user.email, name: pending?.user.name });
+    if (weak) throw new BadRequestException(weak);
     const record = await this.consumeLinkToken(dto.token, EmailTokenType.RESET);
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: record.userId },
         // Receiving the reset link proves the inbox, so it also verifies it.
+        // Every session from before the reset ends, access tokens included.
         data: {
           passwordHash: await argon2.hash(dto.password),
           emailVerifiedAt: record.user.emailVerifiedAt ?? new Date(),
+          sessionsValidFrom: this.sessionCutoff(),
         },
       }),
       // Anyone holding a session from before the reset is signed out.
@@ -282,6 +303,8 @@ export class AuthService {
         data: { consumedAt: new Date() },
       }),
     ]);
+    await this.guard.succeeded(this.guard.keys({ userId: record.userId }));
+    await this.audit.record({ actorId: record.userId, action: 'auth.password_reset', entityType: 'User', entityId: record.userId, ip: ctx.ip, summary: 'Password reset by email link; every session signed out' });
     return { reset: true, message: 'Password updated. Sign in with your new password.' };
   }
 
@@ -348,29 +371,62 @@ export class AuthService {
   }
 
   /** Step 3 for privileged roles: challenge token + TOTP becomes a real session. */
-  async verifyMfa(challengeToken: string, code: string) {
+  async verifyMfa(challengeToken: string, code: string, ctx: SignInContext = {}) {
     const payload = await this.readScopedToken(challengeToken, SCOPE_MFA_PENDING);
+    const keys = this.guard.keys({ userId: payload.sub }, ctx.ip);
+    await this.guard.assertOpen(keys);
 
     if (!(await this.mfa.verify(payload.sub, code))) {
-      this.logger.warn(`Failed MFA attempt for user ${payload.sub}`);
+      await this.guard.failed(keys, { userId: payload.sub, what: 'Authenticator code', ip: ctx.ip });
       throw new UnauthorizedException('That code is not valid');
     }
+    await this.guard.succeeded(keys);
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException('Account not found');
+    return this.session(user, ctx);
+  }
 
-    const tokens = await this.issueTokens(user.id, user.role);
-    return { mfaRequired: false, user: this.publicUser(user), ...tokens };
+  /** The authenticator is lost: one recovery code instead of the 6-digit code, once. */
+  async recoverMfa(challengeToken: string, code: string, ctx: SignInContext = {}) {
+    const payload = await this.readScopedToken(challengeToken, SCOPE_MFA_PENDING);
+    const keys = this.guard.keys({ userId: payload.sub }, ctx.ip);
+    await this.guard.assertOpen(keys);
+    if (!(await this.mfa.useRecoveryCode(payload.sub, code))) {
+      await this.guard.failed(keys, { userId: payload.sub, what: 'Recovery code', ip: ctx.ip });
+      throw new UnauthorizedException('That recovery code is not valid or was already used');
+    }
+    await this.guard.succeeded(keys);
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('Account not found');
+    const left = await this.mfa.recoveryCodesLeft(user.id);
+    await this.audit.record({ actorId: user.id, action: 'auth.recovery_code', entityType: 'User', entityId: user.id, ip: ctx.ip, summary: `Signed in with a recovery code; ${left} left` });
+    return { ...(await this.session(user, ctx)), recoveryCodesLeft: left };
   }
 
   /** Completes first-time enrolment and logs the admin straight in. */
-  async completeEnrolment(enrolToken: string, code: string) {
+  async completeEnrolment(enrolToken: string, code: string, ctx: SignInContext = {}) {
     const payload = await this.readScopedToken(enrolToken, SCOPE_MFA_ENROL);
-    await this.mfa.confirmEnrolment(payload.sub, code);
+    const { recoveryCodes } = await this.mfa.confirmEnrolment(payload.sub, code);
+    await this.audit.record({ actorId: payload.sub, action: 'auth.mfa_enabled', entityType: 'User', entityId: payload.sub, ip: ctx.ip, summary: 'Authenticator app set up' });
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    const tokens = await this.issueTokens(user.id, user.role);
-    return { enabled: true, user: this.publicUser(user), ...tokens };
+    return { enabled: true, recoveryCodes, ...(await this.session(user, ctx)) };
+  }
+
+  /** Setting up an authenticator while signed in (a bus owner, a partner, a traveller). */
+  async confirmSetup(userId: string, code: string, ctx: SignInContext = {}) {
+    const result = await this.mfa.confirmEnrolment(userId, code);
+    await this.audit.record({ actorId: userId, action: 'auth.mfa_enabled', entityType: 'User', entityId: userId, ip: ctx.ip, summary: 'Authenticator app set up' });
+    return result;
+  }
+
+  /** A fresh set of recovery codes, for someone who has used or lost theirs. Needs a current code. */
+  async regenerateRecoveryCodes(userId: string, code: string, ctx: SignInContext = {}) {
+    if (!(await this.mfa.verify(userId, code))) throw new BadRequestException('That code is not valid');
+    const recoveryCodes = await this.mfa.issueRecoveryCodes(userId);
+    await this.audit.record({ actorId: userId, action: 'auth.recovery_codes', entityType: 'User', entityId: userId, ip: ctx.ip, summary: 'New recovery codes made; the old ones no longer work' });
+    return { recoveryCodes };
   }
 
   async beginEnrolment(enrolToken: string) {
@@ -410,6 +466,47 @@ export class AuthService {
       throw new ForbiddenException('Wrong token type for this step');
     }
     return payload;
+  }
+
+  /** A new session: tokens, and a note of the browser it came from. */
+  private async session(user: User, ctx: SignInContext) {
+    const tokens = await this.issueTokens(user.id, user.role);
+    await this.noteDevice(user, ctx).catch((e) => this.logger.warn(`Device check failed: ${(e as Error).message}`));
+    return { mfaRequired: false, user: this.publicUser(user), ...tokens };
+  }
+
+  /**
+   * The first sign-in from a browser family this account has not used before is
+   * reported by email, so a stolen password shows itself. The very first sign-in
+   * is just remembered.
+   */
+  private async noteDevice(user: User, ctx: SignInContext) {
+    const label = deviceLabel(ctx.userAgent);
+    const deviceHash = crypto.createHash('sha256').update(`${user.id}:${label}`).digest('hex');
+    const known = await this.prisma.knownDevice.findUnique({ where: { userId_deviceHash: { userId: user.id, deviceHash } } });
+    if (known) {
+      await this.prisma.knownDevice.update({ where: { id: known.id }, data: { lastSeenAt: new Date() } });
+      return;
+    }
+    const others = await this.prisma.knownDevice.count({ where: { userId: user.id } });
+    await this.prisma.knownDevice.create({ data: { userId: user.id, deviceHash, label } });
+    if (!others) return;
+    await this.audit.record({ actorId: user.id, action: 'auth.new_device', entityType: 'User', entityId: user.id, ip: ctx.ip, summary: `First sign-in from ${label}` });
+    if (!user.email) return;
+    const when = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kathmandu', dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+    const web = (this.config.get<string>('PUBLIC_WEB_URL') ?? 'http://localhost:5173').replace(/\/$/, '');
+    const { text, html } = this.mail.linkEmail({
+      heading: 'New sign-in to your Batoma account',
+      intro: `Someone signed in to your account from ${label} on ${when} (Nepal time). If it was you, there is nothing to do.`,
+      cta: 'It was not me: reset my password', url: `${web}/login.html?forgot=1`,
+      footer: 'After resetting your password, every other session is signed out. You can also choose "Sign out everywhere" once you are signed in.',
+    });
+    await this.mail.send(user.email, 'New sign-in to your Batoma account', text, html);
+  }
+
+  /** Whole seconds, because a token's issue time is in whole seconds. */
+  private sessionCutoff() {
+    return new Date(Math.floor(Date.now() / 1000) * 1000);
   }
 
   private async issueTokens(userId: string, role: Role, familyId?: string) {
@@ -495,10 +592,13 @@ export class AuthService {
     return { loggedOut: true };
   }
 
-  async logoutAll(userId: string) {
-    await this.prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null }, data: { revokedAt: new Date() },
-    });
+  /** Every session on every device: refresh tokens revoked, access tokens refused from now. */
+  async logoutAll(userId: string, ctx: SignInContext = {}) {
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+      this.prisma.user.update({ where: { id: userId }, data: { sessionsValidFrom: this.sessionCutoff() } }),
+    ]);
+    await this.audit.record({ actorId: userId, action: 'auth.logout_all', entityType: 'User', entityId: userId, ip: ctx.ip, summary: 'Signed out everywhere' });
     return { loggedOut: true };
   }
 }

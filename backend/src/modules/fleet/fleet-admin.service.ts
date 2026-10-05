@@ -61,7 +61,10 @@ export class FleetAdminService {
         OR: [
           { name: { contains: text, mode: 'insensitive' } },
           { registrationNo: { contains: text, mode: 'insensitive' } },
-          { contactPhone: { contains: text } },
+          // Contact phones are encrypted: a whole number matches through its blind index.
+          ...(this.prisma.fieldCrypto && /^[+\d\s()-]{7,}$/.test(text)
+            ? [{ contactPhoneIdx: this.prisma.fieldCrypto.blindIndex(text) }]
+            : !this.prisma.fieldCrypto ? [{ contactPhone: { contains: text } }] : []),
           { vehicles: { some: { plateKey: { contains: text.toUpperCase().replace(/[^\p{L}\p{N}]/gu, '') } } } },
         ],
       } : {}),

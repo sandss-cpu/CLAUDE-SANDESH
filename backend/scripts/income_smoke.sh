@@ -185,7 +185,8 @@ ok "a file that is not a photo is refused" 400 "$(upload "/fleet/income/$BS_ENTR
 ok "a statement photo is attached" 201 "$(upload "/fleet/income/$BS_ENTRY/attachment" "$MANAGER" "$TMP/statement.png")"
 ok "the owner gets a short-lived link" true "$(call GET "/fleet/income/$BS_ENTRY/attachment" "$OWNER" >/dev/null; get "data['expiresInSeconds']==300 and '/files/' in data['url']")"
 LINK=$(get "data['url']")
-ok "the link opens the photo" "200 image/png" "$(curl -s -o /dev/null -w "%{http_code} %{content_type}" "$LINK")"
+# Drawn again as WebP: the phone's location and other metadata are not kept.
+ok "the link opens the photo, re-encoded" "200 image/webp" "$(curl -s -o /dev/null -w "%{http_code} %{content_type}" "$LINK")"
 ok "a tampered link does not" 404 "$(curl -s -o /dev/null -w "%{http_code}" "${LINK%?}x")"
 ok "the photo is not public" 404 "$(curl -s -o /dev/null -w "%{http_code}" "${LINK%%\?*}")"
 ok "another company gets no link" 404 "$(call GET "/fleet/income/$BS_ENTRY/attachment" "$SINGLE")"
@@ -207,7 +208,8 @@ ok "the owner stops sharing totals" false "$(call PATCH /fleet/companies/$CID/fi
 ok "and switches income records off" false "$(call PATCH /fleet/companies/$CID/finance "$OWNER" '{"enabled":false}' >/dev/null; get "data['enabled']")"
 ok "the sheet is closed again" 403 "$(call GET "/fleet/buses/$BUS/income" "$MANAGER")"
 B="{\"email\":\"owner.fleet@bato.test\",\"password\":\"$(pw owner.fleet@bato.test)\"}"
-ok "and the owner signs in without the authenticator once more" true "$(call POST /auth/email/login "" "$B" >/dev/null; get "'accessToken' in data")"
+# Once set up, an authenticator is always asked for, finance or not (step 10).
+ok "the owner who keeps an authenticator is still asked for it" true "$(call POST /auth/email/login "" "$B" >/dev/null; get "data['mfaRequired']")"
 
 echo "== clean up"
 [ -n "$KEY" ] && rm -f "$SMOKE_DIR/../private-uploads/$KEY"

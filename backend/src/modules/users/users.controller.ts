@@ -1,7 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Response } from 'express';
+import { sendFile } from '../../common/utils/send-file';
 import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
-import { AdminUserQueryDto, SetRoleDto, UpdatePrivacyDto, UpdateProfileDto } from './dto/user.dto';
+import { AdminUserQueryDto, DeleteAccountDto, SetRoleDto, UpdatePrivacyDto, UpdateProfileDto } from './dto/user.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -23,8 +26,19 @@ export class UsersController {
     return this.users.updatePrivacy(userId, dto);
   }
 
+  /** Everything held about the signed-in person, as a JSON file. */
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  @Get('me/export')
+  async export(@CurrentUser('id') userId: string, @Ip() ip: string, @Res() res: Response) {
+    sendFile(res, await this.users.exportAccount(userId, ip));
+  }
+
+  /** Deleting one's own account needs the password (and authenticator code) again. */
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Delete('me')
-  remove(@CurrentUser('id') userId: string) { return this.users.deleteAccount(userId); }
+  remove(@CurrentUser('id') userId: string, @Body() dto: DeleteAccountDto, @Ip() ip: string) {
+    return this.users.deleteAccount(userId, dto, ip);
+  }
 
   @Get('me/feed')
   feed(

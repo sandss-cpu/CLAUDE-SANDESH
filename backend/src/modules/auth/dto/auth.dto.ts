@@ -47,12 +47,19 @@ export class MfaVerifyDto {
   code: string;
 }
 
+export class MfaRecoverDto {
+  @IsString() @IsNotEmpty() challengeToken: string;
+
+  @IsString() @Length(10, 20, { message: 'A recovery code looks like k7m2p-xq4hz' })
+  code: string;
+}
+
 export class RefreshDto {
   @IsString() @IsNotEmpty()
   refreshToken: string;
 }
 
-const PASSWORD_RULE = { message: 'Use at least 8 characters for your password' };
+const PASSWORD_RULE = { message: 'Use at least 10 characters for your password' };
 
 /** Which page an emailed link opens: the traveller sign-in or the bus owner portal. */
 export const LINK_APPS = ['traveller', 'owner'] as const;
@@ -65,7 +72,7 @@ export class EmailRegisterDto {
   @IsEmail({}, { message: 'Enter a valid email address' }) @MaxLength(254)
   email: string;
 
-  @IsString() @Length(8, 128, PASSWORD_RULE)
+  @IsString() @Length(10, 128, PASSWORD_RULE)
   password: string;
 
   @IsOptional() @IsIn(LINK_APPS)
@@ -97,7 +104,7 @@ export class PasswordResetDto {
   @IsString() @Length(20, 200)
   token: string;
 
-  @IsString() @Length(8, 128, PASSWORD_RULE)
+  @IsString() @Length(10, 128, PASSWORD_RULE)
   password: string;
 }
 

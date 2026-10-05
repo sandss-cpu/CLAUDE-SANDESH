@@ -224,7 +224,8 @@ echo "== admin"
 B="{\"email\":\"tester.admin@bato.test\",\"password\":\"$(pw tester.admin@bato.test)\"}"
 call POST /auth/email/login "" "$B" >/dev/null
 CH=$(get "data['challengeToken']")
-SECRET=$(sql "select \"totpSecret\" from users where email='tester.admin@bato.test'")
+# Authenticator secrets are encrypted at rest; the helper decrypts with the keys in .env.
+SECRET=$(node "$HERE/field-decrypt.mjs" "$(sql "select \"totpSecret\" from users where email='tester.admin@bato.test'")")
 B="{\"challengeToken\":\"$CH\",\"code\":\"$(totp "$SECRET")\"}"
 call POST /auth/mfa/verify "" "$B" >/dev/null
 ADMIN=$(get "data['accessToken']")

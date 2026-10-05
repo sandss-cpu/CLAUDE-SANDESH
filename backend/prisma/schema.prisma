@@ -189,8 +189,11 @@ model User {
   suspendedUntil    DateTime?
   /// TOTP second factor. Mandatory for privileged roles — an SMS code alone
   /// is not an acceptable gate on platform administration (SIM-swap risk).
+  /// Encrypted at rest (common/crypto/field-crypto.ts).
   totpSecret        String?
   totpConfirmedAt   DateTime?
+  /// "Sign out everywhere": access tokens issued before this are refused.
+  sessionsValidFrom DateTime?
   // privacy
   hideExactLocation Boolean   @default(true)
   publishDelayHours Int       @default(0) // solo-traveller safety: delay geo publish
@@ -221,9 +224,112 @@ model User {
   creatorProfile    CreatorProfile?    @relation("CreatorUser")
   placementsMade    ContentPlacement[] @relation("PlacementAuthor")
   appraisalsWritten DriverAppraisal[]  @relation("Appraiser")
+  recoveryCodes     RecoveryCode[]
+  knownDevices      KnownDevice[]
+  verificationDocs  VerificationDocument[] @relation("DocUploader")
 
   @@index([role])
   @@map("users")
+}
+
+/// One-time codes for when the authenticator is lost. Only a hash is kept.
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+/// Failed sign-ins, per account and per address hash: progressive delay, then a lock.
+model LoginGuard {
+  key            String    @id
+  failures       Int       @default(0)
+  firstFailureAt DateTime  @default(now())
+  lastFailureAt  DateTime  @default(now())
+  lockedUntil    DateTime?
+
+  @@map("login_guards")
+}
+
+/// Browsers an account has signed in from, so a new one can be reported by email.
+model KnownDevice {
+  id          String   @id @default(uuid())
+  userId      String
+  /// Keyed hash of the browser and system family ("Chrome on Android"), never the raw user agent.
+  deviceHash  String
+  label       String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceHash])
+  @@map("known_devices")
+}
+
+enum VerificationDocKind {
+  PAN
+  COMPANY_REGISTRATION
+  BLUEBOOK
+  ROUTE_PERMIT
+  BUSINESS_LICENCE
+  OTHER
+}
+
+/// Proof a company or business is who it says, in private storage, seen only by its
+/// owners and Batoma's staff through short-lived signed links.
+model VerificationDocument {
+  id           String              @id @default(uuid())
+  operatorId   String?
+  businessId   String?
+  kind         VerificationDocKind
+  storageKey   String              @unique
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime            @default(now())
+
+  operator   Operator? @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  uploadedBy User?     @relation("DocUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([operatorId])
+  @@index([businessId])
+  @@map("verification_documents")
+}
+
+/// Scans older than 13 months, kept only as daily counts per code.
+model ScanDaily {
+  day        DateTime @db.Date
+  qrCodeId   String
+  scans      Int
+  firstScans Int
+  sessions   Int
+
+  @@id([day, qrCodeId])
+  @@map("scan_daily")
+}
+
+/// Website events older than 13 months, kept only as daily counts.
+model SiteEventDaily {
+  id         BigInt        @id @default(autoincrement())
+  day        DateTime      @db.Date
+  type       SiteEventType
+  target     String?
+  businessId String?
+  adId       String?
+  articleId  String?
+  count      Int
+
+  @@index([businessId, day])
+  @@index([adId, day])
+  @@map("site_event_daily")
 }
 
 model OtpCode {
@@ -354,7 +460,10 @@ model Operator {
   name              String
   slug              String               @unique
   logoUrl           String?
+  /// Encrypted at rest (common/crypto/field-crypto.ts); searched through contactPhoneIdx.
   contactPhone      String?
+  /// Keyed hash of the normalised contact phone, for exact-match search.
+  contactPhoneIdx   String?
   contactEmail      String?
   address           String?
   /// Company registration or PAN number, checked during verification.
@@ -382,8 +491,10 @@ model Operator {
   incomeSources IncomeSource[]
   incomeEntries IncomeEntry[]
   incomeImports IncomeImport[]
+  documents     VerificationDocument[]
 
   @@index([verification])
+  @@index([contactPhoneIdx])
   @@map("operators")
 }
 
@@ -1000,6 +1111,7 @@ model Business {
   subscriptionEvents SubscriptionEvent[]
   advertisements     Advertisement[]
   packages           PartnerPackage[]
+  documents          VerificationDocument[]
 
   @@index([category, tier])
   @@map("businesses")

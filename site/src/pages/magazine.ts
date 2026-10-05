@@ -3,7 +3,7 @@ import { dayBoth, isoDate } from '../format';
 import { esc, html, raw } from '../html';
 import { absolute, page, sponsoredLabel } from '../layout';
 import { plain, storyHtml } from '../md';
-import { adSlot, articleCard, articleEvents, crumbs, mediaUrl, newsletterForm, pager, Rendered } from '../parts';
+import { adSlot, articleCard, articleEvents, crumbs, img, mediaUrl, newsletterForm, pager, Rendered } from '../parts';
 import { PUBLISHER } from './home';
 
 const PER_PAGE = 12;
@@ -88,7 +88,7 @@ export async function article(slug: string): Promise<Rendered | null> {
     ${a.subtitle ? html`<p class="lede">${a.subtitle}</p>` : ''}
     <p class="byline">${a.author?.name ? html`By ${a.author.name} · ` : ''}${a.publishedAt ? html`<time datetime="${isoDate(a.publishedAt)}">${dayBoth(a.publishedAt)}</time> · ` : ''}${a.readMinutes} min read</p>
   </header>
-  ${a.coverImageUrl ? html`<figure class="cover"><img src="${mediaUrl(a.coverImageUrl)}" alt="" width="1200" height="750" decoding="async"></figure>` : ''}
+  ${a.coverImageUrl ? html`<figure class="cover">${img(a.coverImageUrl, '', { sizes: '(min-width: 760px) 720px, 100vw', width: 1200, height: 750, lazy: false })}</figure>` : ''}
   ${a.audioUrl ? html`<div class="listen"><p class="kicker">Listen to this story</p><audio controls preload="none" src="${mediaUrl(a.audioUrl)}"></audio></div>` : ''}
   ${a.keyPoints.length ? html`<aside class="brief" aria-label="In brief"><h2>In brief</h2><ul>${a.keyPoints.map((k) => html`<li>${k}</li>`)}</ul></aside>` : ''}
   ${headings.length >= 3 ? html`<nav class="contents" aria-label="In this story"><h2>In this story</h2><ul>${headings.map((h, i) => html`<li><a href="#sec-${i + 1}">${h}</a></li>`)}</ul></nav>` : ''}

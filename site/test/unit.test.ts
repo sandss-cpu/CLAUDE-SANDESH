@@ -47,3 +47,13 @@ test('form guards: honeypot, too fast, stale and tampered tokens', () => {
   assert.equal(checkGuards({ t: `${at}.${'0'.repeat(32)}` }, now), 'stale');
   assert.equal(checkGuards({ t: `${at}.ééééééééééééééééééééééééééééééé` }, now), 'stale');
 });
+
+test('images: srcset from the upload sizes, and only safe addresses', async () => {
+  const { img, srcset } = await import('../src/parts');
+  assert.equal(srcset('https://cdn.example/u/abc-960.webp'), 'https://cdn.example/u/abc-480.webp 480w, https://cdn.example/u/abc-960.webp 960w');
+  assert.equal(srcset('https://cdn.example/u/old.jpg'), null);
+  const tag = img('https://cdn.example/u/abc-1600.webp', 'A "quoted" view', { sizes: '100vw', width: 1200, height: 750 }).value;
+  assert.match(tag, /srcset="https:\/\/cdn\.example\/u\/abc-480\.webp 480w, .*abc-1600\.webp 1600w"/);
+  assert.match(tag, /alt="A &quot;quoted&quot; view"/);
+  assert.match(img('javascript:alert(1)', '', { sizes: '100vw', width: 1, height: 1 }).value, /src="#"/);
+});
