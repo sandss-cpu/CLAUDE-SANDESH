@@ -7,6 +7,10 @@ function mark(dot, label, ok, text){
   document.getElementById(label).textContent = text;
 }
 
+// The public website runs on its own server; config.js says where.
+const SITE = window.BATO_CONFIG && window.BATO_CONFIG.site;
+if (SITE) document.getElementById('siteLink').href = SITE;
+
 mark('dWeb', 'tWeb', location.protocol !== 'file:' && location.port === '5173',
   location.port === '5173' ? 'Web server on :5173' : `Served from ${location.host || 'file://'} — use :5173`);
 
