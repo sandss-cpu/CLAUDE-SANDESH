@@ -185,8 +185,8 @@ cat <<INFO
    Public website      http://localhost:4000
    API health          http://localhost:3000/health
 
-   Test logins are in Bato_Docs/Bato_Test_Accounts_Phase3.md, which is kept out of
-   this folder and out of GitHub on purpose.
+   Test logins are in Bato_Test_Accounts_Phase3.md: in Bato_Docs, or in Docs next to
+   this project. It is kept out of the project and out of GitHub on purpose.
 
    Logs: /tmp/bato_backend.log, /tmp/bato_web_server.log and /tmp/batoma_site.log
    You can close this window; the servers keep running. Stop_Bato.command stops them.
