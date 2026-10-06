@@ -10,10 +10,14 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   `~/Desktop/COASTER.2019/travel-platform 3`. `main` and the other local copies stayed
   untouched until the owner decided to merge.
 - **Merged into `main` on 6 October 2026**, at the owner's request, as a fast-forward (no
-  merge commit, nothing rewritten). The other local copies still run the old code against
-  `travel_magazine`. Updating one of them and starting it with `Start_Bato.command` applies
-  the Phase 3 migrations to that shared database, which the copies still on the old code
-  cannot read afterwards: back the database up first and update every copy together.
+  merge commit, nothing rewritten).
+- **The local copies moved to Phase 3 the same day, on `batoma_phase3`.** Every copy's
+  `backend/.env` points at it and carries its encryption keys. `travel_magazine` is kept
+  untouched as the pre-Phase 3 database (a dump and the old `.env` are in
+  `~/batoma-backups`), and `Start_Bato.command` writes a fresh `.env` for `batoma_phase3`,
+  so no copy applies the Phase 3 migrations to it. The launcher also reinstalls packages
+  whenever `package-lock.json` or the Prisma schema changes, since updates now arrive from
+  Dependabot.
 - **Its own database, `batoma_phase3`.** Phase 3 migrations retire a table and encrypt
   columns; running them against the shared `travel_magazine` database would break every
   other copy that still runs the old code.

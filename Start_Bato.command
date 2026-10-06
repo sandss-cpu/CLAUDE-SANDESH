@@ -1,5 +1,5 @@
 #!/bin/bash
-# Double-click this file to run Bato on this Mac.
+# Double-click this file to run Batoma on this Mac.
 #
 # It is written for a fresh copy: if the dependencies, the .env or the database
 # tables are missing it sets them up, then starts the API and the web server and
@@ -45,7 +45,7 @@ if [ ! -f "$BACKEND/.env" ]; then
   cat > "$BACKEND/.env" <<ENV
 NODE_ENV=development
 PORT=3000
-DATABASE_URL="postgresql://travel:travel@localhost:5432/travel_magazine?schema=public"
+DATABASE_URL="postgresql://travel:travel@localhost:5432/batoma_phase3?schema=public"
 JWT_SECRET=$SECRET
 JWT_EXPIRES_IN=15m
 REFRESH_EXPIRES_DAYS=60
@@ -59,17 +59,38 @@ ENV
   echo "  created (login codes are printed by the API in development)"
 fi
 
+# Phone and licence numbers, emergency contacts and authenticator secrets are stored
+# encrypted. Without the keys they show scrambled and authenticator sign-ins fail.
+if ! grep -q '^FIELD_ENCRYPTION_KEYS=.' "$BACKEND/.env" || ! grep -q '^BLIND_INDEX_KEY=.' "$BACKEND/.env"; then
+  printf '\n⚠ backend/.env has no FIELD_ENCRYPTION_KEYS or BLIND_INDEX_KEY.\n'
+  echo "  Copy both lines from the password manager (or another copy's backend/.env),"
+  echo "  or phone numbers show scrambled and authenticator sign-ins fail."
+fi
+
 # ---------------------------------------------------------------- dependencies
-if [ ! -d "$BACKEND/node_modules" ]; then
-  step "Installing dependencies (first run only, this takes a few minutes)…"
-  (cd "$BACKEND" && npm install) || stop "npm install failed. The output above says why."
+# Installed again whenever package-lock.json or the database schema changes (an update
+# taken from GitHub, for example), not only on the first run: old packages or an old
+# database client make the API fail at start.
+STAMP="$BACKEND/node_modules/.batoma-install"
+WANT="$(cd "$BACKEND" && cat package-lock.json prisma/schema.prisma | shasum -a 256 | cut -d' ' -f1)"
+if [ "$(cat "$STAMP" 2>/dev/null)" != "$WANT" ]; then
+  if up http://localhost:3000/health; then
+    stop "The packages changed, but an API is running from some copy. Stop it, then run this again."
+  fi
+  if [ -d "$BACKEND/node_modules" ]; then
+    step "Updating dependencies (the packages changed, this takes a few minutes)…"
+  else
+    step "Installing dependencies (first run only, this takes a few minutes)…"
+  fi
+  (cd "$BACKEND" && npm ci) || stop "npm ci failed. The output above says why."
   (cd "$BACKEND" && npx prisma generate) || stop "prisma generate failed."
+  echo "$WANT" > "$STAMP"
 fi
 
 # ---------------------------------------------------------------- tables & demo data
 step "Applying database migrations…"
 (cd "$BACKEND" && npx prisma migrate deploy >/dev/null 2>&1) || \
-  echo "  migrations could not be applied — check that the travel database exists"
+  echo "  migrations could not be applied — check that the batoma_phase3 database exists"
 
 if [ ! -f "$BACKEND/.bato_seeded" ]; then
   step "Loading the demo content (first run only)…"
@@ -103,7 +124,7 @@ open "http://localhost:5173/preview.html"
 
 cat <<INFO
 
-✅ Bato is running.
+✅ Batoma is running.
 
    Preview & testing   http://localhost:5173/preview.html   ← opened for you
    Traveller app       http://localhost:5173/index.html
@@ -111,7 +132,7 @@ cat <<INFO
    Control panel       http://localhost:5173/admin.html
    API health          http://localhost:3000/health
 
-   Test logins are in Bato_Docs/Bato_Test_Accounts.md, which is kept out of
+   Test logins are in Bato_Docs/Bato_Test_Accounts_Phase3.md, which is kept out of
    this folder and out of GitHub on purpose.
 
    Logs: /tmp/bato_backend.log and /tmp/bato_web_server.log
