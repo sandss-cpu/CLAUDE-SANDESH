@@ -5,10 +5,12 @@ import type { Response } from 'express';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 import { sendFile } from '../../common/utils/send-file';
 import { SiteKeyGuard } from './site-key.guard';
 import {
   EnquiryStatusDto, ListQueryDto, MonthQueryDto, NewsletterDto, PackageDto, SiteEnquiryDto, SiteLeadDto, TokenDto, UpdatePackageDto,
+  WebsiteArticleDto, WebsiteArticlesQueryDto,
 } from './site.dto';
 import { SiteService } from './site.service';
 
@@ -70,7 +72,7 @@ export class PartnerAreaController {
   }
 }
 
-/** Partner packages, the enquiry inbox and the newsletter list, for Batoma's admins. */
+/** The website's articles, partner packages, the enquiry inbox and the newsletter list, for Batoma's admins. */
 @Controller('admin')
 @Roles(Role.ADMIN)
 export class SiteAdminController {
@@ -90,6 +92,18 @@ export class SiteAdminController {
   @Get('partner-packages/report/:businessId')
   partnerReport(@Param('businessId', ParseUUIDPipe) id: string, @Query() q: MonthQueryDto, @CurrentUser() u: AuthUser) {
     return this.site.report(id, { id: u.id, role: Role.ADMIN }, q.month);
+  }
+
+  @Get('site/overview')
+  websiteOverview() { return this.site.websiteOverview(); }
+
+  @Get('site/articles')
+  websiteArticles(@Query() q: WebsiteArticlesQueryDto) { return this.site.websiteArticles(q); }
+
+  @PurgeSite()
+  @Patch('site/articles/:id')
+  websiteArticle(@Param('id', ParseUUIDPipe) id: string, @Body() dto: WebsiteArticleDto, @CurrentUser('id') uid: string, @Ip() ip: string) {
+    return this.site.setArticleWebsite(id, dto, uid, ip);
   }
 
   @Get('site/enquiries')

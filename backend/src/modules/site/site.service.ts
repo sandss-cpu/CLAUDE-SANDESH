@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PackageStatus, Prisma, Role, SubscriberStatus } from '@prisma/client';
+import { ContentStatus, PackageStatus, Prisma, Role, SiteEventType, SubscriberStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { AuditService } from '../../common/audit/audit.service';
@@ -9,13 +9,17 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { SitePurgeService } from '../../common/site-purge/site-purge.service';
 import { formatBs, kathmanduDay } from '../../common/utils/bs-date';
 import { MailService } from '../auth/mail.service';
+import { WEB_PLACEMENTS } from '../ads/ads.service';
 import { csvLine } from '../finance/import/csv';
 import { CONTACT_TYPES, checkMonth, DayCount, partnerReport, REPORT_COLUMNS } from './partner-report';
-import { ListQueryDto, NewsletterDto, PackageDto, SiteEnquiryDto, SiteLeadDto, UpdatePackageDto } from './site.dto';
+import {
+  ListQueryDto, NewsletterDto, PackageDto, SiteEnquiryDto, SiteLeadDto, UpdatePackageDto, WebsiteArticleDto, WebsiteArticlesQueryDto,
+} from './site.dto';
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const PAGE = 30;
+const DAYS_30 = 30 * 86_400_000;
 
 interface Actor { id: string; role: Role }
 
@@ -319,6 +323,92 @@ export class SiteService {
     });
     this.purge.purge('package');
     return updated;
+  }
+
+  // ================= the website, from the control panel =================
+
+  /** What the public website shows right now, and how much it was read in the last 30 days. */
+  async websiteOverview() {
+    const now = new Date();
+    const since = new Date(now.getTime() - DAYS_30);
+    const web = { placement: { in: WEB_PLACEMENTS } };
+    const verified = { isActive: true, verifiedAt: { not: null } };
+    const [onSite, offSite, unpublished, adsLive, adsScheduled, adsPaused, partners, guides, deals, enquiries, views, top] = await Promise.all([
+      this.prisma.article.count({ where: { status: ContentStatus.PUBLISHED, onWebsite: true } }),
+      this.prisma.article.count({ where: { status: ContentStatus.PUBLISHED, onWebsite: false } }),
+      this.prisma.article.count({ where: { status: { in: [ContentStatus.DRAFT, ContentStatus.IN_REVIEW] } } }),
+      this.prisma.advertisement.count({ where: { ...web, isActive: true, startsAt: { lte: now }, endsAt: { gt: now } } }),
+      this.prisma.advertisement.count({ where: { ...web, isActive: true, startsAt: { gt: now } } }),
+      this.prisma.advertisement.count({ where: { ...web, isActive: false, endsAt: { gt: now } } }),
+      this.prisma.business.count({ where: verified }),
+      this.prisma.routeGuide.count({ where: { status: ContentStatus.PUBLISHED } }),
+      this.prisma.coupon.count({ where: { isActive: true, validFrom: { lte: now }, validTo: { gt: now }, business: verified } }),
+      this.prisma.siteEnquiry.count({ where: { status: 'NEW' } }),
+      this.prisma.siteEvent.count({ where: { type: SiteEventType.PAGE_VIEW, createdAt: { gte: since } } }),
+      this.prisma.siteEvent.groupBy({
+        by: ['articleId'], where: { type: SiteEventType.PAGE_VIEW, articleId: { not: null }, createdAt: { gte: since } },
+        _count: { _all: true }, orderBy: { _count: { articleId: 'desc' } }, take: 5,
+      }),
+    ]);
+    const read = await this.prisma.article.findMany({
+      where: { id: { in: top.map((t) => t.articleId!) } }, select: { id: true, slug: true, title: true, status: true, onWebsite: true },
+    });
+    return {
+      siteUrl: this.siteUrl(''),
+      articles: { onSite, offSite, unpublished },
+      ads: { live: adsLive, scheduled: adsScheduled, paused: adsPaused },
+      partners, guides, deals, enquiries, views30: views,
+      mostRead: top.flatMap((t) => {
+        const a = read.find((r) => r.id === t.articleId);
+        return a ? [{ ...a, views: t._count._all, url: this.siteUrl(`/magazine/${a.slug}`) }] : [];
+      }),
+    };
+  }
+
+  /** Published articles with whether the website shows them and how often it was read in 30 days. Drafts are never on it. */
+  async websiteArticles(q: WebsiteArticlesQueryDto) {
+    const page = q.page ?? 1;
+    const where: Prisma.ArticleWhereInput = {
+      status: ContentStatus.PUBLISHED,
+      ...(q.show ? { onWebsite: q.show === 'on' } : {}),
+      ...(q.q ? { OR: [{ title: { contains: q.q, mode: 'insensitive' } }, { subtitle: { contains: q.q, mode: 'insensitive' } }] } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.article.findMany({
+        where, orderBy: [{ publishedAt: 'desc' }, { title: 'asc' }], skip: (page - 1) * PAGE, take: PAGE,
+        select: {
+          id: true, slug: true, title: true, summary: true, coverImageUrl: true, isFeatured: true, isSponsored: true, onWebsite: true,
+          publishedAt: true, category: { select: { name: true } },
+        },
+      }),
+      this.prisma.article.count({ where }),
+    ]);
+    const views = items.length ? await this.prisma.siteEvent.groupBy({
+      by: ['articleId'],
+      where: { type: SiteEventType.PAGE_VIEW, articleId: { in: items.map((a) => a.id) }, createdAt: { gte: new Date(Date.now() - DAYS_30) } },
+      _count: { _all: true },
+    }) : [];
+    const viewsOf = new Map(views.map((v) => [v.articleId, v._count._all]));
+    return {
+      items: items.map((a) => ({ ...a, url: this.siteUrl(`/magazine/${a.slug}`), views30: viewsOf.get(a.id) ?? 0 })),
+      total, page, pages: Math.max(1, Math.ceil(total / PAGE)), siteUrl: this.siteUrl(''),
+    };
+  }
+
+  /** Keep an article on the website or take it off (the app is not affected), or feature it. */
+  async setArticleWebsite(id: string, dto: WebsiteArticleDto, actorId: string, ip?: string) {
+    if (dto.onWebsite === undefined && dto.isFeatured === undefined) throw new BadRequestException('Say what to change.');
+    const select = { id: true, slug: true, title: true, status: true, onWebsite: true, isFeatured: true } as const;
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.article.findUnique({ where: { id }, select });
+      if (!before) throw new NotFoundException('Article not found');
+      const row = await tx.article.update({ where: { id }, data: { onWebsite: dto.onWebsite, isFeatured: dto.isFeatured }, select });
+      const what = dto.onWebsite !== undefined
+        ? (row.onWebsite ? 'put back on the website' : 'taken off the website')
+        : (row.isFeatured ? 'featured' : 'no longer featured');
+      await this.audit.record({ actorId, action: 'article.website', entityType: 'Article', entityId: id, ip, summary: `“${row.title}” ${what}`, before, after: row }, tx);
+      return row;
+    });
   }
 
   async enquiries(q: ListQueryDto) {

@@ -1,11 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  AdDurationUnit, AdLinkType, AdPlacement, Advertisement, ModerationAct, Prisma,
+  AdDurationUnit, AdLinkType, AdPlacement, Advertisement, ModerationAct, Prisma, SiteEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
-import { AdStatus, SaveAdDto } from './dto/ads.dto';
+import { AdStatus, AdSurface, SaveAdDto } from './dto/ads.dto';
 
 const DAY_MS = 86_400_000;
 
@@ -38,6 +38,9 @@ export function adStatus(ad: Pick<Advertisement, 'isActive' | 'startsAt' | 'ends
   if (ad.startsAt > now) return 'SCHEDULED';
   return 'ACTIVE';
 }
+
+/** The public website's slots; every other placement is the app's. */
+export const WEB_PLACEMENTS = Object.values(AdPlacement).filter((p) => p.startsWith('WEB_'));
 
 function liveWhere(now = new Date()): Prisma.AdvertisementWhereInput {
   return { isActive: true, startsAt: { lte: now }, endsAt: { gt: now } };
@@ -114,14 +117,18 @@ export class AdsService {
 
   // ---------------- admin ----------------
 
-  async adminList(status?: AdStatus) {
+  async adminList(status?: AdStatus, surface?: AdSurface) {
     const now = new Date();
-    const where: Prisma.AdvertisementWhereInput =
+    const byStatus: Prisma.AdvertisementWhereInput =
       status === 'ACTIVE' ? liveWhere(now)
       : status === 'SCHEDULED' ? { isActive: true, startsAt: { gt: now }, endsAt: { gt: now } }
       : status === 'EXPIRED' ? { endsAt: { lte: now } }
       : status === 'PAUSED' ? { isActive: false, endsAt: { gt: now } }
       : {};
+    const where: Prisma.AdvertisementWhereInput = {
+      ...byStatus,
+      ...(surface === 'web' ? { placement: { in: WEB_PLACEMENTS } } : surface === 'app' ? { placement: { notIn: WEB_PLACEMENTS } } : {}),
+    };
 
     const ads = await this.prisma.advertisement.findMany({
       where,
@@ -131,15 +138,36 @@ export class AdsService {
       },
       orderBy: [{ endsAt: 'desc' }],
     });
+    const site = await this.siteCounts(ads.filter((a) => WEB_PLACEMENTS.includes(a.placement)).map((a) => a.id));
 
     return ads.map(({ routeTargets, ...ad }) => ({
       ...ad,
+      // The website records its own views and clicks (site_events); impressions/clicks are the app's.
+      ...(site.has(ad.id) ? { site: site.get(ad.id) } : {}),
       routes: routeTargets.map((t) => t.route),
       routeIds: routeTargets.map((t) => t.routeId),
       status: adStatus(ad, now),
       daysLeft: Math.max(0, Math.ceil((ad.endsAt.getTime() - now.getTime()) / DAY_MS)),
       ctr: ad.impressions ? +((ad.clicks / ad.impressions) * 100).toFixed(1) : 0,
     }));
+  }
+
+  /** Website views and clicks per ad since it started: the raw events, plus the days already rolled up after 13 months. */
+  private async siteCounts(ids: string[]) {
+    const out = new Map<string, { views: number; clicks: number }>(ids.map((id) => [id, { views: 0, clicks: 0 }]));
+    if (!ids.length) return out;
+    const where = { adId: { in: ids }, type: { in: [SiteEventType.IMPRESSION, SiteEventType.CLICK] } };
+    const [raw, daily] = await Promise.all([
+      this.prisma.siteEvent.groupBy({ by: ['adId', 'type'], where, _count: { _all: true } }),
+      this.prisma.siteEventDaily.groupBy({ by: ['adId', 'type'], where, _sum: { count: true } }),
+    ]);
+    const add = (adId: string | null, type: string, n: number) => {
+      const row = adId ? out.get(adId) : undefined;
+      if (row) row[type === 'CLICK' ? 'clicks' : 'views'] += n;
+    };
+    raw.forEach((r) => add(r.adId, r.type, r._count._all));
+    daily.forEach((r) => add(r.adId, r.type, r._sum.count ?? 0));
+    return out;
   }
 
   async create(dto: SaveAdDto, actorId: string) {

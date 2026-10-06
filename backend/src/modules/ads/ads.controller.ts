@@ -19,7 +19,7 @@ export class AdsController {
   // ---- admin (literal "admin" routes are declared before ":id" ones) ----
 
   @Roles(Role.ADMIN) @Get('admin')
-  adminList(@Query() q: AdminAdQueryDto) { return this.ads.adminList(q.status); }
+  adminList(@Query() q: AdminAdQueryDto) { return this.ads.adminList(q.status, q.surface); }
 
   @PurgeSite()
 

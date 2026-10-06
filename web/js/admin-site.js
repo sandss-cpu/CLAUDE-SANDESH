@@ -1,7 +1,10 @@
 /* ===========================================================================
-   The public website, from the control panel: partner packages (what each partner
-   has bought, for how long and at what price), the enquiry inbox (contact and
-   advertising messages from the website) and the newsletter list.
+   The public website, from the control panel: what it shows and how much it is read,
+   which published articles it carries (kept on or taken off, separately from the app),
+   its ad slots, partner listings, partner packages (what each partner has bought, for
+   how long and at what price), the enquiry inbox (contact and advertising messages
+   from the website) and the newsletter list. Every change reaches the website at once:
+   the API drops its page cache.
 
    A classic script loaded after admin.js, sharing its globals (state, api, esc,
    notify, askDialog, renderMain, downloadFile, SECTIONS, SCREENS, Actions). Prices
@@ -9,9 +12,13 @@
    =========================================================================== */
 
 state.site = {
-  tab: 'listings', packages: [], pkgStatus: '', businesses: [], editing: null, pending: null,
+  tab: 'overview', packages: [], pkgStatus: '', businesses: [], editing: null, pending: null,
   enquiries: null, enqStatus: 'NEW', enqPage: 1, newsletter: null,
+  overview: null, articles: null, artQ: '', artShow: '', artPage: 1, adStatus: '',
 };
+
+const SITE_BASE = (window.BATO_CONFIG?.site || 'http://localhost:4000').replace(/\/$/, '');
+const newTab = (href, label, cls = 'btn btn-sm') => `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener">${label} ↗</a>`;
 
 const PACKAGE_KIND = {
   LISTING: 'Featured listing', HOME_HERO: 'Home page spotlight', SECTION_SPONSOR: 'Section partner', SPONSORED_ARTICLE: 'Sponsored story',
@@ -34,20 +41,154 @@ const toDayInput = (iso) => (iso ? new Date(new Date(iso).getTime() + (5 * 60 + 
 
 async function screenWebsite(){
   const s = state.site;
-  const tabs = [['listings', 'Listings'], ['packages', 'Partner packages'], ['enquiries', 'Enquiries'], ['newsletter', 'Newsletter']];
-  let body = '';
-  if(s.tab === 'listings') body = await siteListings();
-  else if(s.tab === 'packages') body = await sitePackages();
-  else if(s.tab === 'enquiries') body = await siteEnquiries();
-  else body = await siteNewsletter();
+  const tabs = [
+    ['overview', 'Overview'], ['articles', 'Articles'], ['ads', 'Ads'], ['listings', 'Listings'],
+    ['packages', 'Partner packages'], ['enquiries', 'Enquiries'], ['newsletter', 'Newsletter'],
+  ];
+  const screens = {
+    overview: siteOverview, articles: siteArticles, ads: siteAds, listings: siteListings,
+    packages: sitePackages, enquiries: siteEnquiries, newsletter: siteNewsletter,
+  };
+  const body = await (screens[s.tab] || siteOverview)();
   return `
     <div class="top-row"><h2>Website</h2>
-      ${s.tab === 'packages' ? '<button class="btn btn-primary" data-action="siteNewPackage">+ New package</button>' : ''}</div>
+      <div class="row-actions">
+        ${s.tab === 'packages' ? '<button class="btn btn-primary" data-action="siteNewPackage">+ New package</button>' : ''}
+        ${s.tab === 'ads' ? '<button class="btn btn-primary" data-action="siteNewAd">+ New website ad</button>' : ''}
+        ${newTab(SITE_BASE, 'Open the website', 'btn')}
+      </div></div>
     <div class="filters" role="tablist" aria-label="Website">
       ${tabs.map(([k, label]) => `<button class="btn btn-sm ${s.tab === k ? 'btn-primary' : ''}" role="tab" aria-selected="${s.tab === k}" data-action="siteTab" data-tab="${k}">${label}</button>`).join('')}
     </div>
     ${body}
-    ${s.editing ? packageForm(s.editing) : ''}`;
+    ${s.editing ? packageForm(s.editing) : ''}
+    ${s.tab === 'ads' && state.ads.editing ? adForm(state.ads.editing, { webOnly: true }) : ''}
+    ${s.tab === 'ads' && state.ads.confirmDelete ? confirmDeleteAdDialog(state.ads.items.find((x) => x.id === state.ads.confirmDelete)) : ''}`;
+}
+
+/** What the website shows right now, each figure a way into the tab that changes it. */
+async function siteOverview(){
+  const o = state.site.overview = await api('/admin/site/overview');
+  const stat = (n, label, tab, sub = '') => `<button class="stat stat-link" data-action="siteTab" data-tab="${tab}">
+    <b>${n.toLocaleString('en-IN')}</b><span>${label}</span>${sub ? `<div class="hint">${sub}</div>` : ''}</button>`;
+  return `
+    <p class="hint">Everything on the public website comes from this control panel. A change here reaches it within seconds.</p>
+    <div class="stat-grid">
+      ${stat(o.articles.onSite, 'Stories on the website', 'articles', o.articles.offSite ? `${o.articles.offSite} taken off` : '')}
+      ${stat(o.ads.live, 'Ads showing now', 'ads', [o.ads.scheduled && `${o.ads.scheduled} scheduled`, o.ads.paused && `${o.ads.paused} paused`].filter(Boolean).join(' · '))}
+      ${stat(o.partners, 'Partners listed', 'listings')}
+      ${stat(o.deals, 'Live deals', 'listings')}
+      ${stat(o.views30, 'Page views, last 30 days', 'articles')}
+      ${stat(o.enquiries, 'Enquiries waiting', 'enquiries')}
+    </div>
+    <div class="site-two site-cards">
+      <div class="card">
+        <h3>Most read in the last 30 days</h3>
+        ${!o.mostRead.length ? '<div class="empty">No story has been read on the website yet.</div>' : `
+          <ol class="site-list">${o.mostRead.map((a, i) => `<li>
+            <span>${i + 1}. ${esc(a.title)}${a.onWebsite && a.status === 'PUBLISHED' ? '' : ' <span class="pill REJECTED">Not on the website now</span>'}</span>
+            <span class="row-actions"><small>${a.views.toLocaleString('en-IN')} views</small>${a.onWebsite && a.status === 'PUBLISHED' ? newTab(a.url, 'View') : ''}</span>
+          </li>`).join('')}</ol>`}
+      </div>
+      <div class="card">
+        <h3>Where each part is managed</h3>
+        <table class="site-where"><tbody>
+          <tr><td>Stories</td><td>Write and publish under <button class="btn btn-sm btn-ghost" data-action="goSection" data-key="articles">Articles</button>; keep on or take off the website under <button class="btn btn-sm btn-ghost" data-action="siteTab" data-tab="articles">Website → Articles</button></td></tr>
+          <tr><td>Ads and sponsors</td><td><button class="btn btn-sm btn-ghost" data-action="siteTab" data-tab="ads">Website → Ads</button> (app ads stay under Ads)</td></tr>
+          <tr><td>Trip guides</td><td><button class="btn btn-sm btn-ghost" data-action="goSection" data-key="guides">Route guides</button>: ${o.guides} published</td></tr>
+          <tr><td>Partners and deals</td><td><button class="btn btn-sm btn-ghost" data-action="siteTab" data-tab="listings">Website → Listings</button> and <button class="btn btn-sm btn-ghost" data-action="siteTab" data-tab="packages">Partner packages</button></td></tr>
+          <tr><td>Drafts</td><td>${o.articles.unpublished} not yet published: never on the website until they are</td></tr>
+        </tbody></table>
+      </div>
+    </div>`;
+}
+
+/** Published articles only: drafts never reach the website. Taking one off leaves it in the app. */
+async function siteArticles(){
+  const s = state.site;
+  const q = new URLSearchParams({ page: String(s.artPage), ...(s.artQ ? { q: s.artQ } : {}), ...(s.artShow ? { show: s.artShow } : {}) });
+  const r = s.articles = await api(`/admin/site/articles?${q}`);
+  return `
+    <p class="hint">Every published article appears on the website unless you take it off here. Taking a story off the website leaves it in the app on the buses; to remove it everywhere, archive it under Articles. Featured stories lead the website's home page.</p>
+    <div class="filters">
+      <input type="search" aria-label="Search articles" placeholder="Search title or subtitle…" value="${esc(s.artQ)}" data-change="siteArtSearch">
+      <select aria-label="Show articles" data-change="siteArtShow">
+        <option value="" ${!s.artShow ? 'selected' : ''}>All published articles</option>
+        <option value="on" ${s.artShow === 'on' ? 'selected' : ''}>On the website</option>
+        <option value="off" ${s.artShow === 'off' ? 'selected' : ''}>Taken off the website</option>
+      </select>
+    </div>
+    ${!r.items.length ? `<div class="empty">${s.artQ || s.artShow ? 'No articles match.' : 'Nothing published yet. Publish an article under Articles and it appears here.'}</div>` : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Article</th><th>On the website</th><th>Views (30 days)</th><th></th></tr></thead>
+        <tbody>${r.items.map((a) => `<tr>
+          <td><div class="ad-cell">${a.coverImageUrl ? `<img src="${esc(a.coverImageUrl)}" alt="">` : ''}
+            <div><strong>${esc(a.title)}</strong><br>
+            <small>${esc(a.category?.name || 'No section')}${a.publishedAt ? ` · published ${esc(fmtDay(a.publishedAt))}` : ''}</small>
+            ${a.isFeatured ? ' <span class="pill lead-pill">Featured</span>' : ''}${a.isSponsored ? ' <span class="pill">Sponsored</span>' : ''}</div></div></td>
+          <td>${a.onWebsite ? '<span class="pill ACTIVE">On the website</span>' : '<span class="pill REJECTED">Taken off</span><div class="hint">Still in the app</div>'}</td>
+          <td>${a.views30.toLocaleString('en-IN')}</td>
+          <td class="row-actions">
+            ${a.onWebsite
+              ? `<button class="btn btn-sm btn-danger" data-action="siteArtWebsite" data-id="${a.id}" data-on="false">Take off website</button>`
+              : `<button class="btn btn-sm btn-primary" data-action="siteArtWebsite" data-id="${a.id}" data-on="true">Put back on website</button>`}
+            <button class="btn btn-sm" data-action="siteArtFeature" data-id="${a.id}" data-on="${!a.isFeatured}">${a.isFeatured ? 'Unfeature' : 'Feature'}</button>
+            <button class="btn btn-sm" data-action="siteArtEdit" data-id="${a.id}">Edit</button>
+            ${a.onWebsite ? newTab(a.url, 'View') : ''}
+          </td></tr>`).join('')}</tbody>
+      </table></div>
+      ${r.pages > 1 ? `<div class="row-actions site-gap">
+        ${s.artPage > 1 ? '<button class="btn btn-sm" data-action="siteArtPage" data-by="-1">← Newer</button>' : ''}
+        <span class="hint">Page ${r.page} of ${r.pages} · ${r.total} articles</span>
+        ${s.artPage < r.pages ? '<button class="btn btn-sm" data-action="siteArtPage" data-by="1">Older →</button>' : ''}</div>` : ''}`}`;
+}
+
+/** Where each website slot can be seen, so a live ad can be checked in place. */
+function webAdPath(ad){
+  const cat = state.categories.find((c) => c.id === ad.targetCategoryId);
+  const place = state.destinations.find((d) => d.id === ad.targetDestinationId);
+  return ({
+    WEB_HOME_HERO: '/', WEB_SPONSORED_ARTICLE: '/', WEB_NEWSLETTER: '/', WEB_DEALS: '/deals',
+    WEB_SECTION_SPONSOR: cat?.slug ? `/magazine/section/${cat.slug}` : '/magazine',
+    WEB_DESTINATION_SPONSOR: place?.slug ? `/places/${place.slug}` : '/trips#places',
+  })[ad.placement] || '/';
+}
+
+/** The website's ad slots only; the form is the one under Ads, limited to website placements. */
+async function siteAds(){
+  const s = state.site;
+  await loadReferenceData();
+  const q = new URLSearchParams({ surface: 'web', ...(s.adStatus ? { status: s.adStatus } : {}) });
+  const items = state.ads.items = await api(`/ads/admin?${q}`);
+  return `
+    <p class="hint">Ads and sponsor slots on the public website. Pause one to take it down for now and keep its counts; remove it to delete it. The app's ads are under Ads.</p>
+    <div class="filters">
+      <select aria-label="Filter website ads by status" data-change="siteAdStatus">
+        ${['', 'ACTIVE', 'SCHEDULED', 'PAUSED', 'EXPIRED'].map((st) =>
+          `<option value="${st}" ${s.adStatus === st ? 'selected' : ''}>${st ? AD_STATUS_LABEL[st] : 'All website ads'}</option>`).join('')}
+      </select>
+    </div>
+    ${state.ads.flash ? `<div class="error" role="alert">${esc(state.ads.flash)}</div>` : ''}
+    ${!items.length ? `<div class="empty">${s.adStatus ? 'No website ads here.' : 'No website ads yet. Each slot shows nothing until an ad fills it.'}</div>` : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Ad</th><th>Where on the website</th><th>Status</th><th>Runs</th><th>Views</th><th>Clicks</th><th></th></tr></thead>
+        <tbody>${items.map((ad) => `<tr>
+          <td><div class="ad-cell"><img src="${esc(ad.imageUrl)}" alt="">
+            <div><strong>${esc(ad.title)}</strong><br>
+            <small>${esc(ad.advertiserName)} · ${ad.linkType === 'EXTERNAL' ? 'Opens website' : 'Overview page'}</small></div></div></td>
+          <td>${esc((PLACEMENTS[ad.placement] || ad.placement).replace(/^Website: /, ''))}</td>
+          <td><span class="pill ${ad.status}">${AD_STATUS_LABEL[ad.status]}</span></td>
+          <td>${fmtDay(ad.startsAt)} – ${fmtDay(ad.endsAt)}<br><small>${adTiming(ad)}</small></td>
+          <td>${(ad.site?.views ?? 0).toLocaleString('en-IN')}</td>
+          <td>${(ad.site?.clicks ?? 0).toLocaleString('en-IN')}</td>
+          <td class="row-actions">
+            <button class="btn btn-sm" data-action="openAdForm" data-id="${ad.id}">Edit</button>
+            ${ad.status !== 'EXPIRED'
+              ? `<button class="btn btn-sm" data-action="toggleAd" data-id="${ad.id}" data-active="${!ad.isActive}">${ad.isActive ? 'Pause' : 'Resume'}</button>` : ''}
+            <button class="btn btn-sm btn-danger" data-action="askDeleteAd" data-id="${ad.id}">Remove</button>
+            ${ad.status === 'ACTIVE' ? newTab(`${SITE_BASE}${webAdPath(ad)}`, 'See it') : ''}
+          </td></tr>`).join('')}</tbody>
+      </table></div>`}`;
 }
 
 /** Verification is manual: nothing unverified reaches the website. Then the tier a partner pays for. */
@@ -197,8 +338,31 @@ async function siteNewsletter(){
     </div>`;
 }
 
+/** One change to one article's place on the website; the list is drawn again from the API. */
+async function setArticleOnSite(id, body, done){
+  try{ await api(`/admin/site/articles/${id}`, { method: 'PATCH', body }); notify(done); }
+  catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
 Actions.on({
-  siteTab: (el) => { state.site.tab = el.dataset.tab; state.site.editing = null; renderMain(); },
+  siteTab: (el) => {
+    state.site.tab = el.dataset.tab; state.site.editing = null;
+    state.ads.editing = null; state.ads.confirmDelete = null; state.ads.flash = '';
+    renderMain();
+  },
+  siteArtWebsite: (el) => setArticleOnSite(el.dataset.id, { onWebsite: el.dataset.on === 'true' },
+    el.dataset.on === 'true' ? 'Back on the website' : 'Taken off the website. It is still in the app.'),
+  siteArtFeature: (el) => setArticleOnSite(el.dataset.id, { isFeatured: el.dataset.on === 'true' },
+    el.dataset.on === 'true' ? 'Featured' : 'No longer featured'),
+  siteArtEdit: async (el) => {
+    state.screen = 'articles';
+    renderSidebar();
+    try{ await loadReferenceData(); await editArticle(el.dataset.id); }
+    catch(err){ notify(err.message, 'error'); renderMain(); }
+  },
+  siteArtPage: (el) => { state.site.artPage = Math.max(1, state.site.artPage + Number(el.dataset.by)); renderMain(); },
+  siteNewAd: () => { state.ads.editing = { placement: 'WEB_HOME_HERO' }; state.ads.flash = ''; renderMain(); },
   siteNewPackage: () => {
     const now = Date.now();
     state.site.editing = { kind: 'LISTING', status: 'PROPOSED', startsAt: new Date(now).toISOString(), endsAt: new Date(now + 30 * 86_400_000).toISOString() };
@@ -271,6 +435,9 @@ Actions.on({
 });
 
 Actions.onChange({
+  siteArtSearch: (el) => { state.site.artQ = el.value.trim(); state.site.artPage = 1; renderMain(); },
+  siteArtShow: (el) => { state.site.artShow = el.value; state.site.artPage = 1; renderMain(); },
+  siteAdStatus: (el) => { state.site.adStatus = el.value; renderMain(); },
   sitePkgStatus: (el) => { state.site.pkgStatus = el.value; renderMain(); },
   siteEnqStatus: (el) => { state.site.enqStatus = el.value; state.site.enqPage = 1; renderMain(); },
 });

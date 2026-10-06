@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Min } from 'class-validator';
 import { EnquiryKind, EnquiryStatus, PackageKind, PackageStatus } from '@prisma/client';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -64,4 +64,16 @@ export class ListQueryDto {
 
 export class MonthQueryDto {
   @IsOptional() @Matches(/^\d{4}-\d{2}$/, { message: 'Choose a month as YYYY-MM' }) month?: string;
+}
+
+/** Published articles as the website sees them: all, only those on it, or only those taken off. */
+export class WebsiteArticlesQueryDto {
+  @trim() @IsOptional() @IsString() @MaxLength(120) q?: string;
+  @IsOptional() @IsIn(['on', 'off']) show?: 'on' | 'off';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+}
+
+export class WebsiteArticleDto {
+  @IsOptional() @IsBoolean() onWebsite?: boolean;
+  @IsOptional() @IsBoolean() isFeatured?: boolean;
 }

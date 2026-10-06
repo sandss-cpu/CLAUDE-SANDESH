@@ -84,9 +84,16 @@ export class AdSlotQueryDto {
   routeId?: string;
 }
 
+export const AD_SURFACES = ['app', 'web'] as const;
+export type AdSurface = (typeof AD_SURFACES)[number];
+
 export class AdminAdQueryDto {
   @IsOptional() @IsIn(AD_STATUSES)
   status?: AdStatus;
+
+  /** The public website's slots (WEB_*) or the app's; both when absent. */
+  @IsOptional() @IsIn(AD_SURFACES)
+  surface?: AdSurface;
 }
 
 export class ImpressionsDto {

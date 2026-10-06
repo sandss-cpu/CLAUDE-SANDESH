@@ -18,7 +18,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `backend/` | NestJS 11 (Express 5) + Prisma 5 + PostgreSQL |
 | `web/index.html` + `web/js/reader.js` | Installable reader PWA, opened at `/b/<code>` from a bus sticker. Offline-first. Markup handlers go through `web/js/actions.js` |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
-| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (listings, partner packages, enquiries, newsletter) is `web/js/admin-site.js` |
+| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (overview, which articles the website carries, website ads, listings, partner packages, enquiries, newsletter) is `web/js/admin-site.js` |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
 | `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
 | `web/business.html` + `web/js/business.js` | Partner area for business owners: enquiries, deals, reviews, monthly report, listing. Signs in through `login.html` and shares the reader's `bato.auth` session |
@@ -68,6 +68,7 @@ bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, s
 bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appraisals, crew disputes, cross-company 404s
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 bash scripts/site_smoke.sh ../Bato_Test_Accounts.md          # website forms, newsletter, partner area and report, packages, verification
+bash scripts/website_admin_smoke.sh ../Bato_Test_Accounts.md # Website screen: articles on/off the website, website ads, each reaching the site (API and site running)
 npm run db:site-role           # after every migration: the website's read-only role, grants and row-level security
 npm run fields:encrypt         # after the step 10 migration, after seeding, and after adding a key: encrypts personal fields
 npm run retention              # the nightly 13-month roll-up, now
@@ -442,6 +443,13 @@ without the key.
 (`Rendered.events`), and they are recorded on every serve, from the page cache too. Paid
 links go through `/go/…`, one click per visit (a partial unique index). Pages are cached
 privately for that reason; do not put a shared cache in front of the HTML.
+
+**An article is on the website when it is published and `onWebsite`** (default true). It is
+separate from the app on purpose: Website → Articles takes a story off the website and leaves
+it on the buses; archiving removes it everywhere. The site role's policy checks `onWebsite`
+too, so the filter in `data.ts` is not the only thing hiding it. Website ads are the `WEB_*`
+placements; `GET /ads/admin?surface=web` lists only those, with the website's own view and
+click counts (`site_events`), since the ad's `impressions` and `clicks` are the app's.
 
 **Changes reach the website at once** because API routes that change what it shows carry
 `@PurgeSite()`, which calls the site's signed `/_purge`. A new route that edits articles,

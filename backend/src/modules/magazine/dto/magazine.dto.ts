@@ -36,6 +36,8 @@ export class CreateArticleDto {
   @IsOptional() @IsString() issueId?: string;
   @IsOptional() @IsBoolean() isSponsored?: boolean;
   @IsOptional() @IsBoolean() isFeatured?: boolean;
+  /** Shown on the public website once published; the app is not affected. */
+  @IsOptional() @IsBoolean() onWebsite?: boolean;
   @IsOptional() @IsString() sponsorBusinessId?: string;
   /** Corridors this article should appear on when a QR is scanned. */
   @IsOptional() @IsArray() @IsString({ each: true }) routeIds?: string[];

@@ -165,7 +165,7 @@ export class MagazineService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.article.findMany({
         where,
-        select: { ...ARTICLE_CARD, status: true, createdAt: true, updatedAt: true },
+        select: { ...ARTICLE_CARD, status: true, onWebsite: true, createdAt: true, updatedAt: true },
         orderBy: { updatedAt: 'desc' },
         skip: q.skip, take: q.take,
       }),
@@ -231,6 +231,7 @@ export class MagazineService {
         authorId,
         isSponsored: dto.isSponsored ?? false,
         isFeatured: dto.isFeatured ?? false,
+        onWebsite: dto.onWebsite ?? true,
         sponsorBusinessId: dto.sponsorBusinessId,
         placements: dto.routeIds?.length
           ? { create: dto.routeIds.map((routeId, position) => ({ scope: PlacementScope.ROUTE, routeId, position, createdById: authorId })) }
@@ -269,6 +270,7 @@ export class MagazineService {
         issueId: dto.issueId,
         isFeatured: dto.isFeatured,
         isSponsored: dto.isSponsored,
+        onWebsite: dto.onWebsite,
         status: dto.status,
         publishedAt:
           dto.status === ContentStatus.PUBLISHED && !existing.publishedAt

@@ -8,6 +8,8 @@ import { db } from './db';
  */
 
 const now = () => new Date();
+/** Published, and not taken off the website in the control panel (the app may still show it). */
+const LIVE_ARTICLE = { status: 'PUBLISHED', onWebsite: true } satisfies Prisma.ArticleWhereInput;
 
 export const ARTICLE_CARD = {
   id: true, slug: true, title: true, subtitle: true, summary: true, coverImageUrl: true, audioUrl: true, readMinutes: true,
@@ -38,7 +40,7 @@ export type LiveAd = Awaited<ReturnType<typeof liveAds>>[number];
 export function articles(opts: { categoryId?: string; issueId?: string; featured?: boolean; skip?: number; take?: number; notIds?: string[] } = {}) {
   return db.article.findMany({
     where: {
-      status: 'PUBLISHED',
+      ...LIVE_ARTICLE,
       ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
       ...(opts.issueId ? { issueId: opts.issueId } : {}),
       ...(opts.featured ? { isFeatured: true } : {}),
@@ -50,11 +52,11 @@ export function articles(opts: { categoryId?: string; issueId?: string; featured
   });
 }
 
-export const articleCount = (where: Prisma.ArticleWhereInput = {}) => db.article.count({ where: { status: 'PUBLISHED', ...where } });
+export const articleCount = (where: Prisma.ArticleWhereInput = {}) => db.article.count({ where: { ...where, ...LIVE_ARTICLE } });
 
 export function article(slug: string) {
   return db.article.findFirst({
-    where: { slug, status: 'PUBLISHED' },
+    where: { slug, ...LIVE_ARTICLE },
     select: {
       ...ARTICLE_CARD, body: true, keyPoints: true, categoryId: true,
       author: { select: { name: true } },
@@ -147,7 +149,7 @@ export const destination = (slug: string) => db.destination.findUnique({ where: 
 
 export function articlesAbout(destinationId: string, take = 6) {
   return db.article.findMany({
-    where: { status: 'PUBLISHED', destinations: { some: { destinationId } } },
+    where: { ...LIVE_ARTICLE, destinations: { some: { destinationId } } },
     orderBy: { publishedAt: 'desc' }, take, select: ARTICLE_CARD,
   });
 }
@@ -168,7 +170,7 @@ export const partnerLink = (slug: string) => db.business.findFirst({
 /** Everything the sitemap lists, with when it last changed. */
 export async function sitemapEntries() {
   const [arts, gds, biz, dests, cats, iss] = await Promise.all([
-    db.article.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),
+    db.article.findMany({ where: LIVE_ARTICLE, select: { slug: true, updatedAt: true } }),
     db.routeGuide.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),
     db.business.findMany({ where: { isActive: true, verifiedAt: { not: null } }, select: { slug: true, updatedAt: true } }),
     db.destination.findMany({ select: { slug: true } }),

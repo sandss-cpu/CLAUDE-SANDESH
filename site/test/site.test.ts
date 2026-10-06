@@ -106,6 +106,22 @@ describe('what the public may reach', () => {
     if (!draft) return;
     assert.equal((await get(`/magazine/${draft.slug}`)).status, 404);
   });
+
+  test('a published story taken off the website is not served, and the read-only role cannot see it', async () => {
+    const art = await owner.article.findFirstOrThrow({ where: { status: 'PUBLISHED', onWebsite: true }, select: { id: true, slug: true } });
+    await owner.article.update({ where: { id: art.id }, data: { onWebsite: false } });
+    try {
+      purge();
+      assert.equal((await get(`/magazine/${art.slug}`)).status, 404);
+      assert.ok(!(await text('/sitemap.xml')).body.includes(`/magazine/${art.slug}</loc>`));
+      // Row-level security, not only the query's filter: even asking for it outright finds nothing.
+      assert.equal(await db.article.findFirst({ where: { id: art.id }, select: { id: true } }), null);
+    } finally {
+      await owner.article.update({ where: { id: art.id }, data: { onWebsite: true } });
+      purge();
+    }
+    assert.equal((await get(`/magazine/${art.slug}`)).status, 200);
+  });
 });
 
 describe('an article page without JavaScript', () => {

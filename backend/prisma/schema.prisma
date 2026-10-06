@@ -674,6 +674,9 @@ model Article {
   status            ContentStatus @default(DRAFT)
   isSponsored       Boolean       @default(false)
   isFeatured        Boolean       @default(false)
+  /// Shown on the public website once published. Separate from the app, so a story can stay
+  /// on the buses and come off the website (Website → Articles in the control panel).
+  onWebsite         Boolean       @default(true)
   /// set when a community post is elevated into the magazine
   sourcePostId      String?       @unique
   categoryId        String?

@@ -18,7 +18,7 @@ GRANT USAGE ON SCHEMA public TO batoma_site;
 
 -- Columns, not whole tables: owners, verification notes and the like never reach the site.
 GRANT SELECT (id, slug, title, subtitle, summary, "keyPoints", body, "coverImageUrl", "audioUrl", "readMinutes", language,
-  status, "isSponsored", "isFeatured", "categoryId", "issueId", "authorId", "sponsorBusinessId", "publishedAt", "updatedAt")
+  status, "isSponsored", "isFeatured", "onWebsite", "categoryId", "issueId", "authorId", "sponsorBusinessId", "publishedAt", "updatedAt")
   ON articles TO batoma_site;
 GRANT SELECT ON categories, article_destinations, destinations TO batoma_site;
 GRANT SELECT (id, code, name, "nameNe", "startPlace", "endPlace", "distanceKm", "typicalHours", description) ON routes TO batoma_site;
@@ -45,7 +45,8 @@ GRANT USAGE ON SEQUENCE site_events_id_seq TO batoma_site;
 -- Rows: only what is published, verified and live.
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_read ON articles;
-CREATE POLICY site_read ON articles FOR SELECT TO batoma_site USING (status = 'PUBLISHED');
+-- An editor can keep a published story in the app and take it off the website (onWebsite).
+CREATE POLICY site_read ON articles FOR SELECT TO batoma_site USING (status = 'PUBLISHED' AND "onWebsite");
 
 ALTER TABLE issues ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_read ON issues;

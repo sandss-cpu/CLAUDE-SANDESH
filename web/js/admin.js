@@ -15,7 +15,7 @@ const state = {
   fleet: { stats: null, items: [], status: '', q: '' },
   users: { items: [], q: '', role: '', suspendedOnly: false },
   overview: null, subscriptions: [], auditLog: [],
-  ads: { items: [], status: '', editing: null, confirmDelete: null, flash: '' },
+  ads: { items: [], status: '', surface: '', editing: null, confirmDelete: null, flash: '' },
   guides: { items: [], status: '', routeId: '', kind: '', editing: null, stopsFor: null, editingStop: null, flash: '' },
   creators: { items: [], status: '' },
 };
@@ -543,7 +543,7 @@ function renderRoot(){
 async function renderMain(){
   const html = await (SCREENS[state.screen] || SCREENS.articles)();
   $('#main').innerHTML = html;
-  if(state.screen === 'ads' && state.ads.editing){ toggleAdLink(); updateAdPreview(); }
+  if((state.screen === 'ads' || state.screen === 'website') && state.ads.editing){ toggleAdLink(); updateAdPreview(); }
   if(state.screen === 'guides' && state.guides.editing) toggleGuideKind();
 }
 
@@ -618,7 +618,9 @@ function articleForm(a){
           <div class="checks">
             <label><input id="af-featured" type="checkbox" ${a?.isFeatured?'checked':''}> Featured</label>
             <label><input id="af-sponsored" type="checkbox" ${a?.isSponsored?'checked':''}> Sponsored</label>
+            <label><input id="af-website" type="checkbox" ${a?.onWebsite === false ? '' : 'checked'}> On the public website</label>
           </div>
+          <div class="hint">Untick to keep it in the app only. Drafts are never on the website until published.</div>
           ${state.error ? `<div class="error">${esc(state.error)}</div>` : ''}
           <div class="row-actions" style="margin-top:18px">
             <button class="btn btn-primary" type="submit" ${state.articles.saving?'disabled':''}>
@@ -699,6 +701,7 @@ async function saveArticle(e, id){
     body: $('#af-body').value,
     isFeatured: $('#af-featured').checked,
     isSponsored: $('#af-sponsored').checked,
+    onWebsite: $('#af-website').checked,
   };
   state.articles.saving = true; state.error = ''; renderMain();
   try{
@@ -765,7 +768,7 @@ async function screenArticles(){
         ${a.items.map(x => `
           <tr>
             <td>${esc(x.title)}</td>
-            <td><span class="pill ${x.status}">${x.status}</span></td>
+            <td><span class="pill ${x.status}">${x.status}</span>${x.status === 'PUBLISHED' && x.onWebsite === false ? '<div class="hint">App only, not on the website</div>' : ''}</td>
             <td>${esc(x.category?.name || '—')}</td>
             <td>${fmtDate(x.updatedAt)}</td>
             <td class="row-actions">
@@ -1307,7 +1310,8 @@ function adTiming(ad){
 async function screenAds(){
   const a = state.ads;
   await loadReferenceData();
-  a.items = await api(`/ads/admin${a.status ? `?status=${a.status}` : ''}`);
+  const q = new URLSearchParams({ ...(a.status ? { status: a.status } : {}), ...(a.surface ? { surface: a.surface } : {}) });
+  a.items = await api(`/ads/admin?${q}`);
   return `
     <div class="top-row">
       <h2>Ads</h2>
@@ -1317,6 +1321,10 @@ async function screenAds(){
       <select aria-label="Filter ads by status" data-change="setAdStatusFilter">
         ${['', 'ACTIVE', 'SCHEDULED', 'PAUSED', 'EXPIRED'].map((s) =>
           `<option value="${s}" ${a.status === s ? 'selected' : ''}>${s ? AD_STATUS_LABEL[s] : 'All ads'}</option>`).join('')}
+      </select>
+      <select aria-label="Filter ads by where they show" data-change="setAdSurfaceFilter">
+        ${[['', 'App and website'], ['app', 'In the app'], ['web', 'On the website']].map(([k, l]) =>
+          `<option value="${k}" ${a.surface === k ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
     </div>
     ${a.flash ? `<div class="error" role="alert" style="margin-bottom:12px">${esc(a.flash)}</div>` : ''}
@@ -1334,8 +1342,9 @@ async function screenAds(){
               <td><span class="pill ${ad.status}">${AD_STATUS_LABEL[ad.status]}</span></td>
               <td>${fmtDay(ad.startsAt)} – ${fmtDay(ad.endsAt)}<br>
                 <small>${adTiming(ad)}</small></td>
-              <td>${ad.impressions}</td>
-              <td>${ad.clicks} <small>(${ad.ctr}%)</small></td>
+              ${ad.site
+                ? `<td>${ad.site.views}<div class="hint">on the website</div></td><td>${ad.site.clicks}</td>`
+                : `<td>${ad.impressions}</td><td>${ad.clicks} <small>(${ad.ctr}%)</small></td>`}
               <td class="row-actions">
                 <button class="btn btn-sm" data-action="openAdForm" data-id="${ad.id}">Edit</button>
                 ${ad.status !== 'EXPIRED'
@@ -1364,14 +1373,16 @@ function imageField(id, label, url, hint){
     </div>`;
 }
 
-function adForm(ad){
+/** webOnly: opened from Website → Ads, so only the website's slots are offered and corridors do not apply. */
+function adForm(ad, { webOnly = false } = {}){
   const isNew = !ad.id;
+  const placements = Object.entries(PLACEMENTS).filter(([k]) => !webOnly || k.startsWith('WEB_'));
   const v = (k) => esc(ad[k] ?? '');
   const link = ad.linkType || 'EXTERNAL';
   return `
     <div class="modal-back" data-action="backdrop" data-closer="closeAdForm">
       <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="ad-form-title">
-        <h2 id="ad-form-title" style="margin-bottom:6px">${isNew ? 'New ad' : 'Edit ad'}</h2>
+        <h2 id="ad-form-title" style="margin-bottom:6px">${isNew ? (webOnly ? 'New website ad' : 'New ad') : 'Edit ad'}</h2>
         <div class="ad-form-grid">
           <form id="ad-form" novalidate data-submit="saveAd" data-id="${isNew ? '' : ad.id}"
                 data-input="updateAdPreview" data-change="updateAdPreview">
@@ -1387,8 +1398,8 @@ function adForm(ad){
             </div>
             <label for="ad-placement">Where it appears</label>
             <select id="ad-placement">
-              ${Object.entries(PLACEMENTS).map(([k, l]) =>
-                `<option value="${k}" ${(ad.placement || 'BETWEEN_STORIES') === k ? 'selected' : ''}>${l}</option>`).join('')}
+              ${placements.map(([k, l]) =>
+                `<option value="${k}" ${(ad.placement || (webOnly ? 'WEB_HOME_HERO' : 'BETWEEN_STORIES')) === k ? 'selected' : ''}>${l}</option>`).join('')}
             </select>
             <div class="two-col">
               <div><label for="ad-target-category">Section it sponsors <small>(section sponsor only)</small></label>
@@ -1398,11 +1409,13 @@ function adForm(ad){
                 <select id="ad-target-destination"><option value="">—</option>
                   ${state.destinations.map((d) => `<option value="${esc(d.id)}" ${ad.targetDestinationId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
             </div>
+            <div ${webOnly ? 'hidden' : ''}>
             <label for="ad-routes">Show only to travellers on these routes <small>(optional)</small></label>
             <select id="ad-routes" multiple size="4">
               ${state.routes.map((r) => `<option value="${esc(r.id)}" ${(ad.routeIds || []).includes(r.id) ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
             </select>
             <div class="hint">Leave all unselected to show the ad everywhere. Hold ⌘ or Ctrl to pick several.</div>
+            </div>
             <div class="two-col">
               <div><label for="ad-start">Starts</label>
                 <input id="ad-start" type="date" value="${isoDay(ad.startsAt ? new Date(ad.startsAt) : new Date())}"></div>
@@ -2572,6 +2585,7 @@ Actions.onChange({
   filterUsersRole: (el) => { state.users.role = el.value; loadUsers().then(renderMain); },
   filterUsersSuspended: (el) => { state.users.suspendedOnly = el.checked; loadUsers().then(renderMain); },
   setAdStatusFilter: (el) => { state.ads.status = el.value; renderMain(); },
+  setAdSurfaceFilter: (el) => { state.ads.surface = el.value; renderMain(); },
   // The ad form's own change handler used to run after these too; the preview follows the switch.
   toggleAdLink: () => { toggleAdLink(); updateAdPreview(); },
   updateAdPreview: () => updateAdPreview(),
