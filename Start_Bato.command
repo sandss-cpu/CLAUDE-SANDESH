@@ -15,6 +15,9 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 up(){ curl -s -o /dev/null --max-time 2 "$1"; }
 step(){ printf '\n▸ %s\n' "$1"; }
 stop(){ printf '\n✖ %s\n\n' "$1"; read -r -p "Press return to close."; exit 1; }
+# Folders rebuilt all the time are kept out of iCloud when this copy sits on a synced
+# Desktop: syncing them halfway through a build leaves " 2" duplicates that break it.
+local_only(){ mkdir -p "$1" && { xattr -w 'com.apple.fileprovider.ignore#P' 1 "$1" 2>/dev/null || true; }; }
 
 command -v node >/dev/null 2>&1 || stop "Node.js is not installed. Install Node 20 or newer from nodejs.org, then run this again."
 
@@ -68,24 +71,29 @@ if ! grep -q '^FIELD_ENCRYPTION_KEYS=.' "$BACKEND/.env" || ! grep -q '^BLIND_IND
 fi
 
 # ---------------------------------------------------------------- dependencies
-# Installed again whenever package-lock.json or the database schema changes (an update
-# taken from GitHub, for example), not only on the first run: old packages or an old
-# database client make the API fail at start.
-STAMP="$BACKEND/node_modules/.batoma-install"
-WANT="$(cd "$BACKEND" && cat package-lock.json prisma/schema.prisma | shasum -a 256 | cut -d' ' -f1)"
-if [ "$(cat "$STAMP" 2>/dev/null)" != "$WANT" ]; then
-  if up http://localhost:3000/health; then
-    stop "The packages changed, but an API is running from some copy. Stop it, then run this again."
-  fi
-  if [ -d "$BACKEND/node_modules" ]; then
-    step "Updating dependencies (the packages changed, this takes a few minutes)…"
+# install DIR NAME URL: installs DIR's packages again whenever its package-lock.json or the
+# database schema changes (an update taken from GitHub, for example), not only on the
+# first run: old packages or an old database client make the server fail at start.
+# `npm install` rather than `npm ci`, which deletes node_modules and with it the iCloud mark.
+install(){
+  local dir="$1" name="$2" url="$3" stamp want
+  stamp="$dir/node_modules/.batoma-install"
+  want="$(cat "$dir/package-lock.json" "$BACKEND/prisma/schema.prisma" | shasum -a 256 | cut -d' ' -f1)"
+  [ "$(cat "$stamp" 2>/dev/null)" = "$want" ] && return 0
+  up "$url" && stop "The $name's packages changed, but it is running from some copy. Run Stop_Bato.command, then this again."
+  if [ -f "$dir/node_modules/.package-lock.json" ]; then
+    step "Updating the $name's packages (they changed, this takes a few minutes)…"
   else
-    step "Installing dependencies (first run only, this takes a few minutes)…"
+    step "Installing the $name's packages (first run only, this takes a few minutes)…"
   fi
-  (cd "$BACKEND" && npm ci) || stop "npm ci failed. The output above says why."
-  (cd "$BACKEND" && npx prisma generate) || stop "prisma generate failed."
-  echo "$WANT" > "$STAMP"
-fi
+  local_only "$dir/node_modules"
+  (cd "$dir" && npm install --no-audit --no-fund) || stop "npm install failed for the $name. The output above says why."
+  if [ "$dir" = "$BACKEND" ]; then (cd "$BACKEND" && npx prisma generate) || stop "prisma generate failed."; fi
+  echo "$want" > "$stamp"
+}
+[ -d "$ROOT/.git" ] && local_only "$ROOT/.git"
+local_only "$BACKEND/node_modules"
+install "$BACKEND" API http://localhost:3000/health
 
 # ---------------------------------------------------------------- tables & demo data
 step "Applying database migrations…"
@@ -109,6 +117,7 @@ if ! up http://localhost:3000/health; then
   for _ in $(seq 1 90); do up http://localhost:3000/health && break; sleep 1; done
   up http://localhost:3000/health || stop "The API did not start. The log is at /tmp/bato_backend.log"
 fi
+local_only "$BACKEND/dist"
 
 # 5173 specifically: it is the only origin the API allows by default, so the
 # pages cannot call the API from any other port.
@@ -120,6 +129,46 @@ if ! up http://localhost:5173/preview.html; then
   sleep 1
 fi
 
+# ---------------------------------------------------------------- public website
+# The public website (site/) reads the database through its own read-only role. The first
+# time, its settings are made from backend/.env and the role is set up with them.
+SITE="$ROOT/site"
+val(){ sed -n "s/^$1=//p" "$BACKEND/.env" | head -1 | sed 's/^"\(.*\)"$/\1/'; }
+if [ -d "$SITE" ] && ! up http://localhost:4000/healthz; then
+  DBNAME="$(val DATABASE_URL | sed -n 's#.*/\([^/?]*\)?.*#\1#p')"
+  if [ ! -f "$SITE/.env" ] && [ -n "$(val SITE_DB_PASSWORD)" ] && [ -n "$(val SITE_API_KEY)" ] && [ -n "$DBNAME" ]; then
+    step "Writing site/.env for the public website…"
+    (umask 077; cat > "$SITE/.env" <<ENV
+SITE_DB_HOST=localhost
+SITE_DB_PORT=5432
+SITE_DB_NAME=$DBNAME
+SITE_DB_PASSWORD=$(val SITE_DB_PASSWORD)
+SITE_API_KEY=$(val SITE_API_KEY)
+API_URL=http://localhost:3000/api/v1
+APP_URL=http://localhost:5173
+SITE_URL=http://localhost:4000
+PORT=4000
+ENV
+    )
+    (cd "$BACKEND" && npm run db:site-role >/dev/null 2>&1) || \
+      echo "  the website's database role could not be set up: run npm run db:site-role in backend"
+  fi
+  if [ -f "$SITE/.env" ]; then
+    install "$SITE" website http://localhost:4000/healthz
+    step "Starting the public website…"
+    local_only "$SITE/dist"
+    if (cd "$SITE" && npm run build > /tmp/batoma_site_build.log 2>&1); then
+      (cd "$SITE" && nohup node --env-file=.env dist/src/server.js > /tmp/batoma_site.log 2>&1 &)
+      for _ in $(seq 1 20); do up http://localhost:4000/healthz && break; sleep 1; done
+      up http://localhost:4000/healthz || echo "  the website did not start: the log is at /tmp/batoma_site.log"
+    else
+      echo "  the website could not be built: the log is at /tmp/batoma_site_build.log"
+    fi
+  else
+    echo "  (the public website is skipped: backend/.env has no SITE_DB_PASSWORD or SITE_API_KEY)"
+  fi
+fi
+
 open "http://localhost:5173/preview.html"
 
 cat <<INFO
@@ -129,14 +178,16 @@ cat <<INFO
    Preview & testing   http://localhost:5173/preview.html   ← opened for you
    Traveller app       http://localhost:5173/index.html
    Bus owner portal    http://localhost:5173/owner.html
+   Partner area        http://localhost:5173/business.html
    Control panel       http://localhost:5173/admin.html
+   Public website      http://localhost:4000
    API health          http://localhost:3000/health
 
    Test logins are in Bato_Docs/Bato_Test_Accounts_Phase3.md, which is kept out of
    this folder and out of GitHub on purpose.
 
-   Logs: /tmp/bato_backend.log and /tmp/bato_web_server.log
-   You can close this window; the servers keep running.
+   Logs: /tmp/bato_backend.log, /tmp/bato_web_server.log and /tmp/batoma_site.log
+   You can close this window; the servers keep running. Stop_Bato.command stops them.
 
 INFO
 read -r -p "Press return to close."

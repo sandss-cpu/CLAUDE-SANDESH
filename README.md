@@ -144,6 +144,15 @@ Himalaya Dawn, Teahouse, Rhododendron, Forest Trail, Slate and Night Bus. Pick o
 
 You need Node 22 or newer and PostgreSQL 16 (`docker compose up -d db`, or Postgres.app).
 
+### On a Mac, in one double-click
+
+`Start_Bato.command` does everything below for a copy that has a `backend/.env`: it
+installs packages whenever they change, applies migrations, loads the demo content once,
+starts the API, the web app and the public website (writing `site/.env` and the website's
+database role from `backend/.env` the first time), and opens the preview page.
+`Stop_Bato.command` stops all three. A fresh `backend/.env` written by the launcher points
+at the `batoma_phase3` database.
+
 ### API
 
 ```bash
