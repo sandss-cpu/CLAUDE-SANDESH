@@ -113,7 +113,9 @@ fi
 # ---------------------------------------------------------------- servers
 if ! up http://localhost:3000/health; then
   step "Starting the API…"
-  (cd "$BACKEND" && nohup npm run start:dev > /tmp/bato_backend.log 2>&1 &)
+  # The outer redirection matters: the subshell that waits on each server would otherwise
+  # hold this window's output open for as long as the server runs.
+  (cd "$BACKEND" && nohup npm run start:dev > /tmp/bato_backend.log 2>&1 &) > /dev/null 2>&1
   for _ in $(seq 1 90); do up http://localhost:3000/health && break; sleep 1; done
   up http://localhost:3000/health || stop "The API did not start. The log is at /tmp/bato_backend.log"
 fi
@@ -125,7 +127,7 @@ if ! up http://localhost:5173/preview.html; then
   step "Starting the web server…"
   # Node rather than python -m http.server: sticker links (/b/<code>) need a rewrite to
   # the reader, and macOS refuses the system Python access to a copy kept on the Desktop.
-  (cd "$ROOT" && nohup node scripts/dev-web-server.mjs > /tmp/bato_web_server.log 2>&1 &)
+  (cd "$ROOT" && nohup node scripts/dev-web-server.mjs > /tmp/bato_web_server.log 2>&1 &) > /dev/null 2>&1
   sleep 1
 fi
 
@@ -158,7 +160,7 @@ ENV
     step "Starting the public website…"
     local_only "$SITE/dist"
     if (cd "$SITE" && npm run build > /tmp/batoma_site_build.log 2>&1); then
-      (cd "$SITE" && nohup node --env-file=.env dist/src/server.js > /tmp/batoma_site.log 2>&1 &)
+      (cd "$SITE" && nohup node --env-file=.env dist/src/server.js > /tmp/batoma_site.log 2>&1 &) > /dev/null 2>&1
       for _ in $(seq 1 20); do up http://localhost:4000/healthz && break; sleep 1; done
       up http://localhost:4000/healthz || echo "  the website did not start: the log is at /tmp/batoma_site.log"
     else
