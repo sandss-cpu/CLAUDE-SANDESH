@@ -14,7 +14,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@prisma/client": "5.22.0",
+    "@prisma/client": "7.10.0",
     "express": "^5.2.1"
   },
   "devDependencies": {
