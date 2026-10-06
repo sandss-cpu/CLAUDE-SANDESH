@@ -18,6 +18,7 @@ agencies, and a public website that markets the magazine and its partners.
 | `render.yaml` | Deployment blueprint: API, app, website, Postgres, weekly backup |
 | `GO_LIVE.md`, `SECURITY.md`, `THREAT_MODEL.md` | Launch checklist, security operations, threat model |
 | `DECISIONS.md`, `GAPS.md`, `CLAUDE.md` | Why things are as they are, what is not done, notes for maintainers |
+| `PHASE3_REPORT.md` | What Phase 3 built, its test results, and what is left before going live |
 
 ---
 
