@@ -1,7 +1,7 @@
 # Batoma Phase 3: completion report
 
-6 October 2026. All 11 steps of `BATOMA_PHASE3_PROMPT.md` are built, tested and pushed to
-GitHub on the **`phase3`** branch. Nothing is on the internet yet: going live needs your
+6 October 2026. All 11 steps of `BATOMA_PHASE3_PROMPT.md` are built, tested and merged into
+**`main`** on GitHub (6 October 2026). Nothing is on the internet yet: going live needs your
 accounts, your domain and a lawyer's review (section 5).
 
 This report holds no passwords or keys. Test logins are kept outside the repository.
@@ -12,7 +12,7 @@ This report holds no passwords or keys. Test logins are kept outside the reposit
 
 | What | Where |
 |---|---|
-| Phase 3 code | this repository, branch **`phase3`** (`main` is untouched) |
+| Phase 3 code | this repository, branch **`main`** (built on `phase3`, merged on 6 October 2026) |
 | Local database | `batoma_phase3` on Postgres (port 5432); `batoma_test` is a throwaway copy for the automatic tests |
 | Going-live checklist | `GO_LIVE.md` in the code folder |
 | How Batoma is protected | `SECURITY.md` and `THREAT_MODEL.md` |
@@ -88,14 +88,13 @@ Full detail in `GO_LIVE.md`.
 4. Create accounts: Render (a plan with point-in-time recovery), Cloudflare R2 (three
    buckets), an email provider (SMTP), and optionally Sentry.
 5. Make a backup key with `age` and keep it in your password manager.
-6. Decide when to merge `phase3` into `main` (Claude can do it when you say so).
-7. In Render: New → Blueprint, fill in the settings `GO_LIVE.md` lists, then copy the two
+6. In Render: New → Blueprint, fill in the settings `GO_LIVE.md` lists, then copy the two
    encryption keys into your password manager straight away.
-8. Point the domain's DNS at Render, create the first admin, set up the authenticator and
+7. Point the domain's DNS at Render, create the first admin, set up the authenticator and
    save the recovery codes.
-9. Register a "TEST Batoma" company with one bus, print its sticker and scan it.
-10. Then Claude runs the live smoke test (`scripts/prod_smoke.sh`) and checks the
-    production-only items: real client addresses, emails arriving, pictures and private files.
+8. Register a "TEST Batoma" company with one bus, print its sticker and scan it.
+9. Then Claude runs the live smoke test (`scripts/prod_smoke.sh`) and checks the
+   production-only items: real client addresses, emails arriving, pictures and private files.
 
 ---
 

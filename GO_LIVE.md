@@ -38,7 +38,7 @@ be done from the repository once you have done yours). Tick each box as you go.
 ## 2. Deploy the blueprint
 
 - [ ] **You:** in Render, **New → Blueprint**, choose this repository and the `main`
-      branch (merge `phase3` first). Render reads `render.yaml` and creates `batoma-db`,
+      branch. Render reads `render.yaml` and creates `batoma-db`,
       `bato-api`, `bato-site`, `bato-web` and the `batoma-backup` job.
 - [ ] **You:** fill in every value Render asks for (`sync: false` in `render.yaml`):
 
