@@ -124,13 +124,15 @@ if ! up http://localhost:3000/health; then
   # again whenever its code differs from the last build, judged by content, not file dates.
   BUILT="$(cd "$BACKEND" && find src prisma/schema.prisma package-lock.json nest-cli.json tsconfig.json tsconfig.build.json \
     -type f 2>/dev/null | LC_ALL=C sort | tr '\n' '\0' | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
+  local_only "$BACKEND/dist"
   if [ ! -f "$BACKEND/dist/main.js" ] || [ "$(cat "$BACKEND/dist/.batoma-build" 2>/dev/null)" != "$BUILT" ]; then
     step "Building the API (after an update, this takes a minute)…"
-    (cd "$BACKEND" && npm run build > /tmp/bato_backend_build.log 2>&1) || \
+    # What `npm run build` (nest build) does, except that dist is emptied rather than
+    # deleted: deleting it drops its iCloud mark, and iCloud then leaves a "dist 2".
+    (cd "$BACKEND" && find dist -mindepth 1 -delete && npx tsc -p tsconfig.build.json > /tmp/bato_backend_build.log 2>&1) || \
       stop "The API could not be built. The log is at /tmp/bato_backend_build.log"
     echo "$BUILT" > "$BACKEND/dist/.batoma-build"
   fi
-  local_only "$BACKEND/dist"
   step "Starting the API…"
   detached /tmp/bato_backend.log "$BACKEND" node --enable-source-maps dist/main
   waitfor http://localhost:3000/health 90 || stop "The API did not start. The log is at /tmp/bato_backend.log"
