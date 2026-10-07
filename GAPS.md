@@ -142,6 +142,8 @@ than a week.
 | Things only the owner can do: the domain, Render, R2, email and Sentry accounts, the first restore drill, legal review of Privacy and Terms, package prices (GO_LIVE.md) | before launch | S |
 | `TRUST_PROXY` must be confirmed on the live service (GO_LIVE.md step 6) | at launch | S |
 | Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | after launch | S |
+| Writers cannot upload photos with a story from the website, or see their stories' status in the app; editors ask featured writers for photos, and status comes by email | — | M |
+| Events are on the website only, not in the bus reader app | — | M |
 | Routes cannot be deleted from the control panel (on purpose: buses, trips and stickers point at them); a wrong one is corrected or renamed | — | S |
 
 ### Not in the Phase 3 brief (owner's call)

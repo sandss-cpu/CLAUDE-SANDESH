@@ -310,6 +310,7 @@ export class UsersService {
         operatorLinks: { select: { role: true, createdAt: true, operator: { select: { name: true } } } },
         ownedBusinesses: { select: { name: true, slug: true, createdAt: true } },
         knownDevices: { select: { label: true, firstSeenAt: true, lastSeenAt: true } },
+        storySubmissions: { select: { title: true, place: true, body: true, status: true, createdAt: true, submittedAt: true, decidedAt: true, editorNote: true } },
       },
     });
     if (!user) throw new NotFoundException('Account not found');

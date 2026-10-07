@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { PrismaClient } from '@prisma/client';
-import { purge } from '../src/cache';
+import { cacheSize, purge } from '../src/cache';
 import { config } from '../src/config';
 import { db } from '../src/db';
 import { visitHash } from '../src/events';
@@ -18,7 +18,7 @@ const owner = new PrismaClient({ datasources: { db: { url: process.env.OWNER_DAT
 const UA = 'Mozilla/5.0 (Linux; Android 14) BatomaSiteTest/1.0';
 let base = '';
 let close = () => {};
-const made: { ads: string[]; targets: string[] } = { ads: [], targets: [] };
+const made: { ads: string[]; targets: string[]; events: string[] } = { ads: [], targets: [], events: [] };
 const startedAt = Date.now();
 
 /** The visit codes this suite's requests were counted under, so its rows can be removed. */
@@ -51,6 +51,7 @@ after(async () => {
     await owner.advertisement.deleteMany({ where: { id: { in: made.ads } } });
   }
   if (made.targets.length) await owner.siteEvent.deleteMany({ where: { target: { in: made.targets } } });
+  if (made.events.length) await owner.event.deleteMany({ where: { id: { in: made.events } } });
   await owner.siteEvent.deleteMany({ where: { sessionHash: { in: ourVisits() }, createdAt: { gte: new Date(startedAt - 1000) } } });
   close();
   await owner.$disconnect();
@@ -98,13 +99,13 @@ describe('what the public may reach', () => {
     assert.match(robots.body, /Sitemap: .*\/sitemap\.xml/);
     const art = await owner.article.findFirstOrThrow({ where: { status: 'PUBLISHED' }, select: { slug: true } });
     const map = await text('/sitemap.xml');
-    assert.ok(map.body.includes(`/magazine/${art.slug}</loc>`));
+    assert.ok(map.body.includes(`/stories/${art.slug}</loc>`));
   });
 
   test('a draft story is not served', async () => {
     const draft = await owner.article.findFirst({ where: { status: { not: 'PUBLISHED' } }, select: { slug: true } });
     if (!draft) return;
-    assert.equal((await get(`/magazine/${draft.slug}`)).status, 404);
+    assert.equal((await get(`/stories/${draft.slug}`)).status, 404);
   });
 
   test('a published story taken off the website is not served, and the read-only role cannot see it', async () => {
@@ -112,15 +113,15 @@ describe('what the public may reach', () => {
     await owner.article.update({ where: { id: art.id }, data: { onWebsite: false } });
     try {
       purge();
-      assert.equal((await get(`/magazine/${art.slug}`)).status, 404);
-      assert.ok(!(await text('/sitemap.xml')).body.includes(`/magazine/${art.slug}</loc>`));
+      assert.equal((await get(`/stories/${art.slug}`)).status, 404);
+      assert.ok(!(await text('/sitemap.xml')).body.includes(`/stories/${art.slug}</loc>`));
       // Row-level security, not only the query's filter: even asking for it outright finds nothing.
       assert.equal(await db.article.findFirst({ where: { id: art.id }, select: { id: true } }), null);
     } finally {
       await owner.article.update({ where: { id: art.id }, data: { onWebsite: true } });
       purge();
     }
-    assert.equal((await get(`/magazine/${art.slug}`)).status, 200);
+    assert.equal((await get(`/stories/${art.slug}`)).status, 200);
   });
 });
 
@@ -129,7 +130,7 @@ describe('an article page without JavaScript', () => {
     const a = await owner.article.findFirstOrThrow({
       where: { status: 'PUBLISHED' }, orderBy: { publishedAt: 'desc' }, select: { slug: true, title: true, body: true },
     });
-    const { status, body } = await text(`/magazine/${a.slug}`);
+    const { status, body } = await text(`/stories/${a.slug}`);
     assert.equal(status, 200);
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     assert.ok(body.includes(`<h1>${esc(a.title)}</h1>`));
@@ -137,7 +138,7 @@ describe('an article page without JavaScript', () => {
     assert.ok(body.includes(esc(firstWords)), 'body text is in the page');
     assert.ok(body.includes(`<meta property="og:title" content="${esc(a.title)}">`));
     assert.ok(body.includes('<meta property="og:type" content="article">'));
-    assert.match(body, /<link rel="canonical" href="[^"]+\/magazine\//);
+    assert.match(body, /<link rel="canonical" href="[^"]+\/stories\//);
     const ld = [...body.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)].map(([, j]) => JSON.parse(j));
     const article = ld.find((d) => d['@type'] === 'Article');
     assert.ok(article, 'Article JSON-LD');
@@ -179,8 +180,8 @@ describe('paid placements', () => {
     const home = await text('/');
     assert.ok(!home.body.includes(liveTitle), 'a deals ad is not on the home page');
     assert.ok(!home.body.includes(futureTitle), 'an ad that has not started is not shown');
-    const magazine = await text('/magazine');
-    assert.ok(!magazine.body.includes(liveTitle));
+    const stories = await text('/stories');
+    assert.ok(!stories.body.includes(liveTitle));
   });
 
   test('/go/ad counts one click per visit and redirects with UTM tags', async () => {
@@ -290,7 +291,118 @@ describe('printed stickers', () => {
   });
 });
 
+describe('stories, under their new name', () => {
+  test('the old /magazine addresses move to /stories for good, keeping the rest of the address', async () => {
+    const art = await owner.article.findFirstOrThrow({ where: { status: 'PUBLISHED', onWebsite: true }, select: { slug: true } });
+    for (const [from, to] of [['/magazine', '/stories'], [`/magazine/${art.slug}`, `/stories/${art.slug}`], ['/magazine?page=2', '/stories?page=2']]) {
+      const r = await get(from);
+      assert.equal(r.status, 301, from);
+      assert.equal(new URL(r.headers.get('location') ?? '', base).pathname + new URL(r.headers.get('location') ?? '', base).search, to);
+    }
+    const { body } = await text('/');
+    assert.match(body, /<a href="\/stories"[^>]*>Stories<\/a>/);
+    assert.match(body, /<a href="\/events"[^>]*>Events<\/a>/);
+    assert.doesNotMatch(body, />Magazine<\/a>/);
+  });
+});
+
+describe('events', () => {
+  const city = `Testpur${Date.now()}`;
+  const day = 86_400_000;
+  const at = (days: number, hourNpt: number) => {
+    const d = new Date(Date.now() + days * day + (5 * 60 + 45) * 60_000);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hourNpt) - (5 * 60 + 45) * 60_000);
+  };
+  const ev = async (title: string, data: Record<string, unknown>) => {
+    const e = await owner.event.create({ data: { slug: `${title.toLowerCase().replace(/\W+/g, '-')}-${Date.now()}`, title, summary: `${title}, for the site tests.`, city, startsAt: at(2, 18), ...data } as never });
+    made.events.push(e.id);
+    return e;
+  };
+
+  test('lists what is published or cancelled and still to come; never drafts or finished ones', async () => {
+    const live = await ev('Test Live Festival', { status: 'PUBLISHED', endsAt: at(2, 21), venue: 'Lakeside', priceLabel: 'Free' });
+    const draft = await ev('Test Draft Fair', { status: 'DRAFT' });
+    const past = await ev('Test Past Market', { status: 'PUBLISHED', startsAt: at(-3, 10), endsAt: at(-3, 14) });
+    const off = await ev('Test Cancelled Concert', { status: 'CANCELLED', category: 'MUSIC' });
+    purge();
+    const { body } = await text(`/events?city=${encodeURIComponent(city)}`);
+    assert.ok(body.includes(`/events/${live.slug}"`), 'published');
+    assert.ok(body.includes(`/events/${off.slug}"`), 'cancelled is listed');
+    assert.match(body, /Cancelled<\/span>/);
+    assert.ok(!body.includes(draft.slug), 'no draft');
+    assert.ok(!body.includes(past.slug), 'nothing finished');
+    assert.equal((await get(`/events/${draft.slug}`)).status, 404);
+    // Row-level security, not only the query: the read-only role cannot see a draft at all.
+    assert.equal(await db.event.findFirst({ where: { id: draft.id }, select: { id: true } }), null);
+    assert.ok((await text('/sitemap.xml')).body.includes(`/events/${live.slug}</loc>`));
+  });
+
+  test('an event page has its details, the BS date and Event JSON-LD, with no script', async () => {
+    const e = await ev('Test Jatra', { status: 'PUBLISHED', category: 'FESTIVAL', endsAt: at(2, 21), venue: 'Durbar Square', address: 'Old town', organiser: 'Town committee', url: 'https://example.com/jatra', priceLabel: 'Free' });
+    purge();
+    const { status, body } = await text(`/events/${e.slug}`);
+    assert.equal(status, 200);
+    assert.ok(body.includes('Durbar Square, Old town, ' + city));
+    assert.match(body, /\d{1,2} [A-Z][a-z]+ 20[89]\d/, 'a BS date');
+    const ld = JSON.parse(body.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)![1]);
+    assert.equal(ld['@type'], 'Event');
+    assert.equal(ld.eventStatus, 'https://schema.org/EventScheduled');
+    assert.match(ld.startDate, /T18:00:00\+05:45$/);
+    assert.equal(ld.location.address.addressLocality, city);
+    assert.equal(ld.isAccessibleForFree, true);
+    assert.ok(body.includes(`href="/events/${e.slug}/calendar.ics"`));
+    assert.match(body, /href="https:\/\/example\.com\/jatra" rel="nofollow noopener external"/);
+    const ics = await get(`/events/${e.slug}/calendar.ics`);
+    assert.equal(ics.headers.get('content-type'), 'text/calendar; charset=utf-8');
+    const cal = await ics.text();
+    assert.match(cal, /^BEGIN:VCALENDAR\r\n/);
+    assert.match(cal, /SUMMARY:Test Jatra\r\n/);
+    assert.match(cal, /LOCATION:Durbar Square\\, Old town\\, /);
+  });
+});
+
+describe('write a trip, and advertise', () => {
+  test('Write a trip has its own form: name, email, title, place, story and a promise it is theirs', async () => {
+    const { body } = await text('/write');
+    assert.match(body, /<form class="form" method="post" action="\/write#h-send">/);
+    for (const name of ['name', 'email', 'title', 'place', 'story', 'ownWork', 'website', 't']) assert.match(body, new RegExp(`name="${name}"`), name);
+    assert.match(body, /<textarea[^>]*name="story"[^>]*maxlength="20000"/);
+    assert.ok(!body.includes('#write"'), 'no longer sends people to the app to write');
+  });
+
+  test('a long story in Nepali fits through the form, which other forms would refuse', async () => {
+    resetLimits();
+    const story = 'हामी बिहानै काठमाडौंबाट बस चढ्यौं। '.repeat(500);
+    const r = await get('/write', form({ name: 'Sita', email: 'not-an-email', title: 'Long story', story, ownWork: 'yes', t: formToken(Date.now() - 10_000) }));
+    assert.notEqual(r.status, 413, 'not refused for its size');
+  });
+
+  test('Advertise shows the vision and mission, not audience figures, and keeps the enquiry form', async () => {
+    const { body } = await text('/advertise');
+    assert.match(body, /<h2>Our vision<\/h2>/);
+    assert.match(body, /<h2>Our mission<\/h2>/);
+    assert.match(body, /one platform to explore Nepal/);
+    assert.doesNotMatch(body, /class="figures"/);
+    assert.match(body, /action="\/advertise#h-ask"/);
+  });
+});
+
 describe('cache purge', () => {
+  test('two changes a moment apart both reach the website; an older signed request does nothing', async () => {
+    const sign = (at: string) => createHmac('sha256', config.apiKey).update(`purge\n${at}`).digest('hex');
+    const purgeAt = (at: string) => get('/_purge', { method: 'POST', headers: { 'x-purge-at': at, 'x-purge-signature': sign(at) } });
+    const first = String(Date.now());
+    assert.equal((await purgeAt(first)).status, 204);
+    await text('/');
+    assert.ok(cacheSize() > 0);
+    const second = String(Number(first) + 1);
+    assert.equal((await purgeAt(second)).status, 204);
+    assert.equal(cacheSize(), 0, 'the second purge, a millisecond later, emptied the cache too');
+    await text('/');
+    await purgeAt(first);
+    assert.ok(cacheSize() > 0, 'a replay of the earlier request left the cache alone');
+  });
+
   test('refuses an unsigned or old request and accepts a signed one', async () => {
     assert.equal((await get('/_purge', { method: 'POST' })).status, 403);
     const sign = (at: string) => createHmac('sha256', config.apiKey).update(`purge\n${at}`).digest('hex');

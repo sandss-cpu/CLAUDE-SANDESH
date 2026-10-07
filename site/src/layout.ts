@@ -22,7 +22,7 @@ export interface PageMeta {
 }
 
 const NAV: Array<[string, string]> = [
-  ['/magazine', 'Magazine'], ['/trips', 'Trips'], ['/partners', 'Partners & deals'], ['/write', 'Write a trip'], ['/advertise', 'Advertise'],
+  ['/stories', 'Stories'], ['/trips', 'Trips'], ['/events', 'Events'], ['/partners', 'Partners & deals'], ['/write', 'Write a trip'], ['/advertise', 'Advertise'],
 ];
 
 export const absolute = (path: string) => (/^https?:\/\//.test(path) ? path : `${config.siteUrl}${path}`);

@@ -50,9 +50,9 @@ export function overLimit(req: Request, now = Date.now()): boolean {
 }
 export const resetLimits = () => hits.clear();
 
-/** Only the named fields, as trimmed strings, so nothing else reaches the API. */
-export function pick(body: Record<string, unknown>, names: string[]): Record<string, string> {
-  return Object.fromEntries(names.map((n) => [n, String(body[n] ?? '').trim().slice(0, 4000)]));
+/** Only the named fields, as trimmed strings, so nothing else reaches the API. A story may run longer. */
+export function pick(body: Record<string, unknown>, names: string[], longer: Record<string, number> = {}): Record<string, string> {
+  return Object.fromEntries(names.map((n) => [n, String(body[n] ?? '').trim().slice(0, longer[n] ?? 4000)]));
 }
 
 export interface Forwarded { ok: boolean; status: number; message?: string; data?: Record<string, unknown> }

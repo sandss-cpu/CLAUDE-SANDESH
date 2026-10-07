@@ -48,7 +48,7 @@ function picture(url: string | null | undefined, alt: string, key: string, label
 
 export function articleCard(a: ArticleCard, opts: { lead?: boolean } = {}): Html {
   return html`<article class="card${opts.lead ? ' card-lead' : ''}">
-  <a class="card-link" href="/magazine/${a.slug}">
+  <a class="card-link" href="/stories/${a.slug}">
     ${picture(a.coverImageUrl, '', a.category?.slug ?? a.slug, a.category?.name)}
     <div class="card-body">
       <p class="kicker">${a.category?.name ?? 'Story'}${a.isSponsored ? raw(` ${sponsoredLabel(a.sponsor?.name).value}`) : ''}</p>
@@ -165,14 +165,14 @@ export interface FormState {
 /** The hidden field people never see; bots fill it. Plus the time token stamped at serve time. */
 export const formGuards = () => raw(`<div class="hp" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div><input type="hidden" name="t" value="__FORM_TOKEN__">`);
 
-export function field(name: string, label: string, state: FormState | undefined, opts: { type?: string; textarea?: boolean; required?: boolean; max?: number; autocomplete?: string; hint?: string } = {}): Html {
+export function field(name: string, label: string, state: FormState | undefined, opts: { type?: string; textarea?: boolean; rows?: number; required?: boolean; max?: number; autocomplete?: string; hint?: string } = {}): Html {
   const v = state?.values?.[name] ?? '';
   const id = `f-${name}`;
   const common = html`id="${id}" name="${name}"${opts.required ? raw(' required') : ''}${opts.max ? raw(` maxlength="${opts.max}"`) : ''}${opts.autocomplete ? raw(` autocomplete="${esc(opts.autocomplete)}"`) : ''}${opts.hint ? raw(` aria-describedby="${id}-hint"`) : ''}`;
   return html`<div class="field">
   <label for="${id}">${label}</label>
   ${opts.hint ? html`<p class="hint" id="${id}-hint">${opts.hint}</p>` : ''}
-  ${opts.textarea ? html`<textarea ${common} rows="5">${v}</textarea>` : html`<input ${common} type="${opts.type ?? 'text'}" value="${v}">`}
+  ${opts.textarea ? html`<textarea ${common} rows="${opts.rows ?? 5}">${v}</textarea>` : html`<input ${common} type="${opts.type ?? 'text'}" value="${v}">`}
 </div>`;
 }
 

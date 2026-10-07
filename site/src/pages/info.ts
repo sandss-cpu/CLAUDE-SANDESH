@@ -1,6 +1,5 @@
 import { config } from '../config';
-import * as data from '../data';
-import { html, Html } from '../html';
+import { html, Html, raw } from '../html';
 import { page } from '../layout';
 import { crumbs, field, formError, formGuards, FormState, newsletterForm, Rendered, sentNote } from '../parts';
 
@@ -10,29 +9,65 @@ const simple = (path: string, title: string, description: string, body: Html, op
   status: opts.status,
 });
 
-export function write(): Rendered {
-  return simple('/write', 'Write a trip', 'Write about a trip in Nepal for the Batoma magazine: how it works, what our editors look for, and how to start.', html`
+export function write(state?: FormState & { sent?: boolean; devLink?: string }): Rendered {
+  return simple('/write', 'Write a trip', 'Write about a trip in Nepal for Batoma: send your story from this page, and our editors may feature it with your name on it.', html`
 <div class="wrap-narrow">
   ${crumbs([['/', 'Home'], ['', 'Write a trip']])}
   <h1>Write a trip for Batoma</h1>
-  <p class="lede">The best stories in Batoma come from people who have just been there. If you have taken a road, stayed somewhere worth it or eaten something you still think about, write it up.</p>
+  <p class="lede">The best stories in Batoma come from people who have just been there. If you have taken a road, stayed somewhere worth it or eaten something you still think about, write it up and send it to us here.</p>
   <h2>How it works</h2>
   <ol class="steps">
-    <li><strong>Sign in to the Batoma app</strong> and open <em>Write</em>. An email address is all you need.</li>
-    <li><strong>Write your trip</strong>: where you went, how you got there, what it cost and what you would tell a friend. Add photos you took.</li>
-    <li><strong>Our editors read it.</strong> The good ones are edited with you, then published in the magazine with your name on them.</li>
-    <li><strong>Readers on the bus find it</strong> on the route it is about.</li>
+    <li><strong>Send your story below.</strong> Your name and email are all you need. The first time, this also makes your Batoma account.</li>
+    <li><strong>Confirm your email.</strong> We send you a link; your story reaches our editors when you follow it, and you can choose a password for your account.</li>
+    <li><strong>Our editors read it.</strong> If it is right for Batoma, an editor prepares it with you and publishes it with your name on it.</li>
+    <li><strong>Readers find it</strong> on the website, and on the bus, on the route it is about.</li>
   </ol>
   <h2>What we look for</h2>
   <ul>
     <li>Somewhere you actually went, recently. Prices and times go out of date quickly.</li>
     <li>The useful detail: which bus, where it stops, what the room was like, what to order.</li>
-    <li>Your own words and your own photos.</li>
+    <li>Your own words. If we feature your story, we will ask you for your own photos.</li>
     <li>Honesty. If you were given anything free, say so; we print it.</li>
   </ul>
-  <p><a class="btn" href="${config.appUrl}/#write">Start writing in the app</a></p>
-  <p class="small">Writing often? Ask about a creator profile in the app, under <em>Write</em>.</p>
-</div>`);
+  <section class="write-box" aria-labelledby="h-send">
+    <h2 id="h-send">Send your story</h2>
+    ${state?.sent ? html`${sentNote('Check your inbox: follow the link we have sent you and your story goes to our editors. The link works for 72 hours.')}
+      ${state.devLink ? html`<p class="dev-note" role="note"><strong>Development:</strong> no email is sent on this computer. <a href="${state.devLink}">Open the confirmation link</a>.</p>` : ''}`
+    : html`<form class="form" method="post" action="/write#h-send">
+      ${formError(state)}
+      ${field('name', 'Your name', state, { required: true, max: 80, autocomplete: 'name' })}
+      ${field('email', 'Your email', state, { type: 'email', required: true, max: 254, autocomplete: 'email', hint: 'We send a link here to confirm it is you. It is never shown with your story.' })}
+      ${field('title', 'Title', state, { required: true, max: 120, hint: 'For example: Two days in Bandipur on a budget.' })}
+      ${field('place', 'Where it is about (optional)', state, { max: 80, hint: 'A town, a road or an area: Pokhara, the Prithvi Highway, Upper Mustang.' })}
+      ${field('story', 'Your story', state, { textarea: true, rows: 16, required: true, max: 20000, hint: 'At least 300 characters, up to about 3,000 words. Plain text is fine; leave an empty line between paragraphs.' })}
+      <div class="field check">
+        <label><input type="checkbox" name="ownWork" value="yes" required${state?.values?.ownWork ? raw(' checked') : ''}> This is my own writing, about a trip I made.</label>
+      </div>
+      ${formGuards()}
+      <button class="btn" type="submit">Send my story</button>
+      <p class="small">Sending a story makes a Batoma account with this email, so you can sign in later; you can delete it at any time. See our <a href="/privacy">privacy notice</a>.</p>
+    </form>`}
+  </section>
+  <p class="small">Already writing with us? <a href="${config.appUrl}/login.html">Sign in to the Batoma app</a> to share your travels there too.</p>
+</div>`, { status: state?.error ? 400 : undefined });
+}
+
+/** /write/confirm: the email link shows a button; only the POST sends the story on. */
+export function storyConfirmPage(token: string, outcome?: { ok: boolean; message?: string; title?: string; needsPassword?: boolean; devPasswordLink?: string }): Rendered {
+  const body = !outcome
+    ? html`<h1>Send your story to our editors</h1>
+  <p class="lede">One tap and it is with them.</p>
+  <form method="post" action="/write/confirm" class="form"><input type="hidden" name="token" value="${token}"><button class="btn" type="submit">Send my story</button></form>`
+    : outcome.ok
+      ? html`<h1>Your story is with our editors</h1>
+  <p class="lede">Thank you for writing${outcome.title ? html` “${outcome.title}”` : ''}. Our editors read every story, and we will email you when they have.</p>
+  ${outcome.needsPassword ? html`<p>We have also emailed you a link to choose a password for your Batoma account. It works for an hour; if it runs out, use “Forgot password” when you <a href="${config.appUrl}/login.html">sign in</a>.</p>` : html`<p>You can <a href="${config.appUrl}/login.html">sign in to Batoma</a> with your account as usual.</p>`}
+  ${outcome.devPasswordLink ? html`<p class="dev-note" role="note"><strong>Development:</strong> no email is sent on this computer. <a href="${outcome.devPasswordLink}">Choose a password</a>.</p>` : ''}
+  <p><a class="btn btn-ghost" href="/stories">Read the stories</a> <a class="btn btn-ghost" href="/write">Write another</a></p>`
+      : html`<h1>That link did not work</h1>
+  <p class="lede">${outcome.message ?? 'It may have expired or been used already.'}</p>
+  <p><a class="btn" href="/write">Send your story again</a></p>`;
+  return { html: page({ title: 'Send your story', description: 'Confirm your story for Batoma.', path: '/write/confirm', noindex: true }, html`<div class="wrap-narrow">${body}</div>`), events: [] };
 }
 
 export function about(): Rendered {
@@ -73,38 +108,36 @@ export function contact(state?: FormState & { sent?: boolean }): Rendered {
 </div>`, { status: state?.error ? 400 : undefined });
 }
 
-interface Audience { scansLast30Days: number; readersLast30Days: number; websiteViewsLast30Days: number; buses: number; routes: number; partners: number; articles: number }
-
-/** The API's public figures; the page still works if the API is down. */
-async function audience(): Promise<Audience | null> {
-  try {
-    const res = await fetch(`${config.apiUrl}/site/audience`, { signal: AbortSignal.timeout(2500) });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { data?: Audience };
-    return typeof body.data?.buses === 'number' ? body.data : null;
-  } catch { return null; }
-}
-
-const n = (v: number) => v.toLocaleString('en-IN');
-
-export async function advertise(state?: FormState & { sent?: boolean }): Promise<Rendered> {
-  const [a, partners] = await Promise.all([audience(), data.partners({ take: 200 })]);
-  const figures: Array<[string, string]> = a
-    ? [[n(a.readersLast30Days), 'readers on buses, last 30 days'], [n(a.scansLast30Days), 'seat-code scans, last 30 days'],
-       [n(a.websiteViewsLast30Days), 'website page views, last 30 days'], [n(a.buses), `buses on ${n(a.routes)} ${a.routes === 1 ? 'route' : 'routes'}`],
-       [n(a.articles), 'stories published']]
-    : [[n(partners.length), 'verified partners listed']];
-  return simple('/advertise', 'Advertise with Batoma', 'Reach travellers on the bus and on the Batoma website: partner listings, sponsored stories, route and place sponsorships, and monthly reports.', html`
+export function advertise(state?: FormState & { sent?: boolean }): Rendered {
+  return simple('/advertise', 'Advertise with Batoma', 'Batoma is a platform for tourism and for the people who explore Nepal. Reach travellers on the bus and on the web: listings, sponsored stories, sponsorships and monthly reports.', html`
 <div class="wrap">
   ${crumbs([['/', 'Home'], ['', 'Advertise']])}
   <header class="page-head">
     <h1>Reach travellers on the road</h1>
-    <p class="lede">Batoma is read on the bus, on the way to where your business is. A listing puts you in front of them at the moment they are deciding where to stop, stay or eat.</p>
+    <p class="lede">Batoma is read on the bus, on the way to where your business is. A listing puts you in front of travellers at the moment they are deciding where to stop, stay or eat.</p>
   </header>
-  <ul class="figures" aria-label="Audience">${figures.map(([v, label]) => html`<li><strong>${v}</strong><span>${label}</span></li>`)}</ul>
+  <section class="mission" aria-label="Our vision and mission">
+    <div class="mission-grid">
+      <div class="mission-card">
+        <h2>Our vision</h2>
+        <p>A Nepal where every journey is part of the trip: where travellers know what lies ahead on the road, and the towns, homestays and people along the way are found, visited and valued.</p>
+      </div>
+      <div class="mission-card">
+        <h2>Our mission</h2>
+        <p>Batoma gives tourism, and the people who travel, one platform to explore Nepal. We put honest stories, road guides, events and checked local businesses in front of travellers wherever they are, on the bus, on their phone and on the web, so they discover more and the places along the road earn from it.</p>
+      </div>
+    </div>
+    <h2 class="sr">What we stand for</h2>
+    <ul class="values">
+      <li><strong>Honest</strong> Anything paid for is labelled, and paying never buys a review.</li>
+      <li><strong>Local</strong> Nepal's own businesses, writers and events, each checked by our team.</li>
+      <li><strong>Made for the road</strong> Quick to load, and readable offline in the app when the signal goes.</li>
+      <li><strong>Fair to partners</strong> A monthly report shows what you got for what you paid.</li>
+    </ul>
+  </section>
   <div class="two-col">
     <div>
-      <h2>What you can buy</h2>
+      <h2>What partners get</h2>
       <dl class="offer-list">
         <dt>Verified listing</dt><dd>Your page on the website and in the app, on the road guides for your route, with calls, WhatsApp, directions and enquiries.</dd>
         <dt>Featured partner</dt><dd>A higher place in lists and on the road, and the home page partner spotlight.</dd>
@@ -232,7 +265,7 @@ export function notFound(): Rendered {
 <div class="wrap-narrow">
   <h1>We could not find that page</h1>
   <p class="lede">It may have moved, or the story may no longer be published.</p>
-  <p><a class="btn" href="/magazine">Read the magazine</a> <a class="btn btn-ghost" href="/">Home</a></p>
+  <p><a class="btn" href="/stories">Read the stories</a> <a class="btn btn-ghost" href="/">Home</a></p>
 </div>`, { noindex: true, status: 404 });
 }
 

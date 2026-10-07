@@ -38,6 +38,10 @@ GRANT SELECT (id, title, "advertiserName", tagline, "imageUrl", placement, "star
   "overviewTitle", "overviewBody", "overviewImageUrl", "businessId", "isActive", "targetCategoryId", "targetDestinationId")
   ON advertisements TO batoma_site;
 GRANT SELECT ("appName", tagline, "themePalette") ON platform_settings TO batoma_site;
+-- Events: everything a visitor reads, nothing about who added them.
+GRANT SELECT (id, slug, title, "titleNe", summary, description, category, city, venue, address, "destinationId",
+  "startsAt", "endsAt", "allDay", "priceLabel", organiser, url, "imageUrl", status, "isFeatured", "publishedAt", "updatedAt")
+  ON events TO batoma_site;
 -- The only thing the site writes: its own page views, impressions and /go/ clicks.
 GRANT INSERT ON site_events TO batoma_site;
 GRANT USAGE ON SEQUENCE site_events_id_seq TO batoma_site;
@@ -85,6 +89,11 @@ CREATE POLICY site_read ON coupons FOR SELECT TO batoma_site
 ALTER TABLE advertisements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_read ON advertisements;
 CREATE POLICY site_read ON advertisements FOR SELECT TO batoma_site USING ("isActive" AND placement::text LIKE 'WEB\_%');
+
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON events;
+-- Drafts stay in the control panel; a cancelled event stays listed, marked cancelled.
+CREATE POLICY site_read ON events FOR SELECT TO batoma_site USING (status IN ('PUBLISHED', 'CANCELLED'));
 
 ALTER TABLE site_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_write ON site_events;

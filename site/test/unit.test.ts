@@ -57,3 +57,37 @@ test('images: srcset from the upload sizes, and only safe addresses', async () =
   assert.match(tag, /alt="A &quot;quoted&quot; view"/);
   assert.match(img('javascript:alert(1)', '', { sizes: '100vw', width: 1, height: 1 }).value, /src="#"/);
 });
+
+test('calendar files: escaped text, folded lines that never split a letter, and whole Kathmandu days', async () => {
+  const { fold, icsFile, icsText } = await import('../src/ics');
+  assert.equal(icsText('Lakeside, Pokhara; free\nentry \\ all'), 'Lakeside\\, Pokhara\\; free\\nentry \\\\ all');
+  const long = `SUMMARY:${'काठमाडौं '.repeat(20)}`;
+  const folded = fold(long);
+  for (const line of folded.split('\r\n')) assert.ok(Buffer.byteLength(line) <= 75, 'no line over 75 bytes');
+  assert.equal(folded.split('\r\n').map((l, i) => (i ? l.slice(1) : l)).join(''), long, 'unfolding gives the line back');
+  const base = { id: 'abc', title: 'Tihar lights', summary: 'Lights, sweets and songs.', url: 'https://batoma.example/events/tihar', city: 'Kathmandu', venue: 'Basantapur', address: null };
+  // 9 to 11 November 2026, all day in Kathmandu (midnight there is 18:15 UTC the day before).
+  const allDay = icsFile({ ...base, allDay: true, cancelled: false, startsAt: new Date('2026-11-08T18:15:00Z'), endsAt: new Date('2026-11-10T18:15:00Z') }, 'batoma.example', new Date('2026-10-07T00:00:00Z'));
+  assert.match(allDay, /DTSTART;VALUE=DATE:20261109\r\n/);
+  assert.match(allDay, /DTEND;VALUE=DATE:20261112\r\n/, 'the end is the day after the last day');
+  assert.match(allDay, /UID:abc@batoma\.example\r\n/);
+  assert.match(allDay, /LOCATION:Basantapur\\, Kathmandu\r\n/);
+  assert.match(allDay, /STATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n$/);
+  const timed = icsFile({ ...base, allDay: false, cancelled: true, startsAt: new Date('2026-11-09T12:15:00Z'), endsAt: null }, 'batoma.example');
+  assert.match(timed, /DTSTART:20261109T121500Z\r\n/);
+  assert.doesNotMatch(timed, /DTEND/, 'no end given, none made up');
+  assert.match(timed, /STATUS:CANCELLED/);
+});
+
+test('dates: the Kathmandu day decides the BS date, and an event reads in Kathmandu time', async () => {
+  const { dayBs, eventWhen, kathmanduDay } = await import('../src/format');
+  // 19:00 UTC on 9 October is 00:45 on 10 October in Kathmandu.
+  assert.equal(kathmanduDay(new Date('2026-10-09T19:00:00Z')), '2026-10-10');
+  assert.equal(dayBs(new Date('2026-10-09T19:00:00Z')), dayBs(new Date('2026-10-10T06:00:00Z')));
+  assert.notEqual(dayBs(new Date('2026-10-09T19:00:00Z')), dayBs(new Date('2026-10-09T06:00:00Z')));
+  const evening = eventWhen({ startsAt: new Date('2026-10-10T12:15:00Z'), endsAt: new Date('2026-10-10T15:15:00Z'), allDay: false });
+  assert.match(evening.ad, /^Saturday,? 10 October 2026, 18:00–21:00$/);
+  const days = eventWhen({ startsAt: new Date('2026-11-08T18:15:00Z'), endsAt: new Date('2026-11-10T18:15:00Z'), allDay: true });
+  assert.match(days.ad, /^Monday,? 9 November 2026 – Wednesday,? 11 November 2026$/);
+  assert.ok(days.bs.includes(' – '));
+});

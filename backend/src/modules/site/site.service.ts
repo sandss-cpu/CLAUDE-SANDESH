@@ -30,7 +30,6 @@ interface Actor { id: string; role: Role }
  */
 @Injectable()
 export class SiteService {
-  private audienceCache: { at: number; data: unknown } | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -124,24 +123,6 @@ export class SiteService {
     }
     // The same answer for an unknown token: it reveals nothing about who is subscribed.
     return { unsubscribed: true };
-  }
-
-  /** Public figures for "Advertise with Batoma", worked out at most every ten minutes. */
-  async audience() {
-    if (this.audienceCache && Date.now() - this.audienceCache.at < 600_000) return this.audienceCache.data;
-    const since = new Date(Date.now() - 30 * 86_400_000);
-    const [scans, readers, pageViews, buses, routes, partners, articles] = await Promise.all([
-      this.prisma.scanEvent.count({ where: { scannedAt: { gte: since } } }),
-      this.prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(DISTINCT "sessionId") AS n FROM scan_events WHERE "scannedAt" >= ${since}`,
-      this.prisma.siteEvent.count({ where: { type: 'PAGE_VIEW', createdAt: { gte: since } } }),
-      this.prisma.vehicle.count({ where: { isActive: true, operator: { verification: 'VERIFIED' } } }),
-      this.prisma.route.count({ where: { vehicles: { some: { isActive: true } } } }),
-      this.prisma.business.count({ where: { isActive: true, verifiedAt: { not: null } } }),
-      this.prisma.article.count({ where: { status: 'PUBLISHED' } }),
-    ]);
-    const data = { scansLast30Days: scans, readersLast30Days: Number(readers[0]?.n ?? 0), websiteViewsLast30Days: pageViews, buses, routes, partners, articles };
-    this.audienceCache = { at: Date.now(), data };
-    return data;
   }
 
   // ================= partners: their enquiries and their report =================
@@ -360,7 +341,7 @@ export class SiteService {
       partners, guides, deals, enquiries, views30: views,
       mostRead: top.flatMap((t) => {
         const a = read.find((r) => r.id === t.articleId);
-        return a ? [{ ...a, views: t._count._all, url: this.siteUrl(`/magazine/${a.slug}`) }] : [];
+        return a ? [{ ...a, views: t._count._all, url: this.siteUrl(`/stories/${a.slug}`) }] : [];
       }),
     };
   }
@@ -390,7 +371,7 @@ export class SiteService {
     }) : [];
     const viewsOf = new Map(views.map((v) => [v.articleId, v._count._all]));
     return {
-      items: items.map((a) => ({ ...a, url: this.siteUrl(`/magazine/${a.slug}`), views30: viewsOf.get(a.id) ?? 0 })),
+      items: items.map((a) => ({ ...a, url: this.siteUrl(`/stories/${a.slug}`), views30: viewsOf.get(a.id) ?? 0 })),
       total, page, pages: Math.max(1, Math.ceil(total / PAGE)), siteUrl: this.siteUrl(''),
     };
   }

@@ -3,6 +3,7 @@ import * as data from '../data';
 import { html } from '../html';
 import { page } from '../layout';
 import { dealPartners } from './partners';
+import { eventCard } from './events';
 import { adSlot, articleCard, articleEvents, dealCard, guideCard, partnerCard, partnerEvents, Rendered, newsletterForm } from '../parts';
 
 export const PUBLISHER = {
@@ -12,7 +13,7 @@ export const PUBLISHER = {
 
 export async function home(): Promise<Rendered> {
   const path = '/';
-  const [featured, latest, trips, spotlight, deals, hero, sponsored, letter] = await Promise.all([
+  const [featured, latest, trips, spotlight, deals, hero, sponsored, letter, upcoming] = await Promise.all([
     data.articles({ featured: true, take: 3 }),
     data.articles({ take: 9 }),
     data.guides({ take: 3 }),
@@ -21,6 +22,7 @@ export async function home(): Promise<Rendered> {
     data.liveAds('WEB_HOME_HERO'),
     data.liveAds('WEB_SPONSORED_ARTICLE'),
     data.liveAds('WEB_NEWSLETTER'),
+    data.events({ take: 3 }),
   ]);
   const lead = featured[0] ?? latest[0];
   const more = [...featured.slice(1), ...latest].filter((a, i, all) => a.id !== lead?.id && all.findIndex((b) => b.id === a.id) === i).slice(0, 6);
@@ -37,7 +39,7 @@ export async function home(): Promise<Rendered> {
 </section>
 ${heroAd.html.value ? html`<div class="wrap">${heroAd.html}</div>` : ''}
 <section class="wrap" aria-labelledby="h-stories">
-  <div class="sec-head"><h2 id="h-stories">Latest stories</h2><a href="/magazine">All stories →</a></div>
+  <div class="sec-head"><h2 id="h-stories">Latest stories</h2><a href="/stories">All stories →</a></div>
   ${lead ? html`<div class="lead-grid">${articleCard(lead, { lead: true })}<div class="stack">${more.slice(0, 2).map((a) => articleCard(a))}</div></div>` : html`<p class="dim">The first stories are on their way.</p>`}
   <div class="grid">${more.slice(2, 5).map((a) => articleCard(a))}</div>
   ${storyAd.html}
@@ -48,6 +50,10 @@ ${heroAd.html.value ? html`<div class="wrap">${heroAd.html}</div>` : ''}
     <div class="grid">${trips.map(guideCard)}</div>
   </div>
 </section>
+${upcoming.length ? html`<section class="wrap" aria-labelledby="h-events">
+  <div class="sec-head"><h2 id="h-events">Coming up</h2><a href="/events">All events →</a></div>
+  <div class="events">${upcoming.map(eventCard)}</div>
+</section>` : ''}
 <section class="wrap" aria-labelledby="h-partners">
   <div class="sec-head"><h2 id="h-partners">Partners we have checked</h2><a href="/partners">All partners →</a></div>
   <p class="dim">Every partner is visited or verified by Batoma before they are listed. Featured partners pay for a higher place; it says so on their card.</p>

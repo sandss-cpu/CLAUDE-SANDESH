@@ -37,19 +37,19 @@ ok "published articles on the website" 200 "$(call GET '/admin/site/articles?sho
 ART=$(get "data['items'][0]['id']"); SLUG=$(get "data['items'][0]['slug']"); TITLE=$(get "data['items'][0]['title']")
 FEATURED=$(get "data['items'][0]['isFeatured']")
 ok "every row is on the website" true "$(get "all(a['onWebsite'] for a in data['items'])")"
-ok "a row links to its page on the website" "$SITE/magazine/$SLUG" "$(get "data['items'][0]['url']")"
-ok "it is on the website" 200 "$(page "/magazine/$SLUG")"
+ok "a row links to its page on the website" "$SITE/stories/$SLUG" "$(get "data['items'][0]['url']")"
+ok "it is on the website" 200 "$(page "/stories/$SLUG")"
 
 B='{"onWebsite":false}'
 ok "an editor cannot take it off" 403 "$(call PATCH "/admin/site/articles/$ART" "$EDITOR" "$B")"
 ok "taken off the website" 200 "$(call PATCH "/admin/site/articles/$ART" "$ADMIN" "$B")"
 ok "the answer says so" false "$(get "data['onWebsite']")"
 settle
-ok "its page is gone from the website" 404 "$(page "/magazine/$SLUG")"
+ok "its page is gone from the website" 404 "$(page "/stories/$SLUG")"
 page /sitemap.xml >/dev/null
-ok "and from the sitemap" 0 "$(has "/magazine/$SLUG<")"
-page /magazine >/dev/null
-ok "and from the magazine list" 0 "$(has "/magazine/$SLUG\"")"
+ok "and from the sitemap" 0 "$(has "/stories/$SLUG<")"
+page /stories >/dev/null
+ok "and from the stories list" 0 "$(has "/stories/$SLUG\"")"
 ok "the app still has it" 200 "$(call GET "/magazine/articles/$SLUG" "")"
 call GET '/admin/site/articles?show=off' "$ADMIN" >/dev/null
 ok "listed under taken off" true "$(get "any(a['id'] == '$ART' for a in data['items'])")"
@@ -58,7 +58,7 @@ ok "the change is audited" 1 "$(sql "select count(*) from audit_events where act
 B='{"onWebsite":true}'
 ok "put back on the website" 200 "$(call PATCH "/admin/site/articles/$ART" "$ADMIN" "$B")"
 settle
-ok "its page is back" 200 "$(page "/magazine/$SLUG")"
+ok "its page is back" 200 "$(page "/stories/$SLUG")"
 
 FLIP=$([ "$FEATURED" = "true" ] && echo false || echo true)
 B="{\"isFeatured\":$FLIP}"

@@ -5,12 +5,12 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v19';
+const SHELL_CACHE = 'bato-shell-v20';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 
 const SHELL = [
-  '/', '/index.html', '/manifest.json', '/config.js', '/js/boot.js', '/css/fonts.css', '/js/actions.js', '/js/reader.js', '/js/reading.js', '/js/lib/stops.js', '/js/admin.js', '/js/admin-programming.js', '/js/admin-site.js', '/js/admin-security.js', '/js/bus.js', '/js/rating.js', '/scan.html', '/js/scan.js',
+  '/', '/index.html', '/manifest.json', '/config.js', '/js/boot.js', '/css/fonts.css', '/js/actions.js', '/js/reader.js', '/js/reading.js', '/js/lib/stops.js', '/js/admin.js', '/js/admin-programming.js', '/js/admin-site.js', '/js/admin-events.js', '/js/admin-stories.js', '/js/admin-security.js', '/js/bus.js', '/js/rating.js', '/scan.html', '/js/scan.js',
   '/login.html', '/js/login.js', '/admin.html', '/bus.html',
   '/creator.html', '/js/creator.js', '/owner.html', '/owner-core.js', '/owner-screens.js', '/owner-bus.js', '/owner-more.js', '/owner-actions.js', '/owner-trips.js', '/owner-crew.js', '/owner-income.js', '/js/lib/bs-date.js',
   '/business.html', '/js/business.js', '/css/partner.css',

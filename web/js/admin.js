@@ -2652,12 +2652,22 @@ Actions.onInput({
 /* =========================== boot =========================== */
 
 try{ applyPalette(localStorage.getItem('bato.admin.palette') || ''); }catch(_){}
-loadAuth();
-if(state.auth && !['EDITOR','MODERATOR','ADMIN'].includes(state.auth.user?.role)){
-  state.auth = null; localStorage.removeItem('bato.admin.auth');
+
+/**
+ * Runs once every control-panel script has loaded: the files after this one add their own
+ * screens and menu entries (Route programming, Website, Events, Story submissions, Security
+ * events), which a menu drawn any earlier left out until the first click.
+ */
+function boot(){
+  loadAuth();
+  if(state.auth && !['EDITOR','MODERATOR','ADMIN'].includes(state.auth.user?.role)){
+    state.auth = null; localStorage.removeItem('bato.admin.auth');
+  }
+  // A reload keeps the session but not the screen: start where this role is allowed to be.
+  if(state.auth && !visibleSections().some(([key]) => key === state.screen)){
+    state.screen = defaultScreen(state.auth.user.role);
+  }
+  renderRoot();
 }
-// A reload keeps the session but not the screen: start where this role is allowed to be.
-if(state.auth && !visibleSections().some(([key]) => key === state.screen)){
-  state.screen = defaultScreen(state.auth.user.role);
-}
-renderRoot();
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();

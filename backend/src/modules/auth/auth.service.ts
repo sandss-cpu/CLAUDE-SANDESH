@@ -308,8 +308,18 @@ export class AuthService {
     return { reset: true, message: 'Password updated. Sign in with your new password.' };
   }
 
+  /**
+   * For an account made by sending a story from the website: a link to choose a first
+   * password (the reset link, worded for a new account). Nothing is sent if it has one.
+   */
+  async sendPasswordSetup(userId: string): Promise<string | undefined> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.email || user.passwordHash) return undefined;
+    return this.sendLink(user, EmailTokenType.RESET, undefined, 'setup');
+  }
+
   /** Issues a link token and emails it. Returns the link only when it may be echoed (dev). */
-  private async sendLink(user: User, type: EmailTokenType, app?: LinkApp): Promise<string | undefined> {
+  private async sendLink(user: User, type: EmailTokenType, app?: LinkApp, purpose?: 'setup'): Promise<string | undefined> {
     const recent = await this.prisma.emailToken.count({
       where: { userId: user.id, type, createdAt: { gt: new Date(Date.now() - 15 * 60_000) } },
     });
@@ -329,7 +339,14 @@ export class AuthService {
     // The page is chosen from a fixed list, never from the request, so a link can't be pointed elsewhere.
     const page = app === 'owner' ? 'owner.html' : 'login.html';
     const url = `${web}/${page}?${type === EmailTokenType.VERIFY ? 'verify' : 'reset'}=${raw}`;
-    const content = type === EmailTokenType.VERIFY
+    const content = purpose === 'setup'
+      ? this.mail.linkEmail({
+          heading: 'Set a password for Batoma',
+          intro: `Namaste ${user.name}, your story is with our editors. Choose a password to sign in to Batoma, where you can write and share your travels.`,
+          cta: 'Choose a password', url,
+          footer: 'This link expires in 1 hour. You can ask for another from the sign-in page, under "Forgot password".',
+        })
+      : type === EmailTokenType.VERIFY
       ? this.mail.linkEmail({
           heading: 'Confirm your email',
           intro: app === 'owner'
@@ -345,7 +362,8 @@ export class AuthService {
           footer: 'This link expires in 1 hour. If it was not you, you can safely ignore it.',
         });
 
-    const subject = type === EmailTokenType.VERIFY ? 'Confirm your Bato email' : 'Reset your Bato password';
+    const subject = purpose === 'setup' ? 'Set your Batoma password'
+      : type === EmailTokenType.VERIFY ? 'Confirm your Bato email' : 'Reset your Bato password';
     const sent = await this.mail.send(user.email!, subject, content.text, content.html);
     const mayEcho = otpMayBeReturnedInResponse(this.config.get('NODE_ENV'), this.mail.isConfigured);
     if (!sent && !mayEcho) {

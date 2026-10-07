@@ -550,3 +550,28 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   empty is read as cleared from the value as sent: the API's implicit conversion would
   otherwise have turned "" into 0.
 
+## After Phase 3: Stories, Events, Write a trip, Advertise (October 2026)
+
+- **"Magazine" became "Stories"** in the website's menu and pages, at `/stories`. The section
+  holds written stories and road guides, not videos (vlogs live in the app), and "Stories"
+  matched the site's own "Latest stories". `/magazine…` answers with a permanent redirect, so
+  shared links and search results keep working.
+- **Events are content**, so editors and admins manage them, as they do articles and guides.
+  A cancelled event stays listed and marked, because someone may have planned to go; a draft
+  never reaches the website (row-level security). Events list until their last day is over in
+  Kathmandu. No JavaScript: filters are a GET form and "Add to your calendar" is an `.ics` link.
+- **Write a trip is one website form, confirmed by email.** The website has no sign-in and no
+  cookies, so it never handles passwords: sending a story makes (or finds) the account by email,
+  and the story reaches editors only once the emailed link is followed. That proves the address
+  (nobody can send under someone else's email) and keeps spam out of the editors' queue. A new
+  writer then gets the existing password email, worded to set a first password. The response is
+  the same whether or not the address has an account. Unconfirmed stories are deleted two weeks
+  after their link expires (retention job).
+- **Featuring makes a draft, not a published article.** Publishing needs a summary and key
+  points, and editors want to edit and add pictures; the writer keeps the byline. Photos are not
+  uploaded through the website form (no script, and a public upload is an abuse risk): editors
+  ask featured writers for them.
+- **Advertise shows the vision and mission instead of live audience figures.** The public
+  `/site/audience` endpoint went with them; partners still see their own figures in their
+  monthly report. The wording is Batoma's own and can be changed in `site/src/pages/info.ts`.
+

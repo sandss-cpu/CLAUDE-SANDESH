@@ -10,12 +10,12 @@ const PER_PAGE = 12;
 
 function sectionNav(cats: Array<{ slug: string; name: string }>, current?: string) {
   return html`<nav class="chips" aria-label="Sections">
-  <a href="/magazine"${!current ? raw(' aria-current="page"') : ''}>All</a>
-  ${cats.map((c) => html`<a href="/magazine/section/${c.slug}"${c.slug === current ? raw(' aria-current="page"') : ''}>${c.name}</a>`)}
+  <a href="/stories"${!current ? raw(' aria-current="page"') : ''}>All</a>
+  ${cats.map((c) => html`<a href="/stories/section/${c.slug}"${c.slug === current ? raw(' aria-current="page"') : ''}>${c.name}</a>`)}
 </nav>`;
 }
 
-/** /magazine, /magazine/section/<slug> and /magazine/issue/<n>: the same list, filtered. */
+/** /stories, /stories/section/<slug> and /stories/issue/<n>: the same list, filtered. (Until October 2026 these were under /magazine, which now redirects here.) */
 export async function magazine(opts: { page: number; section?: string; issue?: number }): Promise<Rendered | null> {
   const [cats, issues] = await Promise.all([data.categories(), data.issues()]);
   const cat = opts.section ? cats.find((c) => c.slug === opts.section) : undefined;
@@ -26,7 +26,7 @@ export async function magazine(opts: { page: number; section?: string; issue?: n
   const total = await data.articleCount(where);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   if (opts.page > pages) return null;
-  const base = cat ? `/magazine/section/${cat.slug}` : iss ? `/magazine/issue/${iss.number}` : '/magazine';
+  const base = cat ? `/stories/section/${cat.slug}` : iss ? `/stories/issue/${iss.number}` : '/stories';
   const path = opts.page > 1 ? `${base}?page=${opts.page}` : base;
 
   const [list, sponsorAds, storyAds] = await Promise.all([
@@ -36,14 +36,14 @@ export async function magazine(opts: { page: number; section?: string; issue?: n
   ]);
   const sponsor = adSlot(sponsorAds[0], path);
   const story = adSlot(storyAds[0], path);
-  const title = cat ? cat.name : iss ? `Issue ${iss.number}: ${iss.title}` : 'The magazine';
+  const title = cat ? cat.name : iss ? `Issue ${iss.number}: ${iss.title}` : 'Stories';
   const description = cat
     ? `${cat.name} stories from Batoma, the Nepal travel magazine.`
     : iss ? `${iss.strapline ?? `Every story in issue ${iss.number} of Batoma.`}` : 'Every Batoma story: the road, food, heritage, festivals, trekking and wildlife of Nepal.';
 
   const body = html`
 <div class="wrap">
-  ${crumbs(cat || iss ? [['/', 'Home'], ['/magazine', 'Magazine'], ['', title]] : [['/', 'Home'], ['', 'Magazine']])}
+  ${crumbs(cat || iss ? [['/', 'Home'], ['/stories', 'Stories'], ['', title]] : [['/', 'Home'], ['', 'Stories']])}
   <header class="page-head">
     <h1>${title}</h1>
     <p class="lede">${description}</p>
@@ -56,7 +56,7 @@ export async function magazine(opts: { page: number; section?: string; issue?: n
   <div class="grid">${list.slice(3).map((a) => articleCard(a))}</div>` : html`<p class="dim">No stories here yet.</p>`}
   ${pager(base, opts.page, pages)}
   ${!cat && !iss && issues.length ? html`<section aria-labelledby="h-issues"><h2 id="h-issues">Issues</h2>
-    <ul class="issues">${issues.map((i) => html`<li><a href="/magazine/issue/${i.number}"><strong>Issue ${i.number}</strong> ${i.title}</a>${i.season ? html` <span class="dim">${i.season}</span>` : ''}</li>`)}</ul></section>` : ''}
+    <ul class="issues">${issues.map((i) => html`<li><a href="/stories/issue/${i.number}"><strong>Issue ${i.number}</strong> ${i.title}</a>${i.season ? html` <span class="dim">${i.season}</span>` : ''}</li>`)}</ul></section>` : ''}
 </div>`;
 
   return {
@@ -68,7 +68,7 @@ export async function magazine(opts: { page: number; section?: string; issue?: n
 export async function article(slug: string): Promise<Rendered | null> {
   const a = await data.article(slug);
   if (!a) return null;
-  const path = `/magazine/${a.slug}`;
+  const path = `/stories/${a.slug}`;
   const [related, sectionAds] = await Promise.all([
     data.articles({ categoryId: a.categoryId ?? undefined, notIds: [a.id], take: 3 }),
     a.categoryId ? data.liveAds('WEB_SECTION_SPONSOR', { categoryId: a.categoryId }) : Promise.resolve([]),
@@ -80,7 +80,7 @@ export async function article(slug: string): Promise<Rendered | null> {
 
   const body = html`
 <article class="story wrap-narrow">
-  ${crumbs([['/', 'Home'], ['/magazine', 'Magazine'], ...(a.category ? [[`/magazine/section/${a.category.slug}`, a.category.name] as [string, string]] : []), ['', a.title]])}
+  ${crumbs([['/', 'Home'], ['/stories', 'Stories'], ...(a.category ? [[`/stories/section/${a.category.slug}`, a.category.name] as [string, string]] : []), ['', a.title]])}
   <header>
     ${a.isSponsored ? html`<p>${sponsoredLabel(a.sponsor?.name)}</p>` : ''}
     <p class="kicker">${a.category?.name ?? 'Story'}${a.issue ? ` · Issue ${a.issue.number}` : ''}</p>
@@ -103,7 +103,7 @@ export async function article(slug: string): Promise<Rendered | null> {
   <p class="app-note">Reading on a bus? Scan the code on your seat and this story, and the road ahead, work offline.</p>
 </article>
 <section class="wrap" aria-labelledby="h-more">
-  <div class="sec-head"><h2 id="h-more">More to read</h2><a href="/magazine">All stories →</a></div>
+  <div class="sec-head"><h2 id="h-more">More to read</h2><a href="/stories">All stories →</a></div>
   <div class="grid">${more.map((r) => articleCard(r))}</div>
 </section>
 <div class="wrap">${newsletterForm('article')}</div>`;

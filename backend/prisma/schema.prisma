@@ -200,7 +200,7 @@ model User {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  articles          Article[]          @relation("ArticleAuthor")
+  articles          Article[]              @relation("ArticleAuthor")
   posts             Post[]
   comments          Comment[]
   reactions         Reaction[]
@@ -211,22 +211,24 @@ model User {
   redemptions       CouponRedemption[]
   refreshTokens     RefreshToken[]
   emailTokens       EmailToken[]
-  ownedBusinesses   Business[]         @relation("BusinessOwner")
-  adsCreated        Advertisement[]    @relation("AdCreator")
-  reportsMade       Report[]           @relation("Reporter")
-  moderationActions ModerationEntry[]  @relation("Moderator")
+  ownedBusinesses   Business[]             @relation("BusinessOwner")
+  adsCreated        Advertisement[]        @relation("AdCreator")
+  reportsMade       Report[]               @relation("Reporter")
+  moderationActions ModerationEntry[]      @relation("Moderator")
   emergencyContacts EmergencyContact[]
   sosEvents         SosEvent[]
-  following         Follow[]           @relation("Follower")
-  followers         Follow[]           @relation("Following")
+  following         Follow[]               @relation("Follower")
+  followers         Follow[]               @relation("Following")
   operatorLinks     OperatorAdmin[]
   busReviews        RideFeedback[]
-  creatorProfile    CreatorProfile?    @relation("CreatorUser")
-  placementsMade    ContentPlacement[] @relation("PlacementAuthor")
-  appraisalsWritten DriverAppraisal[]  @relation("Appraiser")
+  creatorProfile    CreatorProfile?        @relation("CreatorUser")
+  placementsMade    ContentPlacement[]     @relation("PlacementAuthor")
+  appraisalsWritten DriverAppraisal[]      @relation("Appraiser")
   recoveryCodes     RecoveryCode[]
   knownDevices      KnownDevice[]
   verificationDocs  VerificationDocument[] @relation("DocUploader")
+  storySubmissions  StorySubmission[]      @relation("StorySubmissions")
+  eventsCreated     Event[]                @relation("EventCreator")
 
   @@index([role])
   @@map("users")
@@ -695,6 +697,7 @@ model Article {
 
   placements   ContentPlacement[]
   destinations ArticleDestination[]
+  submission   StorySubmission?
 
   @@index([status, publishedAt])
   @@map("articles")
@@ -829,6 +832,7 @@ model Destination {
   creatorJourneys CreatorJourney[]
   guides          RouteGuide[]
   sponsors        Advertisement[]
+  events          Event[]
 
   @@map("destinations")
 }
@@ -1101,8 +1105,8 @@ model Business {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  owner              User?                 @relation("BusinessOwner", fields: [ownerId], references: [id])
-  destination        Destination?          @relation(fields: [destinationId], references: [id])
+  owner              User?                  @relation("BusinessOwner", fields: [ownerId], references: [id])
+  destination        Destination?           @relation(fields: [destinationId], references: [id])
   photos             BusinessPhoto[]
   routeTargets       BusinessRouteTarget[]
   coupons            Coupon[]
@@ -2201,4 +2205,102 @@ model ModerationEntry {
 
   @@index([targetType, targetId])
   @@map("moderation_entries")
+}
+
+// ========================= Events and story submissions (website) =========================
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  /// Still listed, marked cancelled, so people who planned to go find out.
+  CANCELLED
+}
+
+enum EventCategory {
+  FESTIVAL
+  MUSIC
+  FOOD
+  CULTURE
+  SPORT
+  OUTDOORS
+  MARKET
+  EXHIBITION
+  OTHER
+}
+
+/// What is on, where and when, in Nepal's towns and cities: the website's Events page.
+/// Added by editors and admins in the control panel. Times are stored in UTC and always
+/// shown in Kathmandu time; an all-day event starts at midnight there.
+model Event {
+  id            String        @id @default(uuid())
+  slug          String        @unique
+  title         String
+  titleNe       String?
+  summary       String        @db.VarChar(200)
+  description   String? // markdown
+  category      EventCategory @default(OTHER)
+  city          String
+  venue         String?
+  address       String?
+  destinationId String?
+  startsAt      DateTime
+  endsAt        DateTime?
+  allDay        Boolean       @default(false)
+  /// "Free", "Rs 500", "From Rs 1,500"
+  priceLabel    String?
+  organiser     String?
+  /// Tickets or the organiser's own page
+  url           String?
+  imageUrl      String?
+  status        EventStatus   @default(DRAFT)
+  isFeatured    Boolean       @default(false)
+  createdById   String?
+  publishedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  destination Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("EventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status, startsAt])
+  @@index([city])
+  @@map("events")
+}
+
+enum SubmissionStatus {
+  /// Sent from the website; the writer has not yet confirmed their email.
+  AWAITING_EMAIL
+  /// Confirmed: waiting for an editor.
+  SUBMITTED
+  /// An editor turned it into a magazine draft with the writer's byline.
+  FEATURED
+  DECLINED
+}
+
+/// A story sent from the website's "Write a trip" page. It reaches editors only once the
+/// writer confirms their email, which also creates or confirms their Batoma account.
+model StorySubmission {
+  id               String           @id @default(uuid())
+  userId           String
+  title            String
+  place            String?
+  body             String
+  status           SubmissionStatus @default(AWAITING_EMAIL)
+  confirmTokenHash String?          @unique
+  confirmBy        DateTime?
+  submittedAt      DateTime?
+  decidedAt        DateTime?
+  decidedById      String?
+  editorNote       String?
+  articleId        String?          @unique
+  ipHash           String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user    User     @relation("StorySubmissions", fields: [userId], references: [id], onDelete: Cascade)
+  article Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+
+  @@index([status, submittedAt])
+  @@index([userId])
+  @@map("story_submissions")
 }

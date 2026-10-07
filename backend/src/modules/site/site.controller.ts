@@ -13,13 +13,15 @@ import {
   WebsiteArticleDto, WebsiteArticlesQueryDto,
 } from './site.dto';
 import { SiteService } from './site.service';
+import { SiteStoryDto } from '../stories/dto/story.dto';
+import { StoriesService } from '../stories/stories.service';
 
 type SiteRequest = { siteClientIp?: string; ip: string };
 
 /** What the public website posts, server to server, with its key. */
 @Controller('site')
 export class SiteController {
-  constructor(private site: SiteService) {}
+  constructor(private site: SiteService, private stories: StoriesService) {}
 
   @Public() @UseGuards(SiteKeyGuard) @Throttle({ default: { limit: 120, ttl: 60_000 } })
   @Post('leads')
@@ -41,9 +43,14 @@ export class SiteController {
   @Post('newsletter/unsubscribe')
   unsubscribe(@Body() dto: TokenDto) { return this.site.unsubscribe(dto.token); }
 
-  /** Public figures for "Advertise with Batoma". */
-  @Public() @Get('audience')
-  audience() { return this.site.audience(); }
+  /** A story from "Write a trip": it reaches editors once the writer confirms by email. */
+  @Public() @UseGuards(SiteKeyGuard) @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('stories')
+  story(@Body() dto: SiteStoryDto, @Req() req: SiteRequest) { return this.stories.submit(dto, req.siteClientIp ?? req.ip); }
+
+  @Public() @UseGuards(SiteKeyGuard)
+  @Post('stories/confirm')
+  confirmStory(@Body() dto: TokenDto) { return this.stories.confirm(dto.token); }
 }
 
 /** A partner's own enquiries and monthly report. Owners of the listing, and Batoma's admins. */

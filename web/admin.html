@@ -96,6 +96,14 @@ input,select,textarea{
 textarea{min-height:220px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:13.5px;line-height:1.5}
 /* A line or two of plain text, not an article body. */
 textarea.short{min-height:0;font-family:inherit;font-size:inherit}
+/* Events and story submissions */
+label.check{display:flex;align-items:center;gap:8px;font-weight:600;margin-top:12px}
+label.check input{width:auto}
+.thumb{width:96px;height:64px;border-radius:var(--r-sm);overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.story-read{white-space:pre-wrap;font-family:var(--font-body,inherit);line-height:1.6;max-height:55vh;overflow:auto;background:var(--surface-2);border-radius:var(--r-sm);padding:14px 16px}
+.sub-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.sub-card h3{margin:0 0 4px;font-size:16px}
 label{display:block;font-size:12.5px;font-weight:700;color:var(--text-dim);margin:12px 0 5px}
 .btn{
   display:inline-flex;align-items:center;gap:6px;border:none;border-radius:var(--r-sm);
@@ -344,6 +352,8 @@ tr:last-child td{border-bottom:none}
 <script src="/js/admin-programming.js"></script>
 <script src="/js/lib/bs-date.js"></script>
 <script src="/js/admin-site.js"></script>
+<script src="/js/admin-events.js"></script>
+<script src="/js/admin-stories.js"></script>
 <script src="/js/admin-security.js"></script>
 </body>
 </html>

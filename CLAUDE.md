@@ -18,7 +18,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `backend/` | NestJS 11 (Express 5) + Prisma 5 + PostgreSQL |
 | `web/index.html` + `web/js/reader.js` | Installable reader PWA, opened at `/b/<code>` from a bus sticker. Offline-first. Markup handlers go through `web/js/actions.js` |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
-| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (overview, which articles the website carries, website ads, listings, partner packages, enquiries, newsletter) is `web/js/admin-site.js` |
+| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (overview, which articles the website carries, website ads, listings, partner packages, enquiries, newsletter) is `web/js/admin-site.js`; Events is `web/js/admin-events.js`; Story submissions is `web/js/admin-stories.js`. Each later file adds its own menu entry; `admin.js` boots on DOMContentLoaded so they are all in the first menu |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
 | `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
 | `web/business.html` + `web/js/business.js` | Partner area for business owners: enquiries, deals, reviews, monthly report, listing. Signs in through `login.html` and shares the reader's `bato.auth` session |
@@ -69,6 +69,7 @@ bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appra
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 bash scripts/site_smoke.sh ../Bato_Test_Accounts.md          # website forms, newsletter, partner area and report, packages, verification
 bash scripts/website_admin_smoke.sh ../Bato_Test_Accounts.md # Website screen: articles on/off the website, website ads, each reaching the site (API and site running)
+bash scripts/website_content_smoke.sh ../Bato_Test_Accounts.md # events (drafts hidden, cancelled marked, calendar files) and stories from Write a trip (API and site running)
 npm run db:site-role           # after every migration: the website's read-only role, grants and row-level security
 npm run fields:encrypt         # after the step 10 migration, after seeding, and after adding a key: encrypts personal fields
 npm run retention              # the nightly 13-month roll-up, now
@@ -138,7 +139,7 @@ when a signed-in user should be recognised but anonymous access is still allowed
 
 `auth` `users` `qr` `magazine` `posts` `engagement` `places` `itineraries`
 `businesses` `operators` `moderation` `safety` `media` `admin` `ads` `fleet` `guides`
-`creators` `programming` `health`, plus the global `common/audit`
+`creators` `programming` `events` `stories` `health`, plus the global `common/audit`
 
 - **auth**: every sign-in method ends in `completeSignIn()`, which blocks suspended
   accounts and sends privileged roles to the authenticator step. Add new methods
@@ -455,7 +456,26 @@ click counts (`site_events`), since the ad's `impressions` and `clicks` are the 
 
 **Changes reach the website at once** because API routes that change what it shows carry
 `@PurgeSite()`, which calls the site's signed `/_purge`. A new route that edits articles,
-guides, ads, listings, deals or packages needs it too.
+guides, ads, listings, deals, packages, events or routes needs it too. The site purges on
+every signed request not older than the last one it acted on (until October 2026 it ignored
+any within a second of the previous one, so a change made a moment after another stayed
+hidden for the page TTL).
+
+**The section is Stories, at `/stories`** (October 2026); `/magazine…` redirects there for
+good, keeping the rest of the address. The brand line "Nepal travel magazine" stays.
+
+**Events** (`modules/events`, `site/src/pages/events.ts`): editors and admins add them in the
+control panel; the site role sees `PUBLISHED` and `CANCELLED` only, and the pages list an
+event until its last day is over in Kathmandu (`stillOn`). All-day events are stored from
+Kathmandu midnight. Each event page has Event JSON-LD and `/events/<slug>/calendar.ics`.
+
+**Write a trip** posts the story to `/site/stories`. The API makes (or finds) the account by
+email and keeps the story `AWAITING_EMAIL` until the emailed link (`/write/confirm`, a GET page
+whose button POSTs) is followed; that confirms the account, sends a "set a password" email to a
+new writer (`AuthService.sendPasswordSetup`), and puts the story in Story submissions. With no
+mail server in development the links are shown on the page. The form's body limit is larger
+than other forms' (a Nepali story is nine bytes a letter once encoded) and `pick()` lets the
+story run to 20,000 characters.
 
 ## Security (step 10)
 

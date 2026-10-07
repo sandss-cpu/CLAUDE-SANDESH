@@ -55,10 +55,14 @@ export class RetentionService {
       hashesCleared += await tx.$executeRaw`UPDATE site_enquiries SET "ipHash" = NULL WHERE "ipHash" IS NOT NULL AND "createdAt" < ${cutoff}`;
       hashesCleared += await tx.$executeRaw`UPDATE newsletter_subscribers SET "ipHash" = NULL WHERE "ipHash" IS NOT NULL AND "createdAt" < ${cutoff}`;
       hashesCleared += await tx.$executeRaw`UPDATE audit_events SET "ipHash" = NULL WHERE "ipHash" IS NOT NULL AND "createdAt" < ${cutoff}`;
+      hashesCleared += await tx.$executeRaw`UPDATE story_submissions SET "ipHash" = NULL WHERE "ipHash" IS NOT NULL AND "createdAt" < ${cutoff}`;
+      // A story never confirmed by email never reached anyone: gone two weeks after its link expired.
+      const storiesForgotten = await tx.$executeRaw`
+        DELETE FROM story_submissions WHERE status = 'AWAITING_EMAIL' AND "confirmBy" < ${new Date(now.getTime() - 14 * 86_400_000)}`;
       const devicesForgotten = await tx.$executeRaw`DELETE FROM known_devices WHERE "lastSeenAt" < ${cutoff}`;
       const guardsCleared = await tx.$executeRaw`
         DELETE FROM login_guards WHERE "lastFailureAt" < ${new Date(now.getTime() - 86_400_000)} AND ("lockedUntil" IS NULL OR "lockedUntil" < ${now})`;
-      return { cutoff: cutoff.toISOString(), scansRolled, scansDeleted, eventsRolled, eventsDeleted, hashesCleared, devicesForgotten, guardsCleared };
+      return { cutoff: cutoff.toISOString(), scansRolled, scansDeleted, eventsRolled, eventsDeleted, hashesCleared, devicesForgotten, guardsCleared, storiesForgotten };
     }, { timeout: 120_000 });
     if (!result) { this.logger.log('Retention skipped: another instance is running it.'); return null; }
     this.logger.log(`Retention up to ${result.cutoff}: ${result.scansDeleted} scans and ${result.eventsDeleted} website events rolled up, ${result.hashesCleared} address hashes cleared, ${result.devicesForgotten} devices forgotten.`);

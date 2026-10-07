@@ -167,22 +167,70 @@ export const partnerLink = (slug: string) => db.business.findFirst({
   select: { id: true, slug: true, website: true, whatsapp: true, latitude: true, longitude: true },
 });
 
+// ================= events =================
+
+const NPT_OFFSET_MS = (5 * 60 + 45) * 60_000;
+/** Midnight in Kathmandu at the start of the day `d` falls on there (or of month `ym`). */
+const nptMidnight = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d) - NPT_OFFSET_MS);
+const todayNpt = () => { const l = new Date(Date.now() + NPT_OFFSET_MS); return nptMidnight(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate()); };
+/** Not over yet: one that ends (or, with no end, starts) any time today is still listed. */
+const stillOn = (): Prisma.EventWhereInput => ({ OR: [{ endsAt: { gte: todayNpt() } }, { endsAt: null, startsAt: { gte: todayNpt() } }] });
+
+export const EVENT_CARD = {
+  id: true, slug: true, title: true, summary: true, category: true, city: true, venue: true, startsAt: true, endsAt: true,
+  allDay: true, priceLabel: true, imageUrl: true, status: true, isFeatured: true,
+} satisfies Prisma.EventSelect;
+export type EventCard = Prisma.EventGetPayload<{ select: typeof EVENT_CARD }>;
+
+/** Events still to come (row-level security already leaves out drafts), soonest first. */
+export function events(opts: { city?: string; month?: string; take?: number; notId?: string } = {}) {
+  const and: Prisma.EventWhereInput[] = [stillOn()];
+  if (opts.city) and.push({ city: { equals: opts.city, mode: 'insensitive' } });
+  const m = /^(\d{4})-(\d{2})$/.exec(opts.month ?? '');
+  if (m) {
+    // Anything on during that month in Kathmandu: it starts before the month ends and ends (or starts) after it begins.
+    const from = nptMidnight(Number(m[1]), Number(m[2]) - 1, 1);
+    const to = nptMidnight(Number(m[1]), Number(m[2]), 1);
+    and.push({ startsAt: { lt: to } }, { OR: [{ endsAt: { gte: from } }, { endsAt: null, startsAt: { gte: from } }] });
+  }
+  if (opts.notId) and.push({ id: { not: opts.notId } });
+  return db.event.findMany({ where: { AND: and }, orderBy: [{ startsAt: 'asc' }, { title: 'asc' }], take: opts.take ?? 200, select: EVENT_CARD });
+}
+
+/** The towns and cities with something coming up, for the filter. */
+export async function eventCities() {
+  const rows = await db.event.findMany({ where: stillOn(), distinct: ['city'], select: { city: true }, orderBy: { city: 'asc' } });
+  return rows.map((r) => r.city);
+}
+
+export function event(slug: string) {
+  return db.event.findFirst({
+    where: { slug },
+    select: {
+      ...EVENT_CARD, titleNe: true, description: true, address: true, organiser: true, url: true, publishedAt: true, updatedAt: true,
+      destination: { select: { slug: true, name: true } },
+    },
+  });
+}
+
 /** Everything the sitemap lists, with when it last changed. */
 export async function sitemapEntries() {
-  const [arts, gds, biz, dests, cats, iss] = await Promise.all([
+  const [arts, gds, biz, dests, cats, iss, evs] = await Promise.all([
     db.article.findMany({ where: LIVE_ARTICLE, select: { slug: true, updatedAt: true } }),
     db.routeGuide.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),
     db.business.findMany({ where: { isActive: true, verifiedAt: { not: null } }, select: { slug: true, updatedAt: true } }),
     db.destination.findMany({ select: { slug: true } }),
     db.category.findMany({ select: { slug: true } }),
     db.issue.findMany({ where: { status: 'PUBLISHED' }, select: { number: true, publishedAt: true } }),
+    db.event.findMany({ where: stillOn(), select: { slug: true, updatedAt: true } }),
   ]);
   return [
-    ...arts.map((a) => ({ path: `/magazine/${a.slug}`, lastmod: a.updatedAt })),
+    ...arts.map((a) => ({ path: `/stories/${a.slug}`, lastmod: a.updatedAt })),
     ...gds.map((g) => ({ path: `/trips/${g.slug}`, lastmod: g.updatedAt })),
     ...biz.map((b) => ({ path: `/partners/${b.slug}`, lastmod: b.updatedAt })),
     ...dests.map((d) => ({ path: `/places/${d.slug}`, lastmod: null })),
-    ...cats.map((c) => ({ path: `/magazine/section/${c.slug}`, lastmod: null })),
-    ...iss.map((i) => ({ path: `/magazine/issue/${i.number}`, lastmod: i.publishedAt })),
+    ...cats.map((c) => ({ path: `/stories/section/${c.slug}`, lastmod: null })),
+    ...iss.map((i) => ({ path: `/stories/issue/${i.number}`, lastmod: i.publishedAt })),
+    ...evs.map((e) => ({ path: `/events/${e.slug}`, lastmod: e.updatedAt })),
   ];
 }

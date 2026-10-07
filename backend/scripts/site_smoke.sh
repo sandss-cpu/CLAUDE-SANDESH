@@ -1,7 +1,7 @@
 #!/bin/bash
 # The public website's side of the API (Phase 3, Feature 3), against a running API:
 # forms only from the site's own server (SITE_API_KEY), the honeypot, enquiries and
-# leads, double opt-in for the newsletter, public audience figures, a partner's own
+# leads, double opt-in for the newsletter, a partner's own
 # enquiries and monthly report (and 404 for anyone else's), ending a deal, and the
 # control panel's partner packages, enquiry inbox and newsletter export, audited.
 #
@@ -103,9 +103,9 @@ ok "and it sticks" UNSUBSCRIBED "$(sql "select status from newsletter_subscriber
 B="{\"token\":\"unknowntoken$STAMP$STAMP\"}"
 ok "an unknown unsubscribe token gets the same answer" 201 "$(site POST /site/newsletter/unsubscribe "$B" "$KEY")"
 
-echo "== audience figures for Advertise"
-ok "public" 200 "$(call GET /site/audience "")"
-ok "plain counts" true "$(get "all(isinstance(data[k], int) for k in ['scansLast30Days','readersLast30Days','websiteViewsLast30Days','buses','routes','partners','articles'])")"
+echo "== no public audience figures"
+# Advertise shows the vision and mission instead (October 2026); partners still get their own reports.
+ok "the old figures endpoint is gone" 404 "$(call GET /site/audience "")"
 
 echo "== a partner's own enquiries and report"
 ok "the partner reads their enquiries" 200 "$(call GET "/businesses/$BANDIPUR/leads" "$PARTNER")"

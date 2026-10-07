@@ -8,7 +8,9 @@ import { db } from './db';
 import { record } from './events';
 import { checkGuards, formToken, forward, overLimit, pick } from './forms';
 import { esc } from './html';
+import { icsFile } from './ics';
 import * as info from './pages/info';
+import { event, events } from './pages/events';
 import { home } from './pages/home';
 import { article, magazine } from './pages/magazine';
 import { deals, offer, partner, partners } from './pages/partners';
@@ -63,7 +65,11 @@ export function createApp() {
   app.use('/icons', express.static(join(PUBLIC, 'icons'), { maxAge: 7 * 86400 * 1000, index: false }));
   app.get('/favicon.ico', (_req, res) => res.redirect(301, '/icons/icon-192.png'));
 
-  app.use(express.urlencoded({ extended: false, limit: '20kb', parameterLimit: 20 }));
+  // Forms are short, except a story sent from /write: up to 20,000 characters, which in
+  // Devanagari is nine bytes a letter once a browser has encoded it.
+  const shortForms = express.urlencoded({ extended: false, limit: '20kb', parameterLimit: 20 });
+  const storyForm = express.urlencoded({ extended: false, limit: '256kb', parameterLimit: 20 });
+  app.use((req, res, next) => (req.method === 'POST' && req.path === '/write' ? storyForm : shortForms)(req, res, next));
 
   // ---------- serving a page ----------
   async function serve(req: Request, res: Response, key: string, make: () => Promise<Rendered | null>, opts: { fresh?: boolean } = {}) {
@@ -81,16 +87,21 @@ export function createApp() {
   const slugOk = (s: string) => /^[a-z0-9][a-z0-9-]{0,119}$/.test(s);
 
   app.get('/', (req, res) => serve(req, res, 'home', home));
-  app.get('/magazine', (req, res) => { const p = page(req.query.page); return serve(req, res, `mag:${p}`, () => magazine({ page: p })); });
-  app.get('/magazine/section/:slug', (req, res) => {
+  // The section was called Magazine until October 2026; its old addresses move here for good.
+  app.use('/magazine', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return res.redirect(301, req.originalUrl.replace(/^\/magazine(?=\/|\?|$)/, '/stories'));
+  });
+  app.get('/stories', (req, res) => { const p = page(req.query.page); return serve(req, res, `mag:${p}`, () => magazine({ page: p })); });
+  app.get('/stories/section/:slug', (req, res) => {
     const p = page(req.query.page); const s = req.params.slug;
     return slugOk(s) ? serve(req, res, `sec:${s}:${p}`, () => magazine({ page: p, section: s })) : serve(req, res, '404', async () => null);
   });
-  app.get('/magazine/issue/:n', (req, res) => {
+  app.get('/stories/issue/:n', (req, res) => {
     const n = parseInt(req.params.n, 10); const p = page(req.query.page);
     return n > 0 ? serve(req, res, `iss:${n}:${p}`, () => magazine({ page: p, issue: n })) : serve(req, res, '404', async () => null);
   });
-  app.get('/magazine/:slug', (req, res) => slugOk(req.params.slug) ? serve(req, res, `art:${req.params.slug}`, () => article(req.params.slug)) : serve(req, res, '404', async () => null));
+  app.get('/stories/:slug', (req, res) => slugOk(req.params.slug) ? serve(req, res, `art:${req.params.slug}`, () => article(req.params.slug)) : serve(req, res, '404', async () => null));
   app.get('/trips', (req, res) => serve(req, res, 'trips', trips));
   app.get('/trips/:slug', (req, res) => {
     const back = req.query.dir === 'back';
@@ -108,19 +119,37 @@ export function createApp() {
   });
   app.get('/deals', (req, res) => serve(req, res, 'deals', deals));
   app.get('/offers/:id', (req, res) => /^[0-9a-f-]{36}$/.test(req.params.id) ? serve(req, res, `offer:${req.params.id}`, () => offer(req.params.id)) : serve(req, res, '404', async () => null));
-  app.get('/write', (req, res) => serve(req, res, 'write', async () => info.write()));
+  app.get('/write', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `write:${sent}`, async () => info.write({ sent })); });
+  app.get('/events', (req, res) => {
+    const city = String(req.query.city ?? '').slice(0, 60);
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month ?? '')) ? String(req.query.month) : '';
+    return serve(req, res, `events:${city.toLowerCase()}:${month}`, () => events({ city: city || undefined, month: month || undefined }));
+  });
+  app.get('/events/:slug', (req, res) => slugOk(req.params.slug) ? serve(req, res, `event:${req.params.slug}`, () => event(req.params.slug)) : serve(req, res, '404', async () => null));
+  app.get('/events/:slug/calendar.ics', async (req, res) => {
+    const e = slugOk(req.params.slug) ? await data.event(req.params.slug) : null;
+    if (!e) return serve(req, res, '404', async () => null);
+    const url = `${config.siteUrl}/events/${e.slug}`;
+    res.set({ 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': `attachment; filename="${e.slug}.ics"`, 'Cache-Control': 'private, max-age=300' });
+    res.send(icsFile({ ...e, url, cancelled: e.status === 'CANCELLED' }, new URL(config.siteUrl).hostname));
+  });
   app.get('/about', (req, res) => serve(req, res, 'about', async () => info.about()));
   app.get('/privacy', (req, res) => serve(req, res, 'privacy', async () => info.privacy()));
   app.get('/terms', (req, res) => serve(req, res, 'terms', async () => info.terms()));
   app.get('/contact', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `contact:${sent}`, async () => info.contact({ sent })); });
-  app.get('/advertise', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `advertise:${sent}`, () => info.advertise({ sent })); });
+  app.get('/advertise', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `advertise:${sent}`, async () => info.advertise({ sent })); });
   app.get('/newsletter', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `newsletter:${sent}`, async () => info.newsletterPage({ sent })); });
 
   // ---------- forms: guard, forward, then post/redirect/get ----------
   type FormPage = (state: { values?: Record<string, string>; error?: string }) => Promise<Rendered | null> | Rendered | null;
-  async function handleForm(req: Request, res: Response, o: { fields: string[]; done: string; render: FormPage; send: (v: Record<string, string>) => Promise<{ ok: boolean; message?: string }> }) {
+  async function handleForm(req: Request, res: Response, o: {
+    fields: string[]; longer?: Record<string, number>; done: string; render: FormPage;
+    send: (v: Record<string, string>) => Promise<{ ok: boolean; message?: string; data?: Record<string, unknown> }>;
+    /** A page to show at once instead of redirecting, such as the development link for a story. */
+    shown?: (data: Record<string, unknown> | undefined) => Rendered | null;
+  }) {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const values = pick(body, o.fields);
+    const values = pick(body, o.fields, o.longer);
     const again = (error: string, status: number) => serve(req, res, '', async () => {
       const r = await o.render({ values, error });
       return r ? { ...r, status } : null;
@@ -131,7 +160,9 @@ export function createApp() {
     if (guard === 'bot') return res.redirect(303, o.done);
     if (guard === 'stale') return again('This form had been open too long. Please send it again.', 400);
     const r = await o.send(values);
-    return r.ok ? res.redirect(303, o.done) : again(r.message ?? 'Please check the form and try again.', 400);
+    if (!r.ok) return again(r.message ?? 'Please check the form and try again.', 400);
+    const now = o.shown?.(r.data);
+    return now ? serve(req, res, '', async () => now, { fresh: true }) : res.redirect(303, o.done);
   }
 
   app.post('/contact', (req, res) => handleForm(req, res, {
@@ -141,6 +172,14 @@ export function createApp() {
   app.post('/advertise', (req, res) => handleForm(req, res, {
     fields: ['name', 'organisation', 'contact', 'message'], done: '/advertise?sent=1#h-ask', render: (s) => info.advertise(s),
     send: (v) => forward('/site/enquiries', { kind: 'ADVERTISE', ...v, organisation: v.organisation || undefined }, req),
+  }));
+  app.post('/write', (req, res) => handleForm(req, res, {
+    fields: ['name', 'email', 'title', 'place', 'story', 'ownWork'], longer: { story: 20000 }, done: '/write?sent=1#h-send',
+    render: (s) => info.write(s),
+    send: (v) => forward('/site/stories', {
+      name: v.name, email: v.email, title: v.title, place: v.place || undefined, story: v.story, ownWork: v.ownWork === 'yes',
+    }, req),
+    shown: (d) => (typeof d?.devLink === 'string' ? info.write({ sent: true, devLink: d.devLink }) : null),
   }));
   app.post('/newsletter', (req, res) => handleForm(req, res, {
     fields: ['email', 'source'], done: '/newsletter?sent=1', render: (s) => info.newsletterPage(s),
@@ -153,6 +192,25 @@ export function createApp() {
       fields: ['name', 'contact', 'message'], done: `/partners/${slug}?sent=1#enquire`, render: (s) => partner(slug, s),
       send: (v) => forward('/site/leads', { businessSlug: slug, ...v }, req),
     });
+  });
+
+  // A story's email link: the page shows a button; only the POST sends the story on.
+  app.get('/write/confirm', (req, res) => {
+    res.set('Referrer-Policy', 'no-referrer');
+    const token = String(req.query.token ?? '').slice(0, 128);
+    return serve(req, res, '', async () => info.storyConfirmPage(token), { fresh: true });
+  });
+  app.post('/write/confirm', async (req, res) => {
+    res.set('Referrer-Policy', 'no-referrer');
+    const token = String((req.body as Record<string, unknown>)?.token ?? '').slice(0, 128);
+    if (overLimit(req)) return serve(req, res, '', async () => ({ ...info.storyConfirmPage(token, { ok: false, message: 'Too many tries from your connection. Please wait a few minutes.' }), status: 429 }), { fresh: true });
+    const r = await forward('/site/stories/confirm', { token }, req);
+    return serve(req, res, '', async () => ({
+      ...info.storyConfirmPage(token, r.ok
+        ? { ok: true, title: r.data?.title as string | undefined, needsPassword: r.data?.needsPassword === true, devPasswordLink: r.data?.devPasswordLink as string | undefined }
+        : { ok: false, message: r.message }),
+      status: r.ok ? 200 : 400,
+    }), { fresh: true });
   });
 
   // Newsletter links: the page shows a button; only the POST acts.
@@ -242,11 +300,11 @@ export function createApp() {
   // ---------- for search engines ----------
   app.get('/robots.txt', (_req, res) => {
     res.type('text/plain').set('Cache-Control', 'public, max-age=86400')
-      .send(`User-agent: *\nDisallow: /go/\nDisallow: /newsletter/\nDisallow: /offers/\n\nSitemap: ${config.siteUrl}/sitemap.xml\n`);
+      .send(`User-agent: *\nDisallow: /go/\nDisallow: /newsletter/\nDisallow: /offers/\nDisallow: /write/confirm\n\nSitemap: ${config.siteUrl}/sitemap.xml\n`);
   });
   app.get('/sitemap.xml', async (_req, res) => {
     const xml = await cached('sitemap', 3600, async () => {
-      const fixed = ['/', '/magazine', '/trips', '/partners', '/deals', '/write', '/advertise', '/about', '/contact', '/newsletter'];
+      const fixed = ['/', '/stories', '/trips', '/events', '/partners', '/deals', '/write', '/advertise', '/about', '/contact', '/newsletter'];
       const rows = [...fixed.map((path) => ({ path, lastmod: null as Date | null })), ...(await data.sitemapEntries())];
       return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.map((r) =>
         `<url><loc>${esc(`${config.siteUrl}${r.path}`)}</loc>${r.lastmod ? `<lastmod>${r.lastmod.toISOString()}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`;
@@ -272,8 +330,9 @@ export function createApp() {
     const expected = Buffer.from(createHmac('sha256', config.apiKey || 'unset').update(`purge\n${at}`).digest('hex'));
     const fresh = Math.abs(Date.now() - Number(at)) < 5 * 60_000;
     if (!config.apiKey || !fresh || given.length !== expected.length || !timingSafeEqual(given, expected)) return res.status(403).end();
-    // Replays inside the window only empty the cache again; once a second is enough.
-    if (Date.now() - lastPurge > 1000) { purge(); lastPurge = Date.now(); console.log('page cache purged by the API'); }
+    // Every change purges, however quickly they follow each other (an event added, then
+    // published a moment later). A replayed request older than the last one does nothing.
+    if (Number(at) >= lastPurge) { purge(); lastPurge = Number(at); console.log('page cache purged by the API'); }
     return res.status(204).end();
   });
 

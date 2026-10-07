@@ -38,9 +38,11 @@ agencies, and a public website that markets the magazine and its partners.
   driver scorecards for any period, appraisals with a PDF in English and Nepali.
 - **Income and ticket records**: a daily sheet per bus, CSV and XLSX import without
   duplicates, reports with operating profit, reconciliation, behind an authenticator.
-- **Public website**: magazine, road guides, places, partners and deals, write a trip,
-  advertise; labelled sponsored slots, counted partner links, double opt-in newsletter,
-  monthly partner reports; Lighthouse 99/100/100/100 on phones.
+- **Public website**: stories, road guides, places, events and happenings, partners and
+  deals, write a trip (readers send stories from the page itself, confirmed by email, which
+  makes their account), advertise (vision and mission, offers, enquiries); labelled sponsored
+  slots, counted partner links, double opt-in newsletter, monthly partner reports; Lighthouse
+  99/100/100/100 on phones.
 - **Partner area** for listed businesses, and partner packages, an enquiry inbox and
   listing verification in the control panel.
 - **Security to OWASP ASVS Level 2**: see [SECURITY.md](SECURITY.md).
@@ -222,9 +224,9 @@ test links, to the file (keep it out of git):
 ```bash
 cd backend
 npm run typecheck                    # tsc, and strictNullChecks over the Phase 3 modules
-npm test                             # 254 unit tests over the pure logic
+npm test                             # unit tests over the pure logic
 npm run test:db && DATABASE_URL=postgresql://travel:travel@localhost:5432/batoma_test npm run test:e2e   # IDOR suite
-for s in fleet programming trips qr appraisal income site security; do
+for s in fleet programming trips qr appraisal income site security website_admin website_content; do
   bash scripts/${s}_smoke.sh ../Bato_Test_Accounts.md   # API smoke suites, against a running API (THROTTLE_DISABLED=true)
 done
 cd ../site && npm test               # the website: crawler, ad slots, counted links, forms, purge
@@ -270,7 +272,9 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/fleet/companies/:cid/income…`, `/fleet/buses/:id/income/:date` | Income records, imports, reports |
 | `/fleet/companies/:id/documents`, `/businesses/:id/documents`, `/admin/verification-documents` | Verification documents (private) |
 | `/businesses/:id/leads`, `…/report(.csv|.pdf)`, `…/coupons`, `coupons/:id/end` | Partner area |
-| `/site/*` | The website's forms (with its key only) and public audience figures |
+| `/site/*` | The website's forms, with its key only: enquiries, leads, newsletter, `stories` and `stories/confirm` |
+| `/events` | Events for the website (editors): `admin`, `admin/:id`, create, edit, delete |
+| `/stories/admin` | Stories sent from the website (editors): list, read, `:id/feature`, `:id/decline` |
 | `/admin/partner-packages`, `/admin/site/*`, `/admin/security-events` | Control panel: packages, enquiries, newsletter, security events |
 | `/users/me/export`, `DELETE /users/me` | A person's own data, and deleting their account |
 | `/auth/mfa/recover`, `/auth/mfa/recovery-codes`, `/auth/logout-all` | Recovery codes, sign out everywhere |

@@ -38,6 +38,8 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './common/storage/storage.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { SiteModule } from './modules/site/site.module';
+import { EventsModule } from './modules/events/events.module';
+import { StoriesModule } from './modules/stories/stories.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { RetentionModule } from './modules/retention/retention.module';
 import { SitePurgeModule } from './common/site-purge/site-purge.service';
@@ -80,6 +82,8 @@ import { SitePurgeModule } from './common/site-purge/site-purge.service';
     FleetModule,
     FinanceModule,
     SiteModule,
+    EventsModule,
+    StoriesModule,
     VerificationModule,
     RetentionModule,
     GuidesModule,
