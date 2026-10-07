@@ -111,15 +111,30 @@ if [ ! -f "$BACKEND/.bato_seeded" ]; then
 fi
 
 # ---------------------------------------------------------------- servers
+# Each server starts in its own session (scripts/run-detached.mjs), so it keeps running
+# when this window closes or whatever started it stops, until Stop_Bato.command or a
+# restart of the Mac. Started with a plain `&`, they went down with their starter.
+detached(){ node "$ROOT/scripts/run-detached.mjs" "$@" || stop "Could not start ${*:3}. The output above says why."; }
+# waitfor URL SECONDS: true once the address answers.
+waitfor(){ for _ in $(seq 1 "$2"); do up "$1" && return 0; sleep 1; done; up "$1"; }
+
 if ! up http://localhost:3000/health; then
+  # The API runs compiled, not in watch mode: in watch mode, files changing under it (an
+  # update being copied in, iCloud) recompiled it halfway and stopped it. It is built
+  # again whenever its code differs from the last build, judged by content, not file dates.
+  BUILT="$(cd "$BACKEND" && find src prisma/schema.prisma package-lock.json nest-cli.json tsconfig.json tsconfig.build.json \
+    -type f 2>/dev/null | LC_ALL=C sort | tr '\n' '\0' | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
+  if [ ! -f "$BACKEND/dist/main.js" ] || [ "$(cat "$BACKEND/dist/.batoma-build" 2>/dev/null)" != "$BUILT" ]; then
+    step "Building the API (after an update, this takes a minute)…"
+    (cd "$BACKEND" && npm run build > /tmp/bato_backend_build.log 2>&1) || \
+      stop "The API could not be built. The log is at /tmp/bato_backend_build.log"
+    echo "$BUILT" > "$BACKEND/dist/.batoma-build"
+  fi
+  local_only "$BACKEND/dist"
   step "Starting the API…"
-  # The outer redirection matters: the subshell that waits on each server would otherwise
-  # hold this window's output open for as long as the server runs.
-  (cd "$BACKEND" && nohup npm run start:dev > /tmp/bato_backend.log 2>&1 &) > /dev/null 2>&1
-  for _ in $(seq 1 90); do up http://localhost:3000/health && break; sleep 1; done
-  up http://localhost:3000/health || stop "The API did not start. The log is at /tmp/bato_backend.log"
+  detached /tmp/bato_backend.log "$BACKEND" node --enable-source-maps dist/main
+  waitfor http://localhost:3000/health 90 || stop "The API did not start. The log is at /tmp/bato_backend.log"
 fi
-local_only "$BACKEND/dist"
 
 # 5173 specifically: it is the only origin the API allows by default, so the
 # pages cannot call the API from any other port.
@@ -127,8 +142,8 @@ if ! up http://localhost:5173/preview.html; then
   step "Starting the web server…"
   # Node rather than python -m http.server: sticker links (/b/<code>) need a rewrite to
   # the reader, and macOS refuses the system Python access to a copy kept on the Desktop.
-  (cd "$ROOT" && nohup node scripts/dev-web-server.mjs > /tmp/bato_web_server.log 2>&1 &) > /dev/null 2>&1
-  sleep 1
+  detached /tmp/bato_web_server.log "$ROOT" node scripts/dev-web-server.mjs
+  waitfor http://localhost:5173/preview.html 10 || stop "The web server did not start. The log is at /tmp/bato_web_server.log"
 fi
 
 # ---------------------------------------------------------------- public website
@@ -160,9 +175,10 @@ ENV
     step "Starting the public website…"
     local_only "$SITE/dist"
     if (cd "$SITE" && npm run build > /tmp/batoma_site_build.log 2>&1); then
-      (cd "$SITE" && nohup node --env-file=.env dist/src/server.js > /tmp/batoma_site.log 2>&1 &) > /dev/null 2>&1
-      for _ in $(seq 1 20); do up http://localhost:4000/healthz && break; sleep 1; done
-      up http://localhost:4000/healthz || echo "  the website did not start: the log is at /tmp/batoma_site.log"
+      # A full path: Node also acts on an --env-file it finds among another program's
+      # arguments, so the starter itself would look for .env in the wrong folder.
+      detached /tmp/batoma_site.log "$SITE" node --env-file="$SITE/.env" dist/src/server.js
+      waitfor http://localhost:4000/healthz 20 || echo "  the website did not start: the log is at /tmp/batoma_site.log"
     else
       echo "  the website could not be built: the log is at /tmp/batoma_site_build.log"
     fi
@@ -189,7 +205,8 @@ cat <<INFO
    this project. It is kept out of the project and out of GitHub on purpose.
 
    Logs: /tmp/bato_backend.log, /tmp/bato_web_server.log and /tmp/batoma_site.log
-   You can close this window; the servers keep running. Stop_Bato.command stops them.
+   You can close this window; the servers keep running until Stop_Bato.command or a
+   restart of the Mac. After changing the code, run Stop_Bato.command, then this again.
 
 INFO
 read -r -p "Press return to close."

@@ -153,6 +153,11 @@ database role from `backend/.env` the first time), and opens the preview page.
 `Stop_Bato.command` stops all three. A fresh `backend/.env` written by the launcher points
 at the `batoma_phase3` database.
 
+Each server runs in its own session, so it keeps running when the Terminal window closes,
+until `Stop_Bato.command` or a restart. The launcher runs the API compiled (rebuilt when
+its code changes), not in watch mode: after changing code, stop and start again. For
+live reloading while developing, run `npm run start:dev` in `backend/` instead.
+
 ### API
 
 ```bash
