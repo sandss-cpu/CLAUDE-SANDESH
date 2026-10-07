@@ -1813,7 +1813,7 @@ async function screenGuides(){
   return `
     <div class="top-row"><h2>Route guides</h2>
       <div class="row-actions">
-        <button class="btn" data-action="openRouteForm">+ New route</button>
+        <button class="btn" data-action="openRouteForm">+ Add route</button>
         <button class="btn" data-action="openDestinationForm">+ New place</button>
         <button class="btn btn-primary" data-action="openGuideForm">+ New guide</button>
       </div>
@@ -2201,64 +2201,107 @@ async function moveStop(index, delta){
 
 /* ---- routes ---- */
 
-function openRouteForm(){
+/** Short codes already in use for the main places, so suggestions match them. */
+const PLACE_CODES = { kathmandu: 'KTM', pokhara: 'PKR', chitwan: 'CTN', sauraha: 'CTN', lumbini: 'LMB', jomsom: 'JML' };
+/** "Baglung" → BGL: the first letter, then the next consonants. */
+function placeCode(place){
+  const plain = place.normalize('NFKD').replace(/[^A-Za-z]/g, '');
+  if(!plain) return '';
+  if(PLACE_CODES[plain.toLowerCase()]) return PLACE_CODES[plain.toLowerCase()];
+  const rest = plain.slice(1).replace(/[aeiou]/gi, '');
+  return (plain[0] + rest + plain.slice(1)).slice(0, 3).toUpperCase();
+}
+
+/**
+ * Adds a route, or edits one, from Route programming or Route guides. The name and short
+ * code follow the two places until they are typed over. `onSaved` gets the saved route,
+ * after the route lists have been reloaded.
+ */
+function openRouteDialog({ route = null, onSaved = null } = {}){
+  const editing = !!route;
+  const r = route || {};
   const back = document.createElement('div');
   back.className = 'modal-back';
   back.innerHTML = `
     <form class="modal" role="dialog" aria-modal="true" aria-labelledby="route-title" novalidate>
-      <h2 id="route-title" style="margin-bottom:8px">New route</h2>
-      <p class="hint" style="margin:0">A corridor travellers ride, such as Kathmandu – Pokhara. Guides, ads and articles can all be aimed at it.</p>
+      <h2 id="route-title" style="margin-bottom:8px">${editing ? `Edit route · ${esc(r.name)}` : 'Add a route'}</h2>
+      <p class="hint" style="margin:0">${editing
+        ? 'Buses, stories, notices and guides on this route stay with it. The two places also name the directions travellers choose, such as “Heading to Pokhara”.'
+        : 'A road buses run on, such as Kathmandu – Baglung. Once added, owners can put their buses on it, and stories, notices, guides and ads can be aimed at it.'}</p>
       <div class="two-col">
-        <div><label for="route-code">Short code</label><input id="route-code" maxlength="20" placeholder="KTM-BGL"></div>
-        <div><label for="route-name">Name</label><input id="route-name" maxlength="120" placeholder="Kathmandu – Baglung"></div>
+        <div><label for="route-start">Starts at</label><input id="route-start" maxlength="80" placeholder="Kathmandu" value="${esc(r.startPlace || '')}" required></div>
+        <div><label for="route-end">Ends at</label><input id="route-end" maxlength="80" placeholder="Baglung" value="${esc(r.endPlace || '')}" required></div>
       </div>
       <div class="two-col">
-        <div><label for="route-start">Starts at</label><input id="route-start" maxlength="60" placeholder="Kathmandu"></div>
-        <div><label for="route-end">Ends at</label><input id="route-end" maxlength="60" placeholder="Baglung"></div>
+        <div><label for="route-name">Name</label><input id="route-name" maxlength="120" placeholder="Kathmandu – Baglung" value="${esc(r.name || '')}" required></div>
+        <div><label for="route-code">Short code</label><input id="route-code" maxlength="20" placeholder="KTM-BGL" value="${esc(r.code || '')}" required
+          autocapitalize="characters" spellcheck="false"></div>
       </div>
+      <label for="route-name-ne">Name in Nepali <small>(optional)</small></label>
+      <input id="route-name-ne" lang="ne" maxlength="120" placeholder="काठमाडौं – बागलुङ" value="${esc(r.nameNe || '')}">
       <div class="two-col">
-        <div><label for="route-km">Distance (km) <small>(optional)</small></label><input id="route-km" type="number" min="1" max="2000"></div>
-        <div><label for="route-hours">Typical hours <small>(optional)</small></label><input id="route-hours" type="number" min="1" max="72" step="0.5"></div>
+        <div><label for="route-km">Distance in km <small>(optional)</small></label><input id="route-km" type="number" min="1" max="3000" step="1" value="${esc(r.distanceKm ?? '')}"></div>
+        <div><label for="route-hours">Typical hours <small>(optional)</small></label><input id="route-hours" type="number" min="0.25" max="72" step="0.25" value="${esc(r.typicalHours ?? '')}"></div>
       </div>
+      <label for="route-desc">Description <small>(optional)</small></label>
+      <textarea id="route-desc" class="short" maxlength="500" rows="2" placeholder="Via the Prithvi Highway and Mugling">${esc(r.description || '')}</textarea>
+      <p class="hint">Typical hours set when travellers are shown the stops coming up and asked to rate the bus near the end.</p>
       <div class="error" role="alert" hidden></div>
       <div class="row-actions" style="margin-top:16px">
-        <button class="btn btn-primary" type="submit">Create route</button>
+        <button class="btn btn-primary" type="submit">${editing ? 'Save route' : 'Add route'}</button>
         <button class="btn btn-ghost" type="button" data-cancel>Cancel</button>
       </div>
     </form>`;
+  const field = (id) => back.querySelector(`#${id}`);
+  const name = field('route-name'), code = field('route-code');
+  // A new route's name and code follow the places until someone types in them.
+  name.dataset.auto = code.dataset.auto = editing ? 'off' : 'on';
+  const follow = () => {
+    const start = field('route-start').value.trim(), end = field('route-end').value.trim();
+    if(name.dataset.auto === 'on') name.value = start && end ? `${start} – ${end}` : '';
+    const a = placeCode(start), b = placeCode(end);
+    if(code.dataset.auto === 'on') code.value = a && b ? `${a}-${b}` : '';
+  };
+  field('route-start').addEventListener('input', follow);
+  field('route-end').addEventListener('input', follow);
+  name.addEventListener('input', () => { name.dataset.auto = 'off'; });
+  code.addEventListener('input', () => { code.dataset.auto = 'off'; });
+
   const close = () => back.remove();
   back.addEventListener('click', (e) => { if(e.target === back || e.target.closest('[data-cancel]')) close(); });
   back.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
   back.querySelector('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const box = back.querySelector('.error');
+    const value = (id) => field(id).value.trim();
+    const number = (id) => (value(id) === '' ? null : Number(value(id)));
     const dto = {
-      code: back.querySelector('#route-code').value.trim().toUpperCase(),
-      name: back.querySelector('#route-name').value.trim(),
-      startPlace: back.querySelector('#route-start').value.trim(),
-      endPlace: back.querySelector('#route-end').value.trim(),
-      distanceKm: back.querySelector('#route-km').value ? Number(back.querySelector('#route-km').value) : undefined,
-      typicalHours: back.querySelector('#route-hours').value ? Number(back.querySelector('#route-hours').value) : undefined,
+      startPlace: value('route-start'), endPlace: value('route-end'),
+      name: value('route-name'), code: value('route-code').toUpperCase(),
+      nameNe: value('route-name-ne') || null, description: value('route-desc') || null,
+      distanceKm: number('route-km'), typicalHours: number('route-hours'),
     };
-    if(!dto.code || !dto.name || !dto.startPlace || !dto.endPlace){
-      box.textContent = 'Code, name, start and end are all needed.'; box.hidden = false; return;
+    if(!dto.startPlace || !dto.endPlace || !dto.name || !dto.code){
+      box.textContent = 'Where it starts and ends, a name and a short code are all needed.'; box.hidden = false; return;
     }
     const submit = back.querySelector('button[type="submit"]');
-    submit.disabled = true; submit.textContent = 'Creating…';
+    const label = submit.textContent;
+    submit.disabled = true; submit.textContent = 'Saving…';
     try{
-      await api('/operators/routes', { method: 'POST', body: dto });
+      const saved = await api(editing ? `/programming/routes/${r.id}` : '/programming/routes', { method: editing ? 'PATCH' : 'POST', body: dto });
       state.routes = [];
       await loadReferenceData();
       close();
-      notify(`Route ${dto.name} created.`);
+      notify(editing ? `Route ${saved.name} saved.` : `Route ${saved.name} added.`);
+      if(onSaved) onSaved(saved);
       renderMain();
     }catch(err){
       box.textContent = err.message; box.hidden = false;
-      submit.disabled = false; submit.textContent = 'Create route';
+      submit.disabled = false; submit.textContent = label;
     }
   });
   document.body.appendChild(back);
-  back.querySelector('#route-code').focus();
+  field('route-start').focus();
 }
 
 /* =========================== creators =========================== */
@@ -2541,7 +2584,7 @@ Actions.on({
   viewCompany: (el) => viewCompany(el.dataset.id),
   setCompanyStatus: (el) => setCompanyStatus(el.dataset.id, el.dataset.status),
   // guides
-  openRouteForm: () => openRouteForm(),
+  openRouteForm: () => openRouteDialog(),
   openDestinationForm: () => openDestinationForm(),
   openGuideForm: (el) => openGuideForm(nullIfBlank(el.dataset.id)),
   closeGuideForm: () => closeGuideForm(),

@@ -128,6 +128,7 @@ async function screenProgramming(){
       <div class="row-actions">
         ${canProgramme() && route && p.direction !== 'BOTH' ? `<button class="btn" data-action="progCopyDirection">Copy to the return direction</button>` : ''}
         ${canProgramme() ? `<button class="btn" data-action="progOpenAssign">Put a story on several routes</button>` : ''}
+        ${canProgramme() ? `<button class="btn" data-action="progNewRoute">+ Add route</button>` : ''}
       </div>
     </div>
     <p class="hint" style="margin:-8px 0 14px">What travellers read on each bus. A bus shows its own list first, then its
@@ -157,6 +158,12 @@ async function screenProgramming(){
             ${company.buses.map((b) => `<option value="${esc(b.id)}" ${p.vehicleId === b.id ? 'selected' : ''}>${esc(b.plateNo)}${b.label ? ` · ${esc(b.label)}` : ''}</option>`).join('')}
           </select>` : ''}` : ''}
     </div>
+    ${route ? `
+      <p class="hint prog-route-info">
+        <strong>${esc(route.code)}</strong> · ${esc(route.startPlace)} → ${esc(route.endPlace)}${route.nameNe ? ` · <span lang="ne">${esc(route.nameNe)}</span>` : ''}${
+          route.distanceKm ? ` · ${esc(route.distanceKm)} km` : ''}${route.typicalHours ? ` · about ${esc(route.typicalHours)} h` : ''}
+        ${canProgramme() ? `<button class="btn btn-sm btn-ghost" data-action="progEditRoute">Edit route</button>` : ''}
+      </p>` : ''}
 
     <div class="prog-grid">
       <section class="card prog-list" aria-labelledby="prog-list-title">
@@ -443,6 +450,11 @@ Actions.on({
       (r) => `${r.copied} copied${r.skipped ? `, ${r.skipped} already there` : ''}`);
   },
   progOpenAssign: () => { state.prog.assigning = { article: null, results: [] }; renderMain(); },
+  // A new route is chosen at once, ready to be programmed.
+  progNewRoute: () => openRouteDialog({
+    onSaved: (r) => Object.assign(state.prog, { routeId: r.id, direction: 'BOTH', operatorId: '', vehicleId: '', results: [] }),
+  }),
+  progEditRoute: () => { const route = progRoute(); if(route) openRouteDialog({ route }); },
   progAssignPick: (el) => {
     const a = state.prog.assigning;
     a.article = a.results.find((x) => x.id === el.dataset.id) || null;

@@ -22,13 +22,3 @@ export class LostItemDto {
   @IsString() @Length(7, 20) contactPhone: string;
 }
 
-export class CreateRouteDto {
-  @IsString() @Length(2, 20) code: string;
-  @IsString() @Length(2, 120) name: string;
-  @IsOptional() @IsString() nameNe?: string;
-  @IsString() startPlace: string;
-  @IsString() endPlace: string;
-  @IsOptional() @Type(() => Number) @IsInt() distanceKm?: number;
-  @IsOptional() @Type(() => Number) typicalHours?: number;
-  @IsOptional() @IsString() description?: string;
-}

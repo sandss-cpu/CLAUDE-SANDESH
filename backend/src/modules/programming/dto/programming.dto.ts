@@ -1,7 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsISO8601,
-  IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min,
+  IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min,
 } from 'class-validator';
 import { GuideDirection, NoticeSeverity } from '@prisma/client';
 
@@ -10,6 +10,14 @@ const blankToUndefined = () => Transform(({ value }) => (value === '' || value =
 /** On an edit, an empty field means "clear it", which is different from leaving it out. */
 const blankToNull = () => Transform(({ value }) => (value === '' ? null : value));
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/**
+ * A number field on a whole-form save: empty clears it, anything else must be a number.
+ * It reads the value as sent: the API's implicit conversion has already made "" into 0.
+ */
+const numberOrNull = () => Transform(({ obj, key }) => {
+  const sent = obj[key];
+  return sent === undefined ? undefined : sent === '' || sent === null ? null : Number(sent);
+});
 
 /**
  * Which list is being edited. The most specific target given decides the scope:
@@ -157,4 +165,38 @@ export class SaveNoticeDto {
 export class RouteBusesQueryDto {
   @IsUUID('4', { message: 'Choose a route' })
   routeId: string;
+}
+
+/**
+ * A route travellers ride, added or edited from the control panel. The whole form is sent
+ * on every save, so an empty optional field clears it.
+ */
+export class SaveRouteDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsString() @Length(2, 20, { message: 'The short code must be 2–20 characters' })
+  @Matches(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/, { message: 'The short code can only have letters, numbers and hyphens, like KTM-PKR' })
+  code: string;
+
+  @trim() @IsString() @Length(3, 120, { message: 'The name must be 3–120 characters' })
+  name: string;
+
+  @blankToNull() @trim() @IsOptional() @IsString() @MaxLength(120)
+  nameNe?: string | null;
+
+  @trim() @IsString() @Length(2, 80, { message: 'Where the route starts must be 2–80 characters' })
+  startPlace: string;
+
+  @trim() @IsString() @Length(2, 80, { message: 'Where the route ends must be 2–80 characters' })
+  endPlace: string;
+
+  @numberOrNull() @IsOptional()
+  @IsInt({ message: 'Distance is a whole number of kilometres' }) @Min(1) @Max(3000)
+  distanceKm?: number | null;
+
+  @numberOrNull() @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Typical hours is a number, like 7 or 6.5' }) @Min(0.25) @Max(72)
+  typicalHours?: number | null;
+
+  @blankToNull() @trim() @IsOptional() @IsString() @MaxLength(500)
+  description?: string | null;
 }

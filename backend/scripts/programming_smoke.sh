@@ -124,6 +124,41 @@ call GET "/programming/history?routeId=$PKR" "$MOD" >/dev/null
 ok "moderator can read the history" true "$(get "len(data)>=8")"
 ok "each change names who made it" true "$(get "all(e['actor'] and e['actor']['name'] for e in data[:8])")"
 
+echo "== adding and editing routes"
+RCODE="SMK-$(date +%s | tail -c 6)"; RNAME="Smoketown – Testpur $RCODE"
+B="{\"code\":\"$RCODE\",\"name\":\"$RNAME\",\"startPlace\":\"Smoketown\",\"endPlace\":\"Testpur\"}"
+ok "moderator cannot add a route" 403 "$(call POST /programming/routes "$MOD" "$B")"
+ok "bus owner cannot add a route" 403 "$(call POST /programming/routes "$OWNER" "$B")"
+ok "the old unaudited route endpoint is gone" 404 "$(call POST /operators/routes "$EDITOR" "$B")"
+LOWER=$(echo "$RCODE" | tr 'A-Z' 'a-z')
+B="{\"code\":\" $LOWER \",\"name\":\"$RNAME\",\"nameNe\":\"\",\"startPlace\":\"Smoketown\",\"endPlace\":\"Testpur\",\"distanceKm\":\"120\",\"typicalHours\":4.5,\"description\":\"\"}"
+ok "an editor adds a route" 201 "$(call POST /programming/routes "$EDITOR" "$B")"
+RID=$(get "data['id']")
+ok "its code is tidied to capitals" "$RCODE" "$(get "data['code']")"
+ok "empty optional fields are stored empty" "None|None|120|4.5" "$(get "f\"{data['nameNe']}|{data['description']}|{data['distanceKm']}|{data['typicalHours']}\"")"
+ok "it is in every route list at once" true "$(call GET /operators/routes "" >/dev/null; get "any(r['code']=='$RCODE' for r in data)")"
+ok "the same code twice is refused" 409 "$(call POST /programming/routes "$EDITOR" "$B")"
+ok "and the reason names the route" true "$(get "'$RCODE' in d['message']")"
+B="{\"code\":\"$RCODE-2\",\"name\":\"$(echo "$RNAME" | tr 'a-z' 'A-Z')\",\"startPlace\":\"Smoketown\",\"endPlace\":\"Testpur\"}"
+ok "the same name in other capitals is refused" 409 "$(call POST /programming/routes "$EDITOR" "$B")"
+B="{\"code\":\"$RCODE-3\",\"name\":\"Round trip $RCODE\",\"startPlace\":\"Testpur\",\"endPlace\":\" testpur \"}"
+ok "a route needs two different places" 400 "$(call POST /programming/routes "$EDITOR" "$B")"
+B="{\"code\":\"KTM_PKR!\",\"name\":\"Bad code $RCODE\",\"startPlace\":\"A town\",\"endPlace\":\"B town\"}"
+ok "a code with other characters is refused" 400 "$(call POST /programming/routes "$EDITOR" "$B")"
+B="{\"code\":\"$RCODE-4\",\"name\":\"Zero km $RCODE\",\"startPlace\":\"A town\",\"endPlace\":\"B town\",\"distanceKm\":0}"
+ok "a distance of 0 km is refused" 400 "$(call POST /programming/routes "$EDITOR" "$B")"
+B="{\"code\":\"$RCODE\",\"name\":\"Smoketown – Newpur $RCODE\",\"startPlace\":\"Smoketown\",\"endPlace\":\"Newpur\",\"distanceKm\":null,\"typicalHours\":\"\"}"
+ok "moderator cannot edit a route" 403 "$(call PATCH "/programming/routes/$RID" "$MOD" "$B")"
+ok "an editor edits it" 200 "$(call PATCH "/programming/routes/$RID" "$EDITOR" "$B")"
+ok "the edit is saved and cleared fields are empty" "Newpur|None|None" "$(get "f\"{data['endPlace']}|{data['distanceKm']}|{data['typicalHours']}\"")"
+B="{\"code\":\"KTM-PKR\",\"name\":\"Smoketown – Newpur $RCODE\",\"startPlace\":\"Smoketown\",\"endPlace\":\"Newpur\"}"
+ok "another route's code is refused on an edit" 409 "$(call PATCH "/programming/routes/$RID" "$EDITOR" "$B")"
+ok "editing a route that does not exist" 404 "$(call PATCH /programming/routes/00000000-0000-4000-8000-000000000000 "$EDITOR" "$B")"
+call GET "/programming/history?routeId=$RID" "$MOD" >/dev/null
+ok "the route's changes show who added and renamed it" "Added|Renamed" "$(get "'|'.join(e['summary'].split()[0] for e in reversed(data))")"
+ok "both are in the audit log" 2 "$(sql "select count(*) from audit_events where \"entityType\"='Route' and \"entityId\"='$RID'")"
+sql "delete from audit_events where \"entityType\"='Route' and \"entityId\"='$RID'; delete from routes where id='$RID'" >/dev/null
+
 echo "== briefer articles: a summary and key points before publishing"
 B='{"title":"Smoke brief article","body":"## A heading\n\nThe first sentence of a smoke test article. A second sentence follows it."}'
 ok "an editor drafts an article with no brief" 201 "$(call POST /magazine/articles "$EDITOR" "$B")"

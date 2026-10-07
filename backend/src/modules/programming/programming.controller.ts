@@ -4,10 +4,11 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 import { ProgrammingService } from './programming.service';
 import {
   AssignRoutesDto, CopyDirectionDto, CreatePlacementDto, HistoryQueryDto, NoticeQueryDto,
-  PreviewQueryDto, ReorderPlacementsDto, RouteBusesQueryDto, SaveNoticeDto, SlotQueryDto,
+  PreviewQueryDto, ReorderPlacementsDto, RouteBusesQueryDto, SaveNoticeDto, SaveRouteDto, SlotQueryDto,
   UpdatePlacementDto,
 } from './dto/programming.dto';
 
@@ -84,5 +85,20 @@ export class ProgrammingController {
   @Roles(...WRITE) @Delete('notices/:id')
   removeNotice(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string, @Ip() ip: string) {
     return this.programming.removeNotice(id, actorId, ip);
+  }
+
+  /** New routes appear at once in every route list: here, guides, ads and the owner portal. */
+  @Roles(...WRITE) @Post('routes')
+  createRoute(@Body() dto: SaveRouteDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.programming.createRoute(dto, actorId, ip);
+  }
+
+  /** The website shows route names and places on its trip pages. */
+  @Roles(...WRITE) @PurgeSite() @Patch('routes/:id')
+  updateRoute(
+    @Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveRouteDto,
+    @CurrentUser('id') actorId: string, @Ip() ip: string,
+  ) {
+    return this.programming.updateRoute(id, dto, actorId, ip);
   }
 }

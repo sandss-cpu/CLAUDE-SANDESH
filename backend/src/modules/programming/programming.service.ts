@@ -8,7 +8,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { Candidate, contentFor, Direction, Placed } from './content-for';
 import {
   AssignRoutesDto, CopyDirectionDto, CreatePlacementDto, HistoryQueryDto, PreviewQueryDto,
-  ReorderPlacementsDto, SaveNoticeDto, SlotQueryDto, UpdatePlacementDto,
+  ReorderPlacementsDto, SaveNoticeDto, SaveRouteDto, SlotQueryDto, UpdatePlacementDto,
 } from './dto/programming.dto';
 
 /** What a reader needs to list a story, plus what ordering and the offline pack need. */
@@ -215,7 +215,7 @@ export class ProgrammingService {
   async history(q: HistoryQueryDto) {
     const events = await this.prisma.auditEvent.findMany({
       where: {
-        entityType: { in: ['ContentPlacement', 'RouteNotice'] },
+        entityType: { in: ['ContentPlacement', 'RouteNotice', 'Route'] },
         ...(q.routeId ? { routeId: q.routeId } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -431,6 +431,74 @@ export class ProgrammingService {
       }, tx);
     });
     return { deleted: true };
+  }
+
+  // =================================================================== admin: routes
+
+  /**
+   * A new route, so buses, stories, notices and guides can be aimed at it. Routes are not
+   * deleted from here: buses, trips, reviews and stickers point at them.
+   */
+  async createRoute(dto: SaveRouteDto, actorId: string, ip?: string) {
+    const data = await this.routeData(dto);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const route = await tx.route.create({ data });
+        await this.audit.record({
+          actorId, ip, action: 'route.create', entityType: 'Route', entityId: route.id,
+          summary: `Added the route ${route.name} (${route.code})`, after: route, routeId: route.id,
+        }, tx);
+        return route;
+      });
+    } catch (e) {
+      throw this.routeConflict(e, data.code);
+    }
+  }
+
+  async updateRoute(id: string, dto: SaveRouteDto, actorId: string, ip?: string) {
+    const before = await this.prisma.route.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('Route not found');
+    const data = await this.routeData(dto, id);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const after = await tx.route.update({ where: { id }, data });
+        await this.audit.record({
+          actorId, ip, action: 'route.update', entityType: 'Route', entityId: id,
+          summary: before.name === after.name ? `Edited the route ${after.name}` : `Renamed the route ${before.name} to ${after.name}`,
+          before, after, routeId: id,
+        }, tx);
+        return after;
+      });
+    } catch (e) {
+      throw this.routeConflict(e, data.code);
+    }
+  }
+
+  /** Checks a route form, refusing a code or a name another route already has. */
+  private async routeData(dto: SaveRouteDto, id?: string) {
+    if (dto.startPlace.toLowerCase() === dto.endPlace.toLowerCase()) {
+      throw new BadRequestException('A route needs two different places: where it starts and where it ends.');
+    }
+    const others = { ...(id ? { id: { not: id } } : {}) };
+    const sameCode = await this.prisma.route.findFirst({ where: { ...others, code: dto.code }, select: { name: true } });
+    if (sameCode) throw new ConflictException(`The short code ${dto.code} is already used by ${sameCode.name}. Choose another.`);
+    const sameName = await this.prisma.route.findFirst({
+      where: { ...others, name: { equals: dto.name, mode: 'insensitive' } }, select: { code: true },
+    });
+    if (sameName) throw new ConflictException(`There is already a route called ${dto.name} (${sameName.code}).`);
+    return {
+      code: dto.code, name: dto.name, nameNe: dto.nameNe ?? null,
+      startPlace: dto.startPlace, endPlace: dto.endPlace,
+      distanceKm: dto.distanceKm ?? null, typicalHours: dto.typicalHours ?? null, description: dto.description ?? null,
+    };
+  }
+
+  /** Two people saving the same code at once: the unique index decides, with the same message. */
+  private routeConflict(e: unknown, code: string) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      return new ConflictException(`The short code ${code} is already used by another route. Choose another.`);
+    }
+    return e;
   }
 
   // =================================================================== helpers

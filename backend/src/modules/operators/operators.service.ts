@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { slugify } from '../../common/utils/slug.util';
 import {
-  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto,
+  CreateOperatorDto, CreateVehicleDto, LostItemDto,
 } from './dto/operator.dto';
 import { normalisePlate, tidyPlate } from '../fleet/fleet.util';
 
@@ -16,13 +16,9 @@ export class OperatorsService {
       orderBy: { name: 'asc' },
       select: {
         id: true, code: true, name: true, nameNe: true, startPlace: true,
-        endPlace: true, distanceKm: true, typicalHours: true,
+        endPlace: true, distanceKm: true, typicalHours: true, description: true,
       },
     });
-  }
-
-  createRoute(dto: CreateRouteDto) {
-    return this.prisma.route.create({ data: dto });
   }
 
   /** Created by a Bato admin, so it starts verified. */

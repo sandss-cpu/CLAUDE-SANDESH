@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { OperatorsService } from './operators.service';
 import { Throttle } from '@nestjs/throttler';
 import {
-  CreateOperatorDto, CreateRouteDto, CreateVehicleDto, LostItemDto,
+  CreateOperatorDto, CreateVehicleDto, LostItemDto,
 } from './dto/operator.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,6 +37,6 @@ export class OperatorsController {
   @Roles(Role.ADMIN) @Post('vehicles')
   vehicle(@Body() dto: CreateVehicleDto) { return this.operators.createVehicle(dto); }
 
-  @Roles(Role.ADMIN) @Post('routes')
-  createRoute(@Body() dto: CreateRouteDto) { return this.operators.createRoute(dto); }
+  // Routes are added and edited, with an audit trail, through POST and PATCH
+  // /programming/routes (control panel: Route programming and Route guides).
 }

@@ -28,6 +28,7 @@ agencies, and a public website that markets the magazine and its partners.
 
 - **Route programming**: editors choose what each bus shows, by route, direction, company
   or single bus, with schedules, pins, route notices, a live preview and a change history.
+  New routes are added (and existing ones edited) from the same screen.
 - **One QR per bus**: the magazine opens first, the "How's this bus?" rating comes later in
   the ride; printed stickers in English and Nepali, bulk PDFs, print history.
 - **Reading experience**: one-line summaries and key points, folding long stories,
@@ -264,7 +265,7 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/moderation` | `report`, `queue`, `reports`, `bus-reviews`, `act`, `audit` |
 | `/magazine` | articles, issues, categories, `elevate`; `admin/articles`, `admin/issues` |
 | `/qr` | `r/:code`: everything a reader needs from one seat-sticker scan, including a bus review token |
-| `/programming` | Route programming: placements, preview, history, notices (editors) |
+| `/programming` | Route programming: placements, preview, history, notices, and adding and editing `routes` (editors) |
 | `/fleet/...trips`, `/fleet/appraisals`, `/fleet/drivers/:id/scorecard` | Duty log, appraisals, scorecards |
 | `/fleet/companies/:cid/income…`, `/fleet/buses/:id/income/:date` | Income records, imports, reports |
 | `/fleet/companies/:id/documents`, `/businesses/:id/documents`, `/admin/verification-documents` | Verification documents (private) |

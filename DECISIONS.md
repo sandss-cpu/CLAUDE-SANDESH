@@ -534,3 +534,19 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   from two networks.
 - **`prod_smoke.sh` signs in only to a company whose name starts with TEST**, so a smoke
   run can never be pointed at a real company's data by mistake.
+
+## After Phase 3: adding routes from the control panel
+
+- **Routes are added and edited in Route programming** (and Route guides), by editors and
+  admins, the people who programme them; moderators only read. Every add and edit is in the
+  audit log and the route's Changes tab. The old `POST /operators/routes` (admins only, no
+  audit, no edit, a duplicate code answered with a server error) is removed.
+- **No delete.** Buses, trips, reviews, stickers, guides and ads point at routes, so a
+  mistaken route is renamed or corrected instead. Removing one stays a database task.
+- **Code and name must be unique** (the name ignoring capitals), and the two places must
+  differ: two routes called the same thing in one list would be picked by mistake. The same
+  two places may have more than one route, for different roads.
+- **Empty optional fields clear on an edit.** The form sends every field, so a number left
+  empty is read as cleared from the value as sent: the API's implicit conversion would
+  otherwise have turned "" into 0.
+

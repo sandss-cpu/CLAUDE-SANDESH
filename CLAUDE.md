@@ -182,7 +182,9 @@ when a signed-in user should be recognised but anonymous access is still allowed
   optional dates, days and a daily window in Asia/Kathmandu. `content-for.ts` is the one
   pure function that decides the shelf (unit-tested); the scan, the offline pack and the
   admin preview all call it. Editors and admins change programming; moderators can read it.
-  `RouteNotice` is a road alert for a route and direction
+  `RouteNotice` is a road alert for a route and direction. Routes themselves are added and
+  edited here too (`POST`/`PATCH /programming/routes`, audited; the dialog is
+  `openRouteDialog` in `admin.js`, shared with Route guides); they are never deleted
 - **trips** (in `fleet`): the duty log. A `Trip` is one run of one bus in one direction with
   its crew; one per bus at a time (`trip_one_in_progress`). `TripsService.crewAt()` puts a
   review against the crew on duty at the moment of the scan; `directionNow()` tells the
