@@ -91,3 +91,11 @@ test('dates: the Kathmandu day decides the BS date, and an event reads in Kathma
   assert.match(days.ad, /^Monday,? 9 November 2026 – Wednesday,? 11 November 2026$/);
   assert.ok(days.bs.includes(' – '));
 });
+
+test('the total of a journey is the sum of the costs given, or nothing when none are', async () => {
+  const { journeyTotal } = await import('../src/pages/creators');
+  assert.equal(journeyTotal({ transportNpr: 1200, stayNpr: 4500, foodNpr: 3000, permitsNpr: null, otherNpr: 1000 }), 9700);
+  assert.equal(journeyTotal({ transportNpr: null, stayNpr: null, foodNpr: null, permitsNpr: null, otherNpr: null }), null);
+  assert.equal(journeyTotal({ transportNpr: 0, stayNpr: null, foodNpr: null, permitsNpr: null, otherNpr: null }), 0);
+});
+

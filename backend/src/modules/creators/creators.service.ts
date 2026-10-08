@@ -5,19 +5,17 @@ import { ConfigService } from '@nestjs/config';
 import {
   ContentStatus, CreatorProfile, CreatorStatus, ModerationStatus, Prisma,
 } from '@prisma/client';
+import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
 import { needsReview } from '../../common/utils/content-filter';
 import { slugify, uniqueSlug } from '../../common/utils/slug.util';
+import { isLive, livePost, publicPost } from './public-post';
 import {
-  AddJourneyPostDto, ApplyCreatorDto, CreatorListQueryDto, CreatorReviewDto, HANDLE_RULE,
+  AddJourneyPostDto, ApplyCreatorDto, CreatorListQueryDto, CreatorReviewDto, CreatorWebsiteDto, HANDLE_RULE, JourneyWebsiteDto,
   RESERVED_HANDLES, ReorderJourneyPostsDto, SaveJourneyDto, UpdateCreatorDto,
 } from './dto/creator.dto';
 
-/** Only posts that are actually public appear on a profile. */
-const LIVE_POST = {
-  status: ContentStatus.PUBLISHED, moderation: ModerationStatus.APPROVED,
-} satisfies Prisma.PostWhereInput;
 
 const POST_CARD = {
   id: true, title: true, body: true, coverImageUrl: true, locationName: true, latitude: true, longitude: true,
@@ -41,7 +39,7 @@ const excerpt = (s: string, max = 180) => (s.length > max ? `${s.slice(0, max - 
  */
 @Injectable()
 export class CreatorsService {
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(private prisma: PrismaService, private config: ConfigService, private audit: AuditService) {}
 
   private assertMedia(...urls: Array<string | null | undefined>) {
     const base = this.config.get<string>('MEDIA_BASE_URL') ?? '';
@@ -62,7 +60,7 @@ export class CreatorsService {
   /** Posts, votes received and followers: the numbers a creator is judged on. */
   private async stats(userId: string) {
     const [posts, journeys, followers, votes] = await Promise.all([
-      this.prisma.post.count({ where: { authorId: userId, ...LIVE_POST } }),
+      this.prisma.post.count({ where: { authorId: userId, ...livePost() } }),
       this.prisma.creatorJourney.count({ where: { creator: { userId }, status: ContentStatus.PUBLISHED } }),
       this.prisma.follow.count({ where: { followingId: userId } }),
       this.prisma.postVote.count({ where: { value: 1, post: { authorId: userId } } }),
@@ -92,7 +90,7 @@ export class CreatorsService {
     });
     const counts = await this.prisma.post.groupBy({
       by: ['authorId'],
-      where: { authorId: { in: profiles.map((p) => p.userId) }, ...LIVE_POST },
+      where: { authorId: { in: profiles.map((p) => p.userId) }, ...livePost() },
       _count: { _all: true },
     });
     return profiles.map(({ _count, userId, ...p }) => ({
@@ -109,14 +107,14 @@ export class CreatorsService {
     });
     if (!creator) throw new NotFoundException('No creator with that handle.');
 
-    const [journeys, posts, stats, following] = await Promise.all([
+    const [journeys, posts, stats, following, author] = await Promise.all([
       this.prisma.creatorJourney.findMany({
         where: { creator: { handle: handle.toLowerCase() }, status: ContentStatus.PUBLISHED },
         orderBy: [{ publishedAt: 'desc' }],
         include: { route: { select: { id: true, name: true, code: true } }, _count: { select: { entries: true } } },
       }),
       this.prisma.post.findMany({
-        where: { authorId: creator.userId, ...LIVE_POST },
+        where: { authorId: creator.userId, ...livePost() },
         select: POST_CARD,
         orderBy: { publishedAt: 'desc' },
         take: 30,
@@ -125,7 +123,10 @@ export class CreatorsService {
       viewerId
         ? this.prisma.follow.findUnique({ where: { followerId_followingId: { followerId: viewerId, followingId: creator.userId } } })
         : null,
+      this.prisma.user.findUnique({ where: { id: creator.userId }, select: { hideExactLocation: true } }),
     ]);
+    // A traveller who hides their exact location keeps it hidden here too, as in the feed.
+    const hide = !!author?.hideExactLocation && viewerId !== creator.userId;
 
     const { userId, ...publicFields } = creator;
     return {
@@ -134,10 +135,10 @@ export class CreatorsService {
       isFollowing: !!following,
       isMe: viewerId === userId,
       journeys: journeys.map(({ _count, ...j }) => ({ ...this.journeyView(j), entryCount: _count.entries })),
-      posts: posts.map((p) => ({ ...p, body: excerpt(p.body) })),
-      /** Where their posts were taken, for the map on the profile. */
+      posts: posts.map((p) => publicPost({ ...p, body: excerpt(p.body) }, hide)),
+      /** Where their posts were taken, for the map on the profile; none if they hide their location. */
       pins: posts
-        .filter((p) => p.latitude != null && p.longitude != null)
+        .filter((p) => !hide && p.latitude != null && p.longitude != null)
         .map((p) => ({ id: p.id, title: p.title, latitude: p.latitude, longitude: p.longitude, locationName: p.locationName })),
     };
   }
@@ -149,14 +150,21 @@ export class CreatorsService {
         creator: { handle: handle.toLowerCase(), status: CreatorStatus.APPROVED },
       },
       include: {
-        creator: { select: { handle: true, displayName: true, avatarUrl: true, headline: true } },
+        creator: { select: { handle: true, displayName: true, avatarUrl: true, headline: true, user: { select: { hideExactLocation: true } } } },
         route: { select: { id: true, name: true, code: true, startPlace: true, endPlace: true } },
         destination: { select: { id: true, name: true, slug: true } },
-        entries: { orderBy: { sortOrder: 'asc' }, include: { post: { select: POST_CARD } } },
+        entries: { orderBy: { sortOrder: 'asc' }, include: { post: { select: { ...POST_CARD, status: true, moderation: true, visibleFrom: true } } } },
       },
     });
     if (!journey) throw new NotFoundException('That journey is not available.');
-    return this.journeyView(journey);
+    // A journey shows only posts that are public in their own right: not a pending or refused
+    // one, nor one still inside its traveller's safety delay; and no coordinates if they hide them.
+    const { user, ...creator } = journey.creator;
+    const now = new Date();
+    const entries = journey.entries
+      .filter((e) => isLive(e.post, now))
+      .map(({ post: { status: _s, moderation: _m, visibleFrom: _v, ...post }, ...e }) => ({ ...e, post: publicPost(post, user.hideExactLocation) }));
+    return this.journeyView({ ...journey, creator, entries });
   }
 
   // ---------------- the creator's own panel ----------------
@@ -220,7 +228,12 @@ export class CreatorsService {
       }),
       this.stats(userId),
     ]);
-    return { profile: creator, stats, journeys: journeys.map((j) => this.journeyView(j)), posts };
+    const site = (this.config.get<string>('SITE_URL') ?? '').replace(/\/$/, '');
+    return {
+      profile: creator, stats, journeys: journeys.map((j) => this.journeyView(j)), posts,
+      /** Whether Batoma's editors have put this profile on the public website, and its address there. */
+      website: { shown: creator.showOnWebsite && creator.status === CreatorStatus.APPROVED, url: site ? `${site}/creators/${creator.handle}` : null },
+    };
   }
 
   async updateMe(dto: UpdateCreatorDto, userId: string) {
@@ -378,7 +391,7 @@ export class CreatorsService {
       take: 200,
     });
     const counts = await this.prisma.post.groupBy({
-      by: ['authorId'], where: { authorId: { in: profiles.map((p) => p.userId) }, ...LIVE_POST }, _count: { _all: true },
+      by: ['authorId'], where: { authorId: { in: profiles.map((p) => p.userId) }, ...livePost() }, _count: { _all: true },
     });
     return profiles.map(({ _count, ...p }) => ({
       ...p,
@@ -420,6 +433,60 @@ export class CreatorsService {
       });
     });
     return this.adminList({});
+  }
+
+  // ---------------- editors: who is on the website ----------------
+
+  /** An approved creator goes on the website only when an editor or admin says so. */
+  async setWebsite(id: string, dto: CreatorWebsiteDto, actorId: string, ip?: string) {
+    const before = await this.prisma.creatorProfile.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('Creator not found');
+    if (dto.showOnWebsite && before.status !== CreatorStatus.APPROVED) {
+      throw new BadRequestException('Only an approved creator can be on the website.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const after = await tx.creatorProfile.update({
+        where: { id },
+        data: { showOnWebsite: dto.showOnWebsite, ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}) },
+        select: { id: true, handle: true, showOnWebsite: true, isFeatured: true },
+      });
+      await this.audit.record({
+        actorId, ip, action: 'creator.website', entityType: 'CreatorProfile', entityId: id,
+        summary: before.showOnWebsite === after.showOnWebsite
+          ? `${after.isFeatured ? 'Featured' : 'Unfeatured'} @${after.handle}`
+          : after.showOnWebsite ? `Put @${after.handle} on the website` : `Took @${after.handle} off the website`,
+        before: { showOnWebsite: before.showOnWebsite, isFeatured: before.isFeatured }, after,
+      }, tx);
+      return after;
+    });
+  }
+
+  /** A creator's journeys, for choosing which appear on the website. */
+  async adminJourneys(id: string) {
+    const creator = await this.prisma.creatorProfile.findUnique({ where: { id }, select: { id: true } });
+    if (!creator) throw new NotFoundException('Creator not found');
+    return this.prisma.creatorJourney.findMany({
+      where: { creatorId: id },
+      orderBy: [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }],
+      select: {
+        id: true, slug: true, title: true, status: true, onWebsite: true, publishedAt: true, dayCount: true,
+        route: { select: { name: true } }, destination: { select: { name: true } }, _count: { select: { entries: true } },
+      },
+    });
+  }
+
+  async setJourneyWebsite(id: string, dto: JourneyWebsiteDto, actorId: string, ip?: string) {
+    const before = await this.prisma.creatorJourney.findUnique({ where: { id }, include: { creator: { select: { handle: true } } } });
+    if (!before) throw new NotFoundException('Journey not found');
+    return this.prisma.$transaction(async (tx) => {
+      const after = await tx.creatorJourney.update({ where: { id }, data: { onWebsite: dto.onWebsite }, select: { id: true, title: true, onWebsite: true } });
+      await this.audit.record({
+        actorId, ip, action: 'journey.website', entityType: 'CreatorJourney', entityId: id,
+        summary: `${dto.onWebsite ? 'Showed' : 'Hid'} @${before.creator.handle}'s journey “${before.title}” on the website`,
+        before: { onWebsite: before.onWebsite }, after,
+      }, tx);
+      return after;
+    });
   }
 
   /** Used by the vlog feed to link an author to their profile. */

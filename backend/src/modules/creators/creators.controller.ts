@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { CreatorsService } from './creators.service';
 import {
-  AddJourneyPostDto, ApplyCreatorDto, CreatorListQueryDto, CreatorReviewDto, JourneyStatusDto,
-  ReorderJourneyPostsDto, SaveJourneyDto, UpdateCreatorDto,
+  AddJourneyPostDto, ApplyCreatorDto, CreatorListQueryDto, CreatorReviewDto, CreatorWebsiteDto, JourneyStatusDto,
+  JourneyWebsiteDto, ReorderJourneyPostsDto, SaveJourneyDto, UpdateCreatorDto,
 } from './dto/creator.dto';
+import { PurgeSite } from '../../common/site-purge/site-purge.service';
 import { OptionalAuth, Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -19,12 +20,27 @@ export class CreatorsController {
   @Roles(Role.ADMIN, Role.EDITOR) @Get('admin')
   adminList(@Query() q: CreatorListQueryDto) { return this.creators.adminList(q); }
 
-  @Roles(Role.ADMIN) @Patch('admin/:id')
+  // ---- editors and admins: who is on the public website ----
+
+  @Roles(Role.ADMIN, Role.EDITOR) @PurgeSite() @Patch('admin/:id/website')
+  website(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatorWebsiteDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.creators.setWebsite(id, dto, actorId, ip);
+  }
+
+  @Roles(Role.ADMIN, Role.EDITOR) @Get('admin/:id/journeys')
+  adminJourneys(@Param('id', ParseUUIDPipe) id: string) { return this.creators.adminJourneys(id); }
+
+  @Roles(Role.ADMIN, Role.EDITOR) @PurgeSite() @Patch('admin/journeys/:id/website')
+  journeyWebsite(@Param('id', ParseUUIDPipe) id: string, @Body() dto: JourneyWebsiteDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.creators.setJourneyWebsite(id, dto, actorId, ip);
+  }
+
+  @Roles(Role.ADMIN) @PurgeSite() @Patch('admin/:id')
   review(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatorReviewDto, @CurrentUser('id') adminId: string) {
     return this.creators.review(id, dto, adminId);
   }
 
-  // ---- the creator's own panel ----
+  // ---- the creator's own panel (changes reach the website at once if they are on it) ----
 
   @Get('me')
   me(@CurrentUser('id') userId: string) { return this.creators.dashboard(userId); }
@@ -33,40 +49,40 @@ export class CreatorsController {
   @Post('apply')
   apply(@Body() dto: ApplyCreatorDto, @CurrentUser('id') userId: string) { return this.creators.apply(dto, userId); }
 
-  @Patch('me')
+  @PurgeSite() @Patch('me')
   updateMe(@Body() dto: UpdateCreatorDto, @CurrentUser('id') userId: string) { return this.creators.updateMe(dto, userId); }
 
-  @Post('me/journeys')
+  @PurgeSite() @Post('me/journeys')
   createJourney(@Body() dto: SaveJourneyDto, @CurrentUser('id') userId: string) {
     return this.creators.saveJourney(dto, userId);
   }
 
-  @Patch('me/journeys/:id')
+  @PurgeSite() @Patch('me/journeys/:id')
   updateJourney(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveJourneyDto, @CurrentUser('id') userId: string) {
     return this.creators.saveJourney(dto, userId, id);
   }
 
-  @Patch('me/journeys/:id/status')
+  @PurgeSite() @Patch('me/journeys/:id/status')
   setJourneyStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: JourneyStatusDto, @CurrentUser('id') userId: string) {
     return this.creators.setJourneyStatus(id, dto.status, userId);
   }
 
-  @Delete('me/journeys/:id')
+  @PurgeSite() @Delete('me/journeys/:id')
   deleteJourney(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
     return this.creators.deleteJourney(id, userId);
   }
 
-  @Post('me/journeys/:id/posts')
+  @PurgeSite() @Post('me/journeys/:id/posts')
   addPost(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddJourneyPostDto, @CurrentUser('id') userId: string) {
     return this.creators.addPost(id, dto, userId);
   }
 
-  @Post('me/journeys/:id/posts/reorder')
+  @PurgeSite() @Post('me/journeys/:id/posts/reorder')
   reorderPosts(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReorderJourneyPostsDto, @CurrentUser('id') userId: string) {
     return this.creators.reorderPosts(id, dto, userId);
   }
 
-  @Delete('me/journeys/:id/posts/:postId')
+  @PurgeSite() @Delete('me/journeys/:id/posts/:postId')
   removePost(
     @Param('id', ParseUUIDPipe) id: string, @Param('postId', ParseUUIDPipe) postId: string,
     @CurrentUser('id') userId: string,

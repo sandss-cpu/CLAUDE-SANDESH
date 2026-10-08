@@ -3,13 +3,16 @@
 'use strict';
 const API = window.BATO_CONFIG?.api || localStorage.getItem('bato.api') || 'http://localhost:3000/api/v1';
 const params = new URLSearchParams(location.search);
-const safeReturn = (v) => (v && /^[\w.-]+\.html(#[\w-]*)?$/.test(v) ? v : 'index.html#write');
+// A page of this app only: a name, an optional simple query (creator.html?panel=1 from the
+// website's Sign in) and an optional hash. No slashes or scheme, so it can never leave the app.
+const safeReturn = (v) => (v && /^[\w.-]+\.html(\?[\w=&-]*)?(#[\w-]*)?$/.test(v) ? v : 'index.html#write');
 const returnTo = safeReturn(params.get('returnTo'));
 
 try{ const t = localStorage.getItem('bato.theme'); if(t) document.documentElement.dataset.theme = t; }catch(_){}
 
 const state = {
-  step: 'email', name: '', email: '', phone: '', devCode: '', devLink: '',
+  // ?mode=register opens on "Create an account" (the website's "Become a creator").
+  step: params.get('mode') === 'register' ? 'register' : 'email', name: '', email: '', phone: '', devCode: '', devLink: '',
   error: '', errorCode: '', notice: '', busy: false, showPw: false, resetToken: '', challengeToken: '',
 };
 

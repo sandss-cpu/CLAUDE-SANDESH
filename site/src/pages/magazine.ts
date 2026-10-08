@@ -74,6 +74,7 @@ export async function article(slug: string): Promise<Rendered | null> {
     a.categoryId ? data.liveAds('WEB_SECTION_SPONSOR', { categoryId: a.categoryId }) : Promise.resolve([]),
   ]);
   const more = related.length ? related : await data.articles({ notIds: [a.id], take: 3 });
+  const handle = a.authorId ? (await data.creatorHandles([a.authorId])).get(a.authorId) : undefined;
   const sectionAd = adSlot(sectionAds[0], path);
   const description = a.summary || a.subtitle || plain(a.body);
   const headings = (a.body.match(/^##\s+.+$/gm) ?? []).map((h) => h.replace(/^##\s+/, '').trim());
@@ -86,7 +87,7 @@ export async function article(slug: string): Promise<Rendered | null> {
     <p class="kicker">${a.category?.name ?? 'Story'}${a.issue ? ` · Issue ${a.issue.number}` : ''}</p>
     <h1>${a.title}</h1>
     ${a.subtitle ? html`<p class="lede">${a.subtitle}</p>` : ''}
-    <p class="byline">${a.author?.name ? html`By ${a.author.name} · ` : ''}${a.publishedAt ? html`<time datetime="${isoDate(a.publishedAt)}">${dayBoth(a.publishedAt)}</time> · ` : ''}${a.readMinutes} min read</p>
+    <p class="byline">${a.author?.name ? (handle ? html`By <a href="/creators/${handle}">${a.author.name}</a> <span class="verified">Batoma creator</span> · ` : html`By ${a.author.name} · `) : ''}${a.publishedAt ? html`<time datetime="${isoDate(a.publishedAt)}">${dayBoth(a.publishedAt)}</time> · ` : ''}${a.readMinutes} min read</p>
   </header>
   ${a.coverImageUrl ? html`<figure class="cover">${img(a.coverImageUrl, '', { sizes: '(min-width: 760px) 720px, 100vw', width: 1200, height: 750, lazy: false })}</figure>` : ''}
   ${a.audioUrl ? html`<div class="listen"><p class="kicker">Listen to this story</p><audio controls preload="none" src="${mediaUrl(a.audioUrl)}"></audio></div>` : ''}
@@ -115,7 +116,7 @@ export async function article(slug: string): Promise<Rendered | null> {
     ...(a.coverImageUrl ? { image: [mediaUrl(a.coverImageUrl).startsWith('/') ? absolute(mediaUrl(a.coverImageUrl)) : mediaUrl(a.coverImageUrl)] } : {}),
     ...(a.publishedAt ? { datePublished: isoDate(a.publishedAt) } : {}),
     dateModified: isoDate(a.updatedAt),
-    author: a.author?.name ? { '@type': 'Person', name: a.author.name } : PUBLISHER,
+    author: a.author?.name ? { '@type': 'Person', name: a.author.name, ...(handle ? { url: absolute(`/creators/${handle}`) } : {}) } : PUBLISHER,
     publisher: PUBLISHER,
     ...(a.category ? { articleSection: a.category.name } : {}),
     ...(a.isSponsored && a.sponsor ? { sponsor: { '@type': 'Organization', name: a.sponsor.name, url: absolute(`/partners/${a.sponsor.slug}`) } } : {}),

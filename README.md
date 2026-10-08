@@ -38,8 +38,9 @@ agencies, and a public website that markets the magazine and its partners.
   driver scorecards for any period, appraisals with a PDF in English and Nepali.
 - **Income and ticket records**: a daily sheet per bus, CSV and XLSX import without
   duplicates, reports with operating profit, reconciliation, behind an authenticator.
-- **Public website**: stories, road guides, places, events and happenings, partners and
-  deals, write a trip (readers send stories from the page itself, confirmed by email, which
+- **Public website**: stories, road guides, places, events and happenings, creators (profiles,
+  journeys with real costs, posts; editors choose who appears; "Sign in" opens the app's
+  creator panel), partners and deals, write a trip (readers send stories from the page itself, confirmed by email, which
   makes their account), advertise (vision and mission, offers, enquiries); labelled sponsored
   slots, counted partner links, double opt-in newsletter, monthly partner reports; Lighthouse
   99/100/100/100 on phones.
@@ -275,6 +276,7 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/site/*` | The website's forms, with its key only: enquiries, leads, newsletter, `stories` and `stories/confirm` |
 | `/events` | Events for the website (editors): `admin`, `admin/:id`, create, edit, delete |
 | `/stories/admin` | Stories sent from the website (editors): list, read, `:id/feature`, `:id/decline` |
+| `/creators/admin/:id/website`, `/creators/admin/:id/journeys`, `/creators/admin/journeys/:id/website` | Which creators and journeys are on the website (editors) |
 | `/admin/partner-packages`, `/admin/site/*`, `/admin/security-events` | Control panel: packages, enquiries, newsletter, security events |
 | `/users/me/export`, `DELETE /users/me` | A person's own data, and deleting their account |
 | `/auth/mfa/recover`, `/auth/mfa/recovery-codes`, `/auth/logout-all` | Recovery codes, sign out everywhere |

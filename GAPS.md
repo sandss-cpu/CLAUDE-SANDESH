@@ -144,6 +144,7 @@ than a week.
 | Corridor targeting for a partner (`/businesses/:id/routes`) has no screen | after launch | S |
 | Writers cannot upload photos with a story from the website, or see their stories' status in the app; editors ask featured writers for photos, and status comes by email | — | M |
 | Events are on the website only, not in the bus reader app | — | M |
+| Creators edit only in the app; the website shows their pages but has no sign-in of its own (by design: no script or cookies) | — | — |
 | Routes cannot be deleted from the control panel (on purpose: buses, trips and stickers point at them); a wrong one is corrected or renamed | — | S |
 
 ### Not in the Phase 3 brief (owner's call)

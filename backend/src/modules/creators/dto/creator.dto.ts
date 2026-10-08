@@ -12,6 +12,8 @@ const blankToUndefined = () => Transform(({ value }) => (value === '' || value =
 export const HANDLE_RULE = /^[a-z0-9_]{3,24}$/;
 export const RESERVED_HANDLES = [
   'admin', 'bato', 'support', 'help', 'api', 'me', 'new', 'edit', 'settings', 'login', 'signup', 'creator', 'creators',
+  // Website addresses under /creators/ and the brand itself.
+  'join', 'batoma',
 ];
 
 export class ApplyCreatorDto {
@@ -133,6 +135,20 @@ export class CreatorReviewDto {
 
   @IsOptional() @IsBoolean()
   isFeatured?: boolean;
+}
+
+/** Editors and admins: whether an approved creator is on the public website (and featured there). */
+export class CreatorWebsiteDto {
+  @IsBoolean()
+  showOnWebsite: boolean;
+
+  @IsOptional() @IsBoolean()
+  isFeatured?: boolean;
+}
+
+export class JourneyWebsiteDto {
+  @IsBoolean()
+  onWebsite: boolean;
 }
 
 export class CreatorListQueryDto {

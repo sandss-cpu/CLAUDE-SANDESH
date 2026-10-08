@@ -2,7 +2,9 @@
 # Events and story submissions (October 2026), against a running API and website:
 # who may manage events, what the website shows of them (drafts never, cancelled ones
 # marked), their calendar files and search data; and a story sent from "Write a trip",
-# confirmed by email, then featured as a magazine draft or declined by an editor.
+# confirmed by email, then featured as a magazine draft or declined by an editor; and
+# creators on the website (editors choose them; delayed posts and hidden locations stay
+# hidden, in the app and on the website).
 # Everything it creates is removed at the end.
 #
 #   bash scripts/website_content_smoke.sh ../../Bato_Docs/Bato_Test_Accounts_Phase3.md
@@ -31,6 +33,13 @@ cleanup(){
        delete from story_submissions where title like 'Smoke story $STAMP%';
        delete from email_tokens where \"userId\" in (select id from users where email like 'smoke-writer-$STAMP%');
        delete from users where email like 'smoke-writer-$STAMP%';" >/dev/null
+  # The demo creator and their account, as they were.
+  [ -n "${C_ID:-}" ] && sql "delete from creator_journey_posts where \"postId\" in (select id from posts where title like 'Smoke delayed $STAMP%');
+       delete from posts where title like 'Smoke delayed $STAMP%';
+       update creator_profiles set \"showOnWebsite\"=$C_SHOWN, \"isFeatured\"=$C_FEAT where id='$C_ID';
+       update creator_journeys set \"onWebsite\"=true where \"creatorId\"='$C_ID';
+       update users set \"hideExactLocation\"=$C_HIDE where id='$C_USER';
+       delete from audit_events where \"entityType\" in ('CreatorProfile','CreatorJourney') and \"createdAt\" >= '$START';" >/dev/null
 }
 trap cleanup EXIT
 
@@ -159,5 +168,53 @@ ok "an editor declines the other, with a note" 201 "$(call POST "/stories/admin/
 ok "declined, with the note kept" "DECLINED|We covered Pokhara last month." "$(sql "select status || '|' || \"editorNote\" from story_submissions where id='$ID2'")"
 ok "the tabs count them" true "$(call GET "/stories/admin?status=FEATURED" "$EDITOR" >/dev/null; get "data['counts']['FEATURED']>=1 and data['counts']['DECLINED']>=1")"
 ok "every step is in the audit log" 3 "$(sql "select count(*) from audit_events where \"entityType\"='StorySubmission' and \"entityId\" in ('$ID','$ID2')")"
+
+echo "== creators on the website"
+HANDLE=anish_shrestha_treks
+C_ID=$(sql "select id from creator_profiles where handle='$HANDLE'"); C_USER=$(sql "select \"userId\" from creator_profiles where id='$C_ID'")
+C_SHOWN=$(sql "select \"showOnWebsite\"::text from creator_profiles where id='$C_ID'"); C_FEAT=$(sql "select \"isFeatured\"::text from creator_profiles where id='$C_ID'")
+C_HIDE=$(sql "select \"hideExactLocation\"::text from users where id='$C_USER'")
+JID=$(sql "select id from creator_journeys where \"creatorId\"='$C_ID' and status='PUBLISHED' limit 1"); JSLUG=$(sql "select slug from creator_journeys where id='$JID'")
+ok "signed out cannot switch a creator on" 401 "$(call PATCH "/creators/admin/$C_ID/website" "" '{"showOnWebsite":true}')"
+ok "a moderator cannot" 403 "$(call PATCH "/creators/admin/$C_ID/website" "$MOD" '{"showOnWebsite":true}')"
+ok "a bus owner cannot" 403 "$(call PATCH "/creators/admin/$C_ID/website" "$OWNER" '{"showOnWebsite":true}')"
+ok "an editor takes them off" 200 "$(call PATCH "/creators/admin/$C_ID/website" "$EDITOR" '{"showOnWebsite":false}')"
+sleep 1
+ok "then their page is not on the website" 404 "$(page "/creators/$HANDLE")"
+page /creators >/dev/null; ok "nor in the list" 0 "$(has "/creators/$HANDLE\"")"
+ok "an editor puts them on" 200 "$(call PATCH "/creators/admin/$C_ID/website" "$EDITOR" '{"showOnWebsite":true}')"
+sleep 1
+ok "their page is up" 200 "$(page "/creators/$HANDLE")"
+ok "with their stories, journeys and stats" "1 1 1" "$(echo "$(has 'Stories in Batoma') $(has "/creators/$HANDLE/$JSLUG") $(has 'followers in the app')" | sed 's/[2-9]/1/g')"
+ok "ProfilePage and Person data for search engines" "1 1" "$(echo "$(has '"@type":"ProfilePage"') $(has '"@type":"Person"')" | sed 's/[2-9]/1/g')"
+ok "no coordinates anywhere on it" 0 "$(grep -cE 'latitude|longitude' "$R")"
+ok "the journey page shows its costs" 1 "$(page "/creators/$HANDLE/$JSLUG" >/dev/null; has 'What it cost' | sed 's/[2-9]/1/')"
+ok "an editor lists their journeys" 200 "$(call GET "/creators/admin/$C_ID/journeys" "$EDITOR")"
+ok "and hides one from the website" 200 "$(call PATCH "/creators/admin/journeys/$JID/website" "$EDITOR" '{"onWebsite":false}')"
+sleep 1
+ok "the hidden journey is gone from the website" 404 "$(page "/creators/$HANDLE/$JSLUG")"
+ok "but still in the app" 200 "$(call GET "/creators/$HANDLE/journeys/$JSLUG" "")"
+call PATCH "/creators/admin/journeys/$JID/website" "$EDITOR" '{"onWebsite":true}' >/dev/null
+PENDING_ID=$(sql "with u as (insert into users (id, email, name, language, \"updatedAt\") values (gen_random_uuid(), 'smoke-writer-$STAMP-creator@example.com', 'Smoke Creator', 'EN', now()) returning id)
+  insert into creator_profiles (id, \"userId\", handle, \"displayName\", \"updatedAt\") select gen_random_uuid(), id, 'smk_$STAMP', 'Smoke Creator', now() from u returning id" | head -1)
+ok "a creator still waiting for approval cannot go on the website" 400 "$(call PATCH "/creators/admin/$PENDING_ID/website" "$EDITOR" '{"showOnWebsite":true}')"
+ok "an unknown creator" 404 "$(call PATCH "/creators/admin/00000000-0000-4000-8000-000000000000/website" "$EDITOR" '{"showOnWebsite":true}')"
+ok "every switch is in the audit log" true "$(sql "select (count(*) >= 4)::text from audit_events where \"entityType\" in ('CreatorProfile','CreatorJourney') and \"createdAt\" >= '$START'")"
+
+echo "== creators' privacy, in the app and on the website"
+DELAYED=$(sql "insert into posts (id, \"authorId\", title, body, status, moderation, \"publishedAt\", \"visibleFrom\", latitude, longitude, \"locationName\", \"updatedAt\")
+  values (gen_random_uuid(), '$C_USER', 'Smoke delayed $STAMP', 'Posted while travelling alone; it shows tomorrow.', 'PUBLISHED', 'APPROVED', now(), now() + interval '1 day', 27.7, 85.3, 'Somewhere', now()) returning id" | head -1)
+sql "insert into creator_journey_posts (\"journeyId\", \"postId\", \"sortOrder\") values ('$JID', '$DELAYED', 99)" >/dev/null
+call GET "/creators/$HANDLE" "" >/dev/null
+ok "the app's profile leaves out a post still inside its safety delay" false "$(get "any(p['id']=='$DELAYED' for p in data['posts'])")"
+call GET "/creators/$HANDLE/journeys/$JSLUG" "" >/dev/null
+ok "and so does the journey that includes it" false "$(get "any(e['post']['id']=='$DELAYED' for e in data['entries'])")"
+sleep 1
+ok "the website never shows it either" 0 "$(page "/creators/$HANDLE" >/dev/null; has "Smoke delayed $STAMP")"
+sql "update users set \"hideExactLocation\"=true where id='$C_USER'" >/dev/null
+call GET "/creators/$HANDLE" "" >/dev/null
+ok "a creator who hides their exact location: no coordinates in the app" "True 0" "$(get "f\"{all(p['latitude'] is None for p in data['posts'])} {len(data['pins'])}\"")"
+call GET "/creators/$HANDLE/journeys/$JSLUG" "" >/dev/null
+ok "nor in their journeys" true "$(get "all(e['post']['latitude'] is None for e in data['entries'])")"
 
 finish

@@ -121,7 +121,7 @@ export async function event(slug: string): Promise<Rendered | null> {
     ${e.priceLabel ? html`<dt>Price</dt><dd>${e.priceLabel}</dd>` : ''}
     ${e.organiser ? html`<dt>Organised by</dt><dd>${e.organiser}</dd>` : ''}
   </dl>
-  <p class="actions">
+  <p class="cta-row">
     ${!cancelled && !over ? html`<a class="btn" href="/events/${e.slug}/calendar.ics" download>Add to your calendar</a>` : ''}
     ${e.url && !cancelled ? html`<a class="btn btn-ghost" href="${safeUrl(e.url)}" rel="nofollow noopener external">Tickets and details ↗</a>` : ''}
     <a class="btn btn-ghost" href="${map}" rel="noopener external">Map ↗</a>

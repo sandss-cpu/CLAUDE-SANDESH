@@ -58,7 +58,7 @@ export function article(slug: string) {
   return db.article.findFirst({
     where: { slug, ...LIVE_ARTICLE },
     select: {
-      ...ARTICLE_CARD, body: true, keyPoints: true, categoryId: true,
+      ...ARTICLE_CARD, body: true, keyPoints: true, categoryId: true, authorId: true,
       author: { select: { name: true } },
       issue: { select: { number: true, title: true } },
       sponsor: { select: { id: true, slug: true, name: true, category: true, district: true } },
@@ -213,9 +213,77 @@ export function event(slug: string) {
   });
 }
 
+// ================= creators =================
+// Row-level security shows only approved creators an editor has put on the website, their
+// published journeys (unless hidden) and their live posts; post coordinates are not granted.
+
+export const CREATOR_CARD = {
+  id: true, userId: true, handle: true, displayName: true, headline: true, avatarUrl: true, homeBase: true,
+  specialities: true, isFeatured: true,
+} satisfies Prisma.CreatorProfileSelect;
+export type CreatorCard = Prisma.CreatorProfileGetPayload<{ select: typeof CREATOR_CARD }>;
+export interface CreatorStats { followers: number; posts: number; journeys: number }
+
+/** Followers, posts and journeys, from a counts-only view: the role never reads who follows whom. */
+export async function creatorStats(ids: string[]): Promise<Map<string, CreatorStats>> {
+  if (!ids.length) return new Map();
+  const rows = await db.$queryRaw<Array<{ creatorId: string } & CreatorStats>>`
+    SELECT "creatorId", followers, posts, journeys FROM site_creator_stats WHERE "creatorId" = ANY(${ids}::text[])`;
+  return new Map(rows.map(({ creatorId, ...n }) => [creatorId, n]));
+}
+
+export const creators = (take = 60) =>
+  db.creatorProfile.findMany({ select: CREATOR_CARD, orderBy: [{ isFeatured: 'desc' }, { approvedAt: 'desc' }], take });
+
+export const creator = (handle: string) => db.creatorProfile.findFirst({
+  where: { handle: handle.toLowerCase() },
+  select: { ...CREATOR_CARD, bio: true, coverUrl: true, languages: true, websiteUrl: true, instagram: true, youtube: true, approvedAt: true, updatedAt: true },
+});
+
+const POST_PUBLIC = {
+  id: true, title: true, body: true, coverImageUrl: true, locationName: true, publishedAt: true,
+  photos: { select: { url: true, caption: true }, orderBy: { sortOrder: 'asc' as const } },
+} satisfies Prisma.PostSelect;
+export type PublicPost = Prisma.PostGetPayload<{ select: typeof POST_PUBLIC }>;
+
+const JOURNEY_CARD = {
+  id: true, slug: true, title: true, summary: true, coverImageUrl: true, startedOn: true, dayCount: true,
+  transportNpr: true, stayNpr: true, foodNpr: true, permitsNpr: true, otherNpr: true, publishedAt: true, updatedAt: true,
+  route: { select: { name: true, startPlace: true, endPlace: true } },
+  destination: { select: { slug: true, name: true } },
+} satisfies Prisma.CreatorJourneySelect;
+export type JourneyCard = Prisma.CreatorJourneyGetPayload<{ select: typeof JOURNEY_CARD }>;
+
+/** What a creator's page shows: their Batoma stories, journeys and latest posts. */
+export async function creatorWork(c: { id: string; userId: string }) {
+  const [stories, journeys, posts] = await Promise.all([
+    db.article.findMany({ where: { ...LIVE_ARTICLE, authorId: c.userId }, orderBy: { publishedAt: 'desc' }, take: 12, select: ARTICLE_CARD }),
+    db.creatorJourney.findMany({ where: { creatorId: c.id }, orderBy: { publishedAt: 'desc' }, take: 24, select: JOURNEY_CARD }),
+    db.post.findMany({ where: { authorId: c.userId }, orderBy: { publishedAt: 'desc' }, take: 12, select: POST_PUBLIC }),
+  ]);
+  return { stories, journeys, posts };
+}
+
+export const journey = (handle: string, slug: string) => db.creatorJourney.findFirst({
+  where: { slug, creator: { handle: handle.toLowerCase() } },
+  select: {
+    ...JOURNEY_CARD, gear: true, tips: true,
+    creator: { select: CREATOR_CARD },
+    // Only entries whose post is itself public: the role's policy on journey entries checks it.
+    entries: { orderBy: { sortOrder: 'asc' }, select: { dayNumber: true, note: true, post: { select: POST_PUBLIC } } },
+  },
+});
+
+/** Creator pages for article bylines: only authors an editor has put on the website. */
+export async function creatorHandles(userIds: string[]) {
+  if (!userIds.length) return new Map<string, string>();
+  const rows = await db.creatorProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true, handle: true } });
+  return new Map(rows.map((r) => [r.userId, r.handle]));
+}
+
 /** Everything the sitemap lists, with when it last changed. */
 export async function sitemapEntries() {
-  const [arts, gds, biz, dests, cats, iss, evs] = await Promise.all([
+  const [arts, gds, biz, dests, cats, iss, evs, crs, jrs] = await Promise.all([
     db.article.findMany({ where: LIVE_ARTICLE, select: { slug: true, updatedAt: true } }),
     db.routeGuide.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),
     db.business.findMany({ where: { isActive: true, verifiedAt: { not: null } }, select: { slug: true, updatedAt: true } }),
@@ -223,6 +291,8 @@ export async function sitemapEntries() {
     db.category.findMany({ select: { slug: true } }),
     db.issue.findMany({ where: { status: 'PUBLISHED' }, select: { number: true, publishedAt: true } }),
     db.event.findMany({ where: stillOn(), select: { slug: true, updatedAt: true } }),
+    db.creatorProfile.findMany({ select: { handle: true, updatedAt: true } }),
+    db.creatorJourney.findMany({ select: { slug: true, updatedAt: true, creator: { select: { handle: true } } } }),
   ]);
   return [
     ...arts.map((a) => ({ path: `/stories/${a.slug}`, lastmod: a.updatedAt })),
@@ -232,5 +302,7 @@ export async function sitemapEntries() {
     ...cats.map((c) => ({ path: `/stories/section/${c.slug}`, lastmod: null })),
     ...iss.map((i) => ({ path: `/stories/issue/${i.number}`, lastmod: i.publishedAt })),
     ...evs.map((e) => ({ path: `/events/${e.slug}`, lastmod: e.updatedAt })),
+    ...crs.map((c) => ({ path: `/creators/${c.handle}`, lastmod: c.updatedAt })),
+    ...jrs.map((j) => ({ path: `/creators/${j.creator.handle}/${j.slug}`, lastmod: j.updatedAt })),
   ];
 }

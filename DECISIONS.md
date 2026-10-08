@@ -575,3 +575,20 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   `/site/audience` endpoint went with them; partners still see their own figures in their
   monthly report. The wording is Batoma's own and can be changed in `site/src/pages/info.ts`.
 
+## After Phase 3: creators on the website (October 2026)
+
+- **Editors choose who appears.** Approval (admins) still decides who is a creator in the app;
+  `showOnWebsite` (editors and admins, audited) decides who represents Batoma on the website.
+  Their published journeys follow, and editors can hide any one. Featuring moved to the same
+  endpoint so editors can do it too (approving and suspending stay with admins).
+- **Sign-in stays in the app.** The website has no script or cookies, so "Sign in" opens the
+  app's sign-in and lands creators on their panel; "Become a creator" opens on Create an
+  account. Nothing about a session ever reaches the website.
+- **Privacy, checked twice.** Creator profiles and journeys in the app had shown posts still
+  inside their traveller's safety delay, journey entries that moderation had not approved, and
+  exact coordinates even with `hideExactLocation` (on by default for everyone). One helper
+  (`creators/public-post.ts`) now decides, and the website's role enforces the same rules in SQL
+  without ever being granted coordinates or who follows whom (counts come from a view).
+- **What makes it Batoma's own**, said on `/creators/join`: journeys read on the bus on the road
+  they are about, real costs in NPR, bylines in the magazine, a verified profile.
+

@@ -42,6 +42,27 @@ GRANT SELECT ("appName", tagline, "themePalette") ON platform_settings TO batoma
 GRANT SELECT (id, slug, title, "titleNe", summary, description, category, city, venue, address, "destinationId",
   "startsAt", "endsAt", "allDay", "priceLabel", organiser, url, "imageUrl", status, "isFeatured", "publishedAt", "updatedAt")
   ON events TO batoma_site;
+-- Creators an editor has put on the website: their public profile, published journeys and
+-- live posts. Never a post's or a photo's coordinates, never who follows whom.
+GRANT SELECT (id, "userId", handle, "displayName", headline, bio, "avatarUrl", "coverUrl", "homeBase", languages,
+  specialities, "websiteUrl", instagram, youtube, status, "isFeatured", "showOnWebsite", "approvedAt", "updatedAt")
+  ON creator_profiles TO batoma_site;
+GRANT SELECT (id, "creatorId", slug, title, summary, "coverImageUrl", "routeId", "destinationId", "startedOn", "dayCount",
+  "transportNpr", "stayNpr", "foodNpr", "permitsNpr", "otherNpr", gear, tips, status, "onWebsite", "publishedAt", "updatedAt")
+  ON creator_journeys TO batoma_site;
+GRANT SELECT ("journeyId", "postId", "dayNumber", note, "sortOrder") ON creator_journey_posts TO batoma_site;
+GRANT SELECT (id, "authorId", title, body, "coverImageUrl", "locationName", "destinationId", status, moderation,
+  "visibleFrom", "publishedAt") ON posts TO batoma_site;
+GRANT SELECT (id, "postId", url, caption, "sortOrder") ON post_photos TO batoma_site;
+-- Counts only, worked out with the owner's rights: the role never reads follows itself.
+CREATE OR REPLACE VIEW site_creator_stats AS
+  SELECT c.id AS "creatorId",
+    (SELECT count(*) FROM follows f WHERE f."followingId" = c."userId")::int AS followers,
+    (SELECT count(*) FROM posts p WHERE p."authorId" = c."userId" AND p.status = 'PUBLISHED' AND p.moderation = 'APPROVED'
+       AND (p."visibleFrom" IS NULL OR p."visibleFrom" <= now()))::int AS posts,
+    (SELECT count(*) FROM creator_journeys j WHERE j."creatorId" = c.id AND j.status = 'PUBLISHED' AND j."onWebsite")::int AS journeys
+  FROM creator_profiles c WHERE c.status = 'APPROVED' AND c."showOnWebsite";
+GRANT SELECT ON site_creator_stats TO batoma_site;
 -- The only thing the site writes: its own page views, impressions and /go/ clicks.
 GRANT INSERT ON site_events TO batoma_site;
 GRANT USAGE ON SEQUENCE site_events_id_seq TO batoma_site;
@@ -89,6 +110,33 @@ CREATE POLICY site_read ON coupons FOR SELECT TO batoma_site
 ALTER TABLE advertisements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_read ON advertisements;
 CREATE POLICY site_read ON advertisements FOR SELECT TO batoma_site USING ("isActive" AND placement::text LIKE 'WEB\_%');
+
+-- Creators: only those an editor switched on, and what is theirs and public. Each table's own
+-- rows are filtered by its policy, so the subqueries see only visible rows too.
+ALTER TABLE creator_profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON creator_profiles;
+CREATE POLICY site_read ON creator_profiles FOR SELECT TO batoma_site USING (status = 'APPROVED' AND "showOnWebsite");
+
+ALTER TABLE creator_journeys ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON creator_journeys;
+CREATE POLICY site_read ON creator_journeys FOR SELECT TO batoma_site
+  USING (status = 'PUBLISHED' AND "onWebsite" AND "creatorId" IN (SELECT id FROM creator_profiles));
+
+-- A post a traveller delayed for safety stays hidden until its time, as in the app.
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON posts;
+CREATE POLICY site_read ON posts FOR SELECT TO batoma_site
+  USING (status = 'PUBLISHED' AND moderation = 'APPROVED' AND ("visibleFrom" IS NULL OR "visibleFrom" <= now())
+    AND "authorId" IN (SELECT "userId" FROM creator_profiles));
+
+ALTER TABLE post_photos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON post_photos;
+CREATE POLICY site_read ON post_photos FOR SELECT TO batoma_site USING ("postId" IN (SELECT id FROM posts));
+
+ALTER TABLE creator_journey_posts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS site_read ON creator_journey_posts;
+CREATE POLICY site_read ON creator_journey_posts FOR SELECT TO batoma_site
+  USING ("journeyId" IN (SELECT id FROM creator_journeys) AND "postId" IN (SELECT id FROM posts));
 
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS site_read ON events;

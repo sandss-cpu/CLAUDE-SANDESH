@@ -387,6 +387,81 @@ describe('write a trip, and advertise', () => {
   });
 });
 
+describe('creators', () => {
+  test('only creators an editor put on the website appear; their work shows; nothing private does', async () => {
+    const c = await owner.creatorProfile.findFirstOrThrow({ where: { status: 'APPROVED' }, select: { id: true, handle: true, userId: true, showOnWebsite: true } });
+    const journey = await owner.creatorJourney.findFirst({ where: { creatorId: c.id, status: 'PUBLISHED' }, select: { id: true, slug: true } });
+    const delayed = await owner.post.create({ data: {
+      authorId: c.userId, title: `Test delayed post ${Date.now()}`, body: 'Shows tomorrow.', status: 'PUBLISHED', moderation: 'APPROVED',
+      publishedAt: new Date(), visibleFrom: new Date(Date.now() + 86_400_000), latitude: 27.7172, longitude: 85.324, locationName: 'Thamel',
+    } });
+    try {
+      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: false } });
+      purge();
+      assert.equal((await get(`/creators/${c.handle}`)).status, 404);
+      assert.ok(!(await text('/creators')).body.includes(`/creators/${c.handle}"`));
+      // Row-level security, not only the query: the role cannot see a creator who is not on the website.
+      assert.equal(await db.creatorProfile.findFirst({ where: { id: c.id }, select: { id: true } }), null);
+
+      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: true } });
+      purge();
+      const { status, body } = await text(`/creators/${c.handle}`);
+      assert.equal(status, 200);
+      assert.ok((await text('/creators')).body.includes(`/creators/${c.handle}"`));
+      const ld = JSON.parse(body.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)![1]);
+      assert.equal(ld['@type'], 'ProfilePage');
+      assert.equal(ld.mainEntity['@type'], 'Person');
+      assert.ok(!body.includes(delayed.title), 'a post inside its safety delay is not shown');
+      assert.doesNotMatch(body, /27\.7172|85\.324|latitude|longitude/, 'no coordinates anywhere');
+      // The role is not even allowed to read them.
+      await assert.rejects(db.$queryRaw`SELECT latitude FROM posts LIMIT 1`);
+      await assert.rejects(db.$queryRaw`SELECT "followerId" FROM follows LIMIT 1`);
+      if (journey) {
+        assert.ok(body.includes(`/creators/${c.handle}/${journey.slug}`));
+        await owner.creatorJourney.update({ where: { id: journey.id }, data: { onWebsite: false } });
+        purge();
+        assert.equal((await get(`/creators/${c.handle}/${journey.slug}`)).status, 404, 'a journey hidden by an editor');
+        await owner.creatorJourney.update({ where: { id: journey.id }, data: { onWebsite: true } });
+        purge();
+        const page = await text(`/creators/${c.handle}/${journey.slug}`);
+        assert.equal(page.status, 200);
+        assert.match(page.body, /"@type":"Article"/);
+      }
+    } finally {
+      await owner.post.delete({ where: { id: delayed.id } });
+      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: c.showOnWebsite } });
+      purge();
+    }
+  });
+
+  test('Sign in goes to the app, landing creators on their panel; Become a creator opens on Create an account', async () => {
+    const { body } = await text('/');
+    assert.ok(body.includes(`href="${config.appUrl}/login.html?returnTo=creator.html%3Fpanel%3D1"`), 'header sign-in');
+    assert.match(body, /<a href="\/creators"[^>]*>Creators<\/a>/);
+    const join = await text('/creators/join');
+    assert.equal(join.status, 200);
+    assert.ok(join.body.includes(`href="${config.appUrl}/login.html?mode=register&amp;returnTo=creator.html%3Fpanel%3D1"`));
+    assert.match(join.body, /Read on the road you wrote about/);
+  });
+
+  test('a story by a creator on the website links its byline to their page', async () => {
+    const c = await owner.creatorProfile.findFirstOrThrow({ where: { status: 'APPROVED' }, select: { id: true, handle: true, userId: true, showOnWebsite: true } });
+    const art = await owner.article.findFirst({ where: { authorId: c.userId, status: 'PUBLISHED', onWebsite: true }, select: { slug: true } });
+    if (!art) return;
+    await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: true } });
+    try {
+      purge();
+      assert.match((await text(`/stories/${art.slug}`)).body, new RegExp(`By <a href="/creators/${c.handle}">`));
+      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: false } });
+      purge();
+      assert.doesNotMatch((await text(`/stories/${art.slug}`)).body, /href="\/creators\//, 'no link to a page that is not there');
+    } finally {
+      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: c.showOnWebsite } });
+      purge();
+    }
+  });
+});
+
 describe('cache purge', () => {
   test('two changes a moment apart both reach the website; an older signed request does nothing', async () => {
     const sign = (at: string) => createHmac('sha256', config.apiKey).update(`purge\n${at}`).digest('hex');

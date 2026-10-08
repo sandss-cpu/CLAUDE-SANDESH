@@ -10,6 +10,7 @@ import { checkGuards, formToken, forward, overLimit, pick } from './forms';
 import { esc } from './html';
 import { icsFile } from './ics';
 import * as info from './pages/info';
+import { creatorPage, creatorsPage, joinPage, journeyPage } from './pages/creators';
 import { event, events } from './pages/events';
 import { home } from './pages/home';
 import { article, magazine } from './pages/magazine';
@@ -120,6 +121,15 @@ export function createApp() {
   app.get('/deals', (req, res) => serve(req, res, 'deals', deals));
   app.get('/offers/:id', (req, res) => /^[0-9a-f-]{36}$/.test(req.params.id) ? serve(req, res, `offer:${req.params.id}`, () => offer(req.params.id)) : serve(req, res, '404', async () => null));
   app.get('/write', (req, res) => { const sent = req.query.sent === '1'; return serve(req, res, `write:${sent}`, async () => info.write({ sent })); });
+  // Creators an editor has put on the website. Handles are 3–24 of a-z, 0-9 and _.
+  const handleOk = (s: string) => /^[a-z0-9_]{3,24}$/.test(s);
+  app.get('/creators', (req, res) => serve(req, res, 'creators', creatorsPage));
+  app.get('/creators/join', (req, res) => serve(req, res, 'creators:join', async () => joinPage()));
+  app.get('/creators/:handle', (req, res) => handleOk(req.params.handle)
+    ? serve(req, res, `creator:${req.params.handle}`, () => creatorPage(req.params.handle)) : serve(req, res, '404', async () => null));
+  app.get('/creators/:handle/:slug', (req, res) => handleOk(req.params.handle) && slugOk(req.params.slug)
+    ? serve(req, res, `journey:${req.params.handle}:${req.params.slug}`, () => journeyPage(req.params.handle, req.params.slug))
+    : serve(req, res, '404', async () => null));
   app.get('/events', (req, res) => {
     const city = String(req.query.city ?? '').slice(0, 60);
     const month = /^\d{4}-\d{2}$/.test(String(req.query.month ?? '')) ? String(req.query.month) : '';
@@ -304,7 +314,7 @@ export function createApp() {
   });
   app.get('/sitemap.xml', async (_req, res) => {
     const xml = await cached('sitemap', 3600, async () => {
-      const fixed = ['/', '/stories', '/trips', '/events', '/partners', '/deals', '/write', '/advertise', '/about', '/contact', '/newsletter'];
+      const fixed = ['/', '/stories', '/trips', '/events', '/creators', '/creators/join', '/partners', '/deals', '/write', '/advertise', '/about', '/contact', '/newsletter'];
       const rows = [...fixed.map((path) => ({ path, lastmod: null as Date | null })), ...(await data.sitemapEntries())];
       return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.map((r) =>
         `<url><loc>${esc(`${config.siteUrl}${r.path}`)}</loc>${r.lastmod ? `<lastmod>${r.lastmod.toISOString()}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`;

@@ -321,7 +321,7 @@ function panelView(){
   }
   if(!state.dash) return applyForm();
 
-  const { profile, stats, journeys, posts } = state.dash;
+  const { profile, stats, journeys, posts, website } = state.dash;
   const statusPill = profile.status === 'APPROVED' ? '<span class="pill good">Approved</span>'
     : profile.status === 'PENDING' ? '<span class="pill warn">Waiting for Batoma</span>'
     : '<span class="pill bad">Suspended</span>';
@@ -332,6 +332,10 @@ function panelView(){
     ${profile.status === 'SUSPENDED' ? `<div class="error" role="alert">Your profile is suspended.
       ${esc(profile.reviewNote || 'Contact Batoma for details.')}</div>` : ''}
     ${profile.status === 'APPROVED' && profile.reviewNote ? `<div class="ok">${esc(profile.reviewNote)}</div>` : ''}
+    ${website?.shown && website.url ? `<div class="ok" role="status">Your profile is on the Batoma website, with your journeys and stories.
+      <a href="${esc(website.url)}" target="_blank" rel="noopener">View it on the website ↗</a></div>`
+      : profile.status === 'APPROVED' ? `<div class="muted small" style="margin:6px 0 12px">Batoma's editors choose creators for the public
+      website. Keep publishing journeys: real costs, the road you took and good photos are what they look for.</div>` : ''}
 
     <div class="card">
       <div class="panel-head">

@@ -2316,7 +2316,8 @@ async function screenCreators(){
     <div class="top-row"><h2>Creators</h2>
       <a class="btn btn-sm" href="creator.html" target="_blank" rel="noopener">Creator pages ↗</a></div>
     <p class="hint" style="margin:-8px 0 14px">Travellers who applied for a creator profile. Approving one publishes their profile
-      and lets their journeys go live; suspending takes both off the public side.</p>
+      in the app and lets their journeys go live; suspending takes both off the public side. An approved creator appears on the
+      public website only once you choose <strong>Show on website</strong>; their journeys then appear too, and you can hide any one.</p>
     <div class="filters">
       <select aria-label="Filter creators" data-change="setCreatorStatus">
         ${['', 'PENDING', 'APPROVED', 'SUSPENDED'].map((s) =>
@@ -2325,24 +2326,79 @@ async function screenCreators(){
     </div>
     ${!c.items.length ? '<div class="empty">No creator applications yet.</div>' : `
       <div class="table-wrap"><table>
-        <thead><tr><th>Creator</th><th>Account</th><th>About</th><th>Published</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Creator</th><th>Account</th><th>About</th><th>Published</th><th>Status</th><th>Website</th><th></th></tr></thead>
         <tbody>${c.items.map((x) => `
           <tr>
             <td><strong>${esc(x.displayName)}</strong><div class="hint">@${esc(x.handle)}${x.isFeatured ? ' · ★ featured' : ''}</div></td>
             <td>${esc(x.user?.name || '—')}<div class="hint">${esc(x.user?.email || x.user?.phone || '')}</div></td>
             <td>${esc(x.headline || x.bio?.slice(0, 80) || '—')}
               ${x.homeBase ? `<div class="hint">${esc(x.homeBase)}</div>` : ''}</td>
-            <td>${x.journeys} journeys<div class="hint">${x.posts} adventures</div></td>
+            <td>${x.journeys} ${x.journeys === 1 ? 'journey' : 'journeys'}<div class="hint">${x.posts} ${x.posts === 1 ? 'adventure' : 'adventures'}</div></td>
             <td><span class="pill ${CREATOR_STATUS[x.status][1]}">${CREATOR_STATUS[x.status][0]}</span>
               ${x.reviewNote ? `<div class="hint">${esc(x.reviewNote)}</div>` : ''}</td>
+            <td>${x.status !== 'APPROVED' ? '<span class="hint">—</span>' : x.showOnWebsite
+              ? `<span class="pill PUBLISHED">On the website</span>${siteAddress() ? `<div class="hint"><a href="${esc(siteAddress())}/creators/${encodeURIComponent(x.handle)}" target="_blank" rel="noopener">View ↗</a></div>` : ''}`
+              : '<span class="pill DRAFT">Not on the website</span>'}</td>
             <td class="row-actions">
-              ${x.status !== 'APPROVED' ? `<button class="btn btn-sm btn-brand" data-action="reviewCreator" data-id="${x.id}" data-status="APPROVED">Approve</button>` : ''}
+              ${x.status !== 'APPROVED' && isAdmin() ? `<button class="btn btn-sm btn-brand" data-action="reviewCreator" data-id="${x.id}" data-status="APPROVED">Approve</button>` : ''}
+              ${x.status === 'APPROVED' ? `<button class="btn btn-sm ${x.showOnWebsite ? '' : 'btn-primary'}" data-action="creatorWebsite" data-id="${x.id}" data-on="${!x.showOnWebsite}">${x.showOnWebsite ? 'Take off website' : 'Show on website'}</button>` : ''}
+              ${x.status === 'APPROVED' ? `<button class="btn btn-sm" data-action="creatorJourneys" data-id="${x.id}">Journeys</button>` : ''}
               ${x.status === 'APPROVED' ? `<button class="btn btn-sm" data-action="featureCreator" data-id="${x.id}" data-featured="${!x.isFeatured}">${x.isFeatured ? 'Unfeature' : 'Feature'}</button>` : ''}
-              ${x.status === 'PENDING' ? `<button class="btn btn-sm" data-action="reviewCreator" data-id="${x.id}" data-status="SUSPENDED">Refuse</button>` : ''}
-              ${x.status === 'APPROVED' ? `<button class="btn btn-sm btn-danger" data-action="reviewCreator" data-id="${x.id}" data-status="SUSPENDED">Suspend</button>` : ''}
+              ${x.status === 'PENDING' && isAdmin() ? `<button class="btn btn-sm" data-action="reviewCreator" data-id="${x.id}" data-status="SUSPENDED">Refuse</button>` : ''}
+              ${x.status === 'APPROVED' && isAdmin() ? `<button class="btn btn-sm btn-danger" data-action="reviewCreator" data-id="${x.id}" data-status="SUSPENDED">Suspend</button>` : ''}
               ${x.status === 'APPROVED' ? `<a class="btn btn-sm" href="creator.html?handle=${encodeURIComponent(x.handle)}" target="_blank" rel="noopener">View</a>` : ''}
             </td>
-          </tr>`).join('')}</tbody></table></div>`}`;
+          </tr>`).join('')}</tbody></table></div>`}
+    ${c.journeysOf ? creatorJourneysDialog(c.journeysOf) : ''}`;
+}
+
+const isAdmin = () => state.auth?.user?.role === 'ADMIN';
+const siteAddress = () => (window.BATO_CONFIG?.site || '').replace(/\/$/, '');
+
+/** A creator's journeys, each shown on the website or hidden from it. */
+function creatorJourneysDialog({ creator, items }){
+  return `
+    <div class="modal-back" data-action="backdrop" data-closer="closeCreatorJourneys">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cj-title" style="max-width:720px">
+        <h2 id="cj-title">Journeys · @${esc(creator.handle)}</h2>
+        <p class="hint">${creator.showOnWebsite
+          ? 'Published journeys appear on the website with this creator. Hide one to keep it in the app only.'
+          : 'This creator is not on the website yet, so none of these appear there. Choose which will once they are.'}</p>
+        ${!items.length ? '<div class="empty">No journeys yet.</div>' : `<div class="table-wrap"><table style="min-width:0">
+          <thead><tr><th>Journey</th><th>Status</th><th>Website</th><th></th></tr></thead>
+          <tbody>${items.map((j) => `<tr>
+            <td><strong>${esc(j.title)}</strong><div class="hint">${esc(j.route?.name || j.destination?.name || '')}${j.dayCount ? ` · ${j.dayCount} ${j.dayCount === 1 ? 'day' : 'days'}` : ''} · ${j._count.entries} ${j._count.entries === 1 ? 'post' : 'posts'}</div></td>
+            <td><span class="pill ${esc(j.status)}">${esc(j.status.toLowerCase())}</span></td>
+            <td>${j.status !== 'PUBLISHED' ? '<span class="hint">Only published journeys show</span>' : j.onWebsite ? '<span class="pill PUBLISHED">Shown</span>' : '<span class="pill DRAFT">Hidden</span>'}</td>
+            <td>${j.status === 'PUBLISHED' ? `<button class="btn btn-sm" data-action="creatorJourneyWebsite" data-id="${esc(j.id)}" data-on="${!j.onWebsite}">${j.onWebsite ? 'Hide from website' : 'Show on website'}</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table></div>`}
+        <div class="row-actions" style="justify-content:flex-end;margin-top:14px">
+          <button type="button" class="btn btn-ghost" data-action="closeCreatorJourneys">Close</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function openCreatorJourneys(id){
+  const creator = state.creators.items.find((x) => x.id === id);
+  try{ state.creators.journeysOf = { creator, items: await api(`/creators/admin/${id}/journeys`) }; }
+  catch(err){ notify(err.message, 'error'); }
+  renderMain();
+}
+
+/** Editors and admins: put a creator on the public website or take them off. */
+async function creatorWebsite(id, on){
+  const creator = state.creators.items.find((x) => x.id === id);
+  if(!on){
+    const ok = await askDialog({ title: `Take @${creator?.handle} off the website?`, message: 'Their page and journeys leave the website at once. Their profile in the app stays.', confirmLabel: 'Take off', danger: true });
+    if(!ok) return;
+  }
+  try{
+    await api(`/creators/admin/${id}/website`, { method: 'PATCH', body: { showOnWebsite: on } });
+    state.creators.items = await api(`/creators/admin${state.creators.status ? `?status=${state.creators.status}` : ''}`);
+    notify(on ? `@${creator?.handle} is on the website now.` : `@${creator?.handle} is off the website.`);
+  }catch(err){ notify(err.message, 'error'); }
+  renderMain();
 }
 
 async function reviewCreator(id, status){
@@ -2369,8 +2425,11 @@ async function reviewCreator(id, status){
 }
 
 async function featureCreator(id, isFeatured){
+  const creator = state.creators.items.find((x) => x.id === id);
   try{
-    state.creators.items = await api(`/creators/admin/${id}`, { method: 'PATCH', body: { status: 'APPROVED', isFeatured } });
+    // Through the website endpoint, which editors may use too; whether they are on the website is unchanged.
+    await api(`/creators/admin/${id}/website`, { method: 'PATCH', body: { showOnWebsite: !!creator?.showOnWebsite, isFeatured } });
+    state.creators.items = await api(`/creators/admin${state.creators.status ? `?status=${state.creators.status}` : ''}`);
     notify(isFeatured ? 'Featured on the creators page.' : 'No longer featured.');
   }catch(err){ notify(err.message, 'error'); }
   renderMain();
@@ -2532,6 +2591,7 @@ async function openPalettePicker(){
 const CLOSERS = {
   closeArticleForm, closeAdForm, closeGuideForm, closeStops,
   cancelDeleteAd: () => { state.ads.confirmDelete = null; renderMain(); },
+  closeCreatorJourneys: () => { state.creators.journeysOf = null; renderMain(); },
 };
 const nullIfBlank = (v) => v || null;
 
@@ -2603,6 +2663,18 @@ Actions.on({
   // creators
   reviewCreator: (el) => reviewCreator(el.dataset.id, el.dataset.status),
   featureCreator: (el) => featureCreator(el.dataset.id, el.dataset.featured === 'true'),
+  creatorWebsite: (el) => creatorWebsite(el.dataset.id, el.dataset.on === 'true'),
+  creatorJourneys: (el) => openCreatorJourneys(el.dataset.id),
+  closeCreatorJourneys: () => { state.creators.journeysOf = null; renderMain(); },
+  creatorJourneyWebsite: async (el) => {
+    try{
+      await api(`/creators/admin/journeys/${el.dataset.id}/website`, { method: 'PATCH', body: { onWebsite: el.dataset.on === 'true' } });
+      const of = state.creators.journeysOf;
+      if(of) of.items = await api(`/creators/admin/${of.creator.id}/journeys`);
+      notify(el.dataset.on === 'true' ? 'Shown on the website.' : 'Hidden from the website.');
+    }catch(err){ notify(err.message, 'error'); }
+    renderMain();
+  },
 });
 
 Actions.onSubmit({

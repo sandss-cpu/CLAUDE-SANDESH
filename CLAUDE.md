@@ -469,6 +469,17 @@ control panel; the site role sees `PUBLISHED` and `CANCELLED` only, and the page
 event until its last day is over in Kathmandu (`stillOn`). All-day events are stored from
 Kathmandu midnight. Each event page has Event JSON-LD and `/events/<slug>/calendar.ics`.
 
+**Creators on the website** (`site/src/pages/creators.ts`): `/creators`, `/creators/join`,
+`/creators/<handle>`, `/creators/<handle>/<journey>`. A creator appears only when an editor
+sets `CreatorProfile.showOnWebsite` (Creators screen); their published journeys follow unless
+`CreatorJourney.onWebsite` is off. The site role sees those rows, posts that are live (published,
+approved, past `visibleFrom`) by shown creators, and never `latitude`/`longitude` or `follows`;
+follower counts come from the counts-only view `site_creator_stats` (site-role.sql). In the API,
+`creators/public-post.ts` (`livePost`, `isLive`, `publicPost`) is the one rule for what of a post
+is public; profiles and journeys use it (they used to show delayed posts, unmoderated journey
+entries and exact coordinates). The website's "Sign in" opens the app's
+`login.html?returnTo=creator.html?panel=1`; `safeReturn` allows that one simple query.
+
 **Write a trip** posts the story to `/site/stories`. The API makes (or finds) the account by
 email and keeps the story `AWAITING_EMAIL` until the emailed link (`/write/confirm`, a GET page
 whose button POSTs) is followed; that confirms the account, sends a "set a password" email to a

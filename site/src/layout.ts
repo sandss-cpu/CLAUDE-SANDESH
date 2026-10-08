@@ -14,7 +14,7 @@ export interface PageMeta {
   description: string;
   path: string;
   image?: string | null;
-  type?: 'website' | 'article';
+  type?: 'website' | 'article' | 'profile';
   ld?: unknown[];
   noindex?: boolean;
   /** Extra <head> lines made here, such as article dates. */
@@ -22,8 +22,16 @@ export interface PageMeta {
 }
 
 const NAV: Array<[string, string]> = [
-  ['/stories', 'Stories'], ['/trips', 'Trips'], ['/events', 'Events'], ['/partners', 'Partners & deals'], ['/write', 'Write a trip'], ['/advertise', 'Advertise'],
+  ['/stories', 'Stories'], ['/trips', 'Trips'], ['/events', 'Events'], ['/creators', 'Creators'], ['/partners', 'Partners & deals'],
+  ['/write', 'Write a trip'], ['/advertise', 'Advertise'],
 ];
+
+/**
+ * Signing in happens in the app (this site has no script and no cookies). Creators land on
+ * their creator panel; "Become a creator" opens on "Create an account" first.
+ */
+export const signInUrl = `${config.appUrl}/login.html?returnTo=${encodeURIComponent('creator.html?panel=1')}`;
+export const joinUrl = `${config.appUrl}/login.html?mode=register&returnTo=${encodeURIComponent('creator.html?panel=1')}`;
 
 export const absolute = (path: string) => (/^https?:\/\//.test(path) ? path : `${config.siteUrl}${path}`);
 
@@ -66,9 +74,10 @@ ${(meta.ld ?? []).map((d) => jsonLd(d).value).join('\n')}
     <a class="logo" href="/" aria-label="Batoma home">Batoma<span>Nepal travel magazine</span></a>
     <details class="menu">
       <summary aria-label="Menu">Menu</summary>
-      <nav aria-label="Main">${NAV.map(([href, label]) => `<a href="${href}"${current(href) ? ' aria-current="page"' : ''}>${esc(label)}</a>`).join('')}</nav>
+      <nav aria-label="Main">${NAV.map(([href, label]) => `<a href="${href}"${current(href) ? ' aria-current="page"' : ''}>${esc(label)}</a>`).join('')}<a class="nav-signin" href="${esc(signInUrl)}">Sign in</a></nav>
     </details>
     <nav class="wide-nav" aria-label="Main">${NAV.map(([href, label]) => `<a href="${href}"${current(href) ? ' aria-current="page"' : ''}>${esc(label)}</a>`).join('')}</nav>
+    <a class="signin" href="${esc(signInUrl)}">Sign in</a>
   </div>
   <div class="flags" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
 </header>

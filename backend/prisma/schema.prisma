@@ -1337,28 +1337,30 @@ enum CreatorStatus {
 /// their adventures, with the context Instagram leaves out — the route, the days,
 /// what it cost and what they carried.
 model CreatorProfile {
-  id           String        @id @default(uuid())
-  userId       String        @unique
-  handle       String        @unique
-  displayName  String
-  headline     String?
-  bio          String?
-  avatarUrl    String?
-  coverUrl     String?
-  homeBase     String?
-  languages    String[]      @default([])
-  specialities String[]      @default([])
-  websiteUrl   String?
-  instagram    String?
-  youtube      String?
-  status       CreatorStatus @default(PENDING)
-  isFeatured   Boolean       @default(false)
-  approvedAt   DateTime?
-  approvedById String?
+  id            String        @id @default(uuid())
+  userId        String        @unique
+  handle        String        @unique
+  displayName   String
+  headline      String?
+  bio           String?
+  avatarUrl     String?
+  coverUrl      String?
+  homeBase      String?
+  languages     String[]      @default([])
+  specialities  String[]      @default([])
+  websiteUrl    String?
+  instagram     String?
+  youtube       String?
+  status        CreatorStatus @default(PENDING)
+  isFeatured    Boolean       @default(false)
+  /// Shown on the public website: editors and admins decide, one creator at a time.
+  showOnWebsite Boolean       @default(false)
+  approvedAt    DateTime?
+  approvedById  String?
   /// Why an application was refused or an account suspended; shown to the creator.
-  reviewNote   String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  reviewNote    String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   user     User             @relation("CreatorUser", fields: [userId], references: [id], onDelete: Cascade)
   journeys CreatorJourney[]
@@ -1388,6 +1390,8 @@ model CreatorJourney {
   gear          String[]      @default([])
   tips          String?
   status        ContentStatus @default(DRAFT)
+  /// A published journey of a creator shown on the website appears there unless an editor hides it.
+  onWebsite     Boolean       @default(true)
   publishedAt   DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
