@@ -232,6 +232,11 @@ tr:last-child td{border-bottom:none}
 .sec-kind{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim)}
 .site-msg{white-space:pre-wrap;max-width:420px}
 .site-gap{margin-top:16px}
+.ls-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin:6px 0 10px}
+.ls-photo{margin:0;display:flex;flex-direction:column;gap:4px}
+.ls-photo img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--r-sm);background:var(--surface-2)}
+.ls-photo:first-child img{outline:2px solid var(--brand);outline-offset:1px}
+@media (max-width:620px){.modal .site-two{grid-template-columns:1fr}}
 .stat-link{display:block;width:100%;text-align:left;border:none;cursor:pointer;font:inherit;color:inherit}
 .stat-link:hover,.stat-link:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
 .site-cards{align-items:start}

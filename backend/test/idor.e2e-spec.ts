@@ -237,7 +237,7 @@ it("a traveller gets nothing from a partner's own routes", async () => {
 
 it("a bus company owner and a partner get nothing from Batoma's admin routes", async () => {
   // Reporting content (moderation/report) is open to everyone on purpose; the rest is staff only.
-  const adminRoutes = routes.filter((r) => /^\/api\/v1\/(admin\/|fleet\/admin\/|businesses\/admin\/|ads\/admin|qr\/batch|users\/admin|moderation\/(?!report$)|programming\/|magazine\/admin\/|guides\/admin|creators\/admin|events(?:\/|$)|stories\/admin)/.test(r.path));
+  const adminRoutes = routes.filter((r) => /^\/api\/v1\/(admin\/|fleet\/admin\/|businesses\/admin(?:\/|$)|ads\/admin|qr\/batch|users\/admin|moderation\/(?!report$)|programming\/|magazine\/admin\/|guides\/admin|creators\/admin|events(?:\/|$)|stories\/admin)/.test(r.path));
   expect(adminRoutes.length).toBeGreaterThan(20);
   for (const who of ['owner', 'partner']) {
     const failures: string[] = [];

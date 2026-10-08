@@ -12,6 +12,7 @@ import { OptionalAuth, Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PurgeSite } from '../../common/site-purge/site-purge.service';
+import { AdminListingDto, CreateAdminListingDto } from './dto/admin-listing.dto';
 
 @Controller('businesses')
 export class BusinessesController {
@@ -26,6 +27,23 @@ export class BusinessesController {
   /** Verification worklist. Declared before :slug so the literal path wins. */
   @Roles(Role.ADMIN, Role.MODERATOR) @Get('admin/pending-verification')
   pending(@Query() q: BusinessQueryDto) { return this.businesses.verificationQueue(q); }
+
+  // ---- Batoma's admins add and edit listings (control panel: Website → Listings) ----
+
+  @Roles(Role.ADMIN) @Get('admin/:id')
+  adminGet(@Param('id', ParseUUIDPipe) id: string) { return this.businesses.adminGet(id); }
+
+  @PurgeSite()
+  @Roles(Role.ADMIN) @Post('admin')
+  adminCreate(@Body() dto: CreateAdminListingDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.businesses.adminCreate(dto, actorId, ip);
+  }
+
+  @PurgeSite()
+  @Roles(Role.ADMIN) @Patch('admin/:id')
+  adminUpdate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminListingDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.businesses.adminUpdate(id, dto, actorId, ip);
+  }
 
   @Public() @Get(':slug')
   findOne(@Param('slug') slug: string) { return this.businesses.findOne(slug); }

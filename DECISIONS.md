@@ -592,3 +592,19 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
 - **What makes it Batoma's own**, said on `/creators/join`: journeys read on the bus on the road
   they are about, real costs in NPR, bylines in the magazine, a verified profile.
 
+## After Phase 3: adding listings from the control panel (October 2026)
+
+- **Batoma adds listings.** Nothing let a business list itself: creating one needs the
+  partner role, and only an admin can grant it. So Website → Listings has "+ Add listing"
+  and "Edit", for admins, and a business is listed the way Batoma already works with them:
+  someone checks it, then adds it.
+- **Checked at once, or left waiting.** "Batoma has checked this business" is ticked by
+  default because staff usually add a business they have visited. It then needs a note on
+  how it was checked, and goes on the website and in the app straight away. Unticked, it waits
+  under "Waiting for verification" like any other listing. Paid tiers stay with "Change tier…".
+- **The owner is linked by their account email.** The partner area finds listings by owner,
+  so linking an existing account is all it takes for the owner to see enquiries, deals,
+  reviews and the monthly report. Staff and suspended accounts are refused; no account is
+  created on anyone's behalf (they sign up themselves, for free). Empty means Batoma manages it.
+- **Photos are Batoma uploads only**, up to twelve, the first being the cover. The partner
+  area's own listing form now checks this too; before, it accepted any address.

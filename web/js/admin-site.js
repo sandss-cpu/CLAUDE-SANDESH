@@ -12,7 +12,7 @@
    =========================================================================== */
 
 state.site = {
-  tab: 'overview', packages: [], pkgStatus: '', businesses: [], editing: null, pending: null,
+  tab: 'overview', packages: [], pkgStatus: '', businesses: [], editing: null, pending: null, listing: null,
   enquiries: null, enqStatus: 'NEW', enqPage: 1, newsletter: null,
   overview: null, articles: null, artQ: '', artShow: '', artPage: 1, adStatus: '',
 };
@@ -194,11 +194,15 @@ async function siteAds(){
 /** Verification is manual: nothing unverified reaches the website. Then the tier a partner pays for. */
 async function siteListings(){
   const s = state.site;
-  const [pending, list] = await Promise.all([api('/businesses/admin/pending-verification?limit=50'), api('/businesses?limit=100')]);
+  const [pending, list] = await Promise.all([api('/businesses/admin/pending-verification?limit=50'), api('/businesses?limit=100'), loadReferenceData()]);
   s.pending = pending.items || [];
   s.businesses = list.items || [];
   const waiting = new Set(s.pending.map((b) => b.id));
   return `
+    <div class="row-actions" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <p class="hint" style="margin:0;flex:1 1 320px">Add a hotel, homestay, restaurant, agency or any business on the road. Verified listings appear on the website and in the app at once.</p>
+      <button class="btn btn-primary" data-action="siteNewListing">+ Add listing</button>
+    </div>
     <h3>Waiting for verification</h3>
     <p class="hint">Check that the business exists, is where it says, and that the person who listed it runs it. Only then verify it: it then appears on the website and can be sold packages.</p>
     ${!s.pending.length ? '<div class="empty">Nothing waiting.</div>' : `
@@ -210,7 +214,8 @@ async function siteListings(){
           <td>${esc(b.owner?.name || '—')}${b.owner?.phone ? `<br><small>${esc(b.owner.phone)}</small>` : ''}</td>
           <td>${esc(b.phone || '—')}${b.website ? `<br><small>${esc(b.website)}</small>` : ''}${b.latitude != null ? '<br><small>Has a map pin</small>' : ''}</td>
           <td>${esc(dayBoth(b.createdAt))}</td>
-          <td class="row-actions"><button class="btn btn-sm" data-action="siteDocs" data-id="${b.id}" data-name="${esc(b.name)}">Documents</button>
+          <td class="row-actions"><button class="btn btn-sm" data-action="siteEditListing" data-id="${b.id}">Edit</button>
+            <button class="btn btn-sm" data-action="siteDocs" data-id="${b.id}" data-name="${esc(b.name)}">Documents</button>
             <button class="btn btn-sm btn-primary" data-action="siteVerify" data-id="${b.id}" data-name="${esc(b.name)}">Verify…</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
@@ -220,10 +225,87 @@ async function siteListings(){
       <tbody>${s.businesses.map((b) => `<tr>
         <td><strong>${esc(b.name)}</strong><br><small>${esc(BIZ_CATEGORY[b.category] || b.category)}${b.district ? ` · ${esc(b.district)}` : ''}</small></td>
         <td>${waiting.has(b.id) ? '<span class="pill PENDING">Not verified</span>' : `<span class="pill ${b.tier === 'FREE' ? '' : 'ACTIVE'}">${TIER_LABEL[b.tier] || b.tier}</span>`}</td>
-        <td class="row-actions">${waiting.has(b.id) ? '' : `<button class="btn btn-sm" data-action="siteTier" data-id="${b.id}" data-name="${esc(b.name)}" data-tier="${b.tier}">Change tier…</button>`}</td>
+        <td class="row-actions"><button class="btn btn-sm" data-action="siteEditListing" data-id="${b.id}">Edit</button>
+          ${waiting.has(b.id) ? '' : `<button class="btn btn-sm" data-action="siteTier" data-id="${b.id}" data-name="${esc(b.name)}" data-tier="${b.tier}">Change tier…</button>
+          ${newTab(`${SITE_BASE}/partners/${encodeURIComponent(b.slug)}`, 'View')}`}</td>
       </tr>`).join('')}</tbody>
-    </table></div>`;
+    </table></div>
+    ${s.listing ? listingForm(s.listing) : ''}`;
 }
+
+/* ---- adding and editing a listing ---- */
+
+const MAX_LISTING_PHOTOS = 12;
+
+function listingPhotos(urls){
+  return urls.length
+    ? urls.map((u, i) => `<figure class="ls-photo"><img src="${esc(u)}" alt="Photo ${i + 1}">
+        <button type="button" class="btn btn-sm btn-ghost" data-action="siteListingPhotoRemove" data-index="${i}" aria-label="Remove photo ${i + 1}">Remove</button></figure>`).join('')
+    : '<p class="hint">No photos yet. The first is the cover.</p>';
+}
+
+/** One form for a new listing and an existing one: Website → Listings. */
+function listingForm(b){
+  const isNew = !b.id;
+  const v = (k) => esc(b[k] ?? '');
+  const places = state.destinations || [];
+  return `
+    <div class="modal-back" data-action="backdrop" data-closer="siteCloseListing">
+      <form class="modal" role="dialog" aria-modal="true" aria-labelledby="ls-title" data-submit="siteSaveListing" novalidate style="max-width:760px">
+        <h2 id="ls-title">${isNew ? 'Add a listing' : `Edit · ${esc(b.name)}`}</h2>
+        ${isNew ? '<p class="hint">A business travellers can call, visit or book: it gets a page on the website and a place in the app and on the road guides.</p>' : ''}
+        <div class="site-two">
+          <div><label for="ls-name">Name</label><input id="ls-name" required maxlength="160" value="${v('name')}" placeholder="Hilltop Homestay"></div>
+          <div><label for="ls-category">Kind</label>
+            <select id="ls-category">${Object.entries(BIZ_CATEGORY).map(([k, l]) => `<option value="${k}" ${b.category === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+        </div>
+        <label for="ls-desc">About it <small>(optional)</small></label>
+        <textarea id="ls-desc" class="short" rows="4" maxlength="2000" placeholder="What it is, what makes it worth the stop">${v('description')}</textarea>
+        <div class="site-two">
+          <div><label for="ls-place">Place on the website <small>(optional)</small></label>
+            <select id="ls-place"><option value="">None</option>${places.map((pl) => `<option value="${esc(pl.id)}" ${b.destinationId === pl.id ? 'selected' : ''}>${esc(pl.name)}</option>`).join('')}</select></div>
+          <div><label for="ls-district">District <small>(optional)</small></label><input id="ls-district" maxlength="80" value="${v('district')}" placeholder="Tanahun"></div>
+        </div>
+        <label for="ls-address">Address <small>(optional)</small></label>
+        <input id="ls-address" maxlength="200" value="${v('address')}" placeholder="Bazaar street, Bandipur">
+        <div class="site-two">
+          <div><label for="ls-lat">Map pin: latitude <small>(optional)</small></label><input id="ls-lat" inputmode="decimal" value="${v('latitude')}" placeholder="27.9431"></div>
+          <div><label for="ls-lng">Longitude</label><input id="ls-lng" inputmode="decimal" value="${v('longitude')}" placeholder="84.4164"></div>
+        </div>
+        <div class="site-two">
+          <div><label for="ls-phone">Phone <small>(optional)</small></label><input id="ls-phone" type="tel" maxlength="20" value="${v('phone')}" placeholder="9841234567"></div>
+          <div><label for="ls-whatsapp">WhatsApp <small>(optional)</small></label><input id="ls-whatsapp" type="tel" maxlength="20" value="${v('whatsapp')}"></div>
+        </div>
+        <div class="site-two">
+          <div><label for="ls-viber">Viber <small>(optional)</small></label><input id="ls-viber" type="tel" maxlength="20" value="${v('viber')}"></div>
+          <div><label for="ls-website">Website <small>(optional)</small></label><input id="ls-website" type="url" maxlength="300" value="${v('website')}" placeholder="https://"></div>
+        </div>
+        <div class="site-two">
+          <div><label for="ls-price">Price range <small>(optional)</small></label><input id="ls-price" maxlength="60" value="${v('priceRange')}" placeholder="NPR 1,500–4,000"></div>
+          <div><label for="ls-amenities">Amenities <small>(comma between)</small></label><input id="ls-amenities" maxlength="400" value="${esc((b.amenities || []).join(', '))}" placeholder="Wi-Fi, hot water, parking"></div>
+        </div>
+        <label>Photos <small>(up to ${MAX_LISTING_PHOTOS}; the first is the cover)</small></label>
+        <div id="ls-photos" class="ls-photos">${listingPhotos(b.photoUrls || [])}</div>
+        <div class="row-actions"><input type="file" accept="image/*" multiple data-change="siteListingPhotoAdd" aria-label="Add photos"><span id="ls-photo-status" class="hint"></span></div>
+        <label for="ls-owner">Owner's Batoma account <small>(optional)</small></label>
+        <input id="ls-owner" type="email" maxlength="254" value="${esc(b.ownerEmail || '')}" placeholder="owner@example.com" autocomplete="off">
+        <p class="hint">The email the business owner signed up to Batoma with. Linked, they manage this listing in the partner area: enquiries, deals, reviews and their monthly report. Empty: Batoma manages it.</p>
+        ${isNew ? `
+          <label class="check"><input type="checkbox" id="ls-verify" ${b.verify === false ? '' : 'checked'}> Batoma has checked this business (it goes on the website at once)</label>
+          <label for="ls-note">How it was checked</label>
+          <textarea id="ls-note" class="short" rows="2" maxlength="500" placeholder="Visited on 8 October; met the owner, saw the PAN certificate">${esc(b.verificationNote || '')}</textarea>
+          <p class="hint">Unticked, it waits under “Waiting for verification” and is not shown anywhere until verified.</p>` : ''}
+        <div id="ls-error" class="error" role="alert" hidden></div>
+        <div class="row-actions site-gap">
+          <button class="btn btn-primary" type="submit">${isNew ? 'Add listing' : 'Save changes'}</button>
+          <button class="btn btn-ghost" type="button" data-action="siteCloseListing">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+}
+
+function siteCloseListing(){ state.site.listing = null; renderMain(); }
+CLOSERS.siteCloseListing = siteCloseListing;
 
 async function sitePackages(){
   const s = state.site;
@@ -370,6 +452,20 @@ Actions.on({
   },
   siteEditPackage: (el) => { state.site.editing = state.site.packages.find((p) => p.id === el.dataset.id) || null; renderMain(); },
   siteCloseForm: () => { state.site.editing = null; renderMain(); },
+  siteNewListing: () => { state.site.listing = { category: 'HOMESTAY', photoUrls: [], amenities: [], verify: true }; renderMain(); },
+  siteEditListing: async (el) => {
+    try{
+      const b = await api(`/businesses/admin/${el.dataset.id}`);
+      state.site.listing = { ...b, photoUrls: (b.photos || []).map((p) => p.url), ownerEmail: b.owner?.email || '' };
+      renderMain();
+    }catch(err){ notify(err.message, 'error'); }
+  },
+  siteCloseListing: () => siteCloseListing(),
+  siteListingPhotoRemove: (el) => {
+    const l = state.site.listing;
+    l.photoUrls.splice(Number(el.dataset.index), 1);
+    $('#ls-photos').innerHTML = listingPhotos(l.photoUrls);
+  },
   sitePackageReport: async (el) => {
     try{
       const month = new Date(Date.now() + (5 * 60 + 45) * 60_000).toISOString().slice(0, 7);
@@ -442,7 +538,52 @@ Actions.onChange({
   siteEnqStatus: (el) => { state.site.enqStatus = el.value; state.site.enqPage = 1; renderMain(); },
 });
 
+Actions.onChange({
+  // Only the photo strip redraws, so whatever has been typed stays.
+  siteListingPhotoAdd: async (el) => {
+    const l = state.site.listing;
+    const files = [...el.files].slice(0, MAX_LISTING_PHOTOS - l.photoUrls.length);
+    el.value = '';
+    const status = $('#ls-photo-status');
+    if(!files.length){ status.textContent = `Twelve photos at most.`; return; }
+    status.textContent = 'Uploading…';
+    try{
+      const { files: saved, rejectedCount } = await uploadImages(files);
+      l.photoUrls.push(...saved.map((f) => f.url));
+      $('#ls-photos').innerHTML = listingPhotos(l.photoUrls);
+      status.textContent = rejectedCount ? `${rejectedCount} file(s) were not real images and were left out.` : 'Uploaded. Save to keep them.';
+    }catch(err){ status.textContent = err.message; }
+  },
+});
+
 Actions.onSubmit({
+  siteSaveListing: async (form, e) => {
+    e.preventDefault();
+    const l = state.site.listing;
+    const val = (id) => form.querySelector(`#${id}`)?.value.trim() ?? '';
+    const box = form.querySelector('#ls-error');
+    const fail = (m) => { box.textContent = m; box.hidden = false; box.scrollIntoView({ block: 'nearest' }); };
+    const body = {
+      name: val('ls-name'), category: val('ls-category'), description: val('ls-desc'),
+      destinationId: val('ls-place') || null, district: val('ls-district'), address: val('ls-address'),
+      latitude: val('ls-lat'), longitude: val('ls-lng'),
+      phone: val('ls-phone'), whatsapp: val('ls-whatsapp'), viber: val('ls-viber'), website: val('ls-website'),
+      priceRange: val('ls-price'), amenities: val('ls-amenities').split(',').map((a) => a.trim()).filter(Boolean),
+      photoUrls: l.photoUrls, ownerEmail: val('ls-owner'),
+    };
+    if(!body.name) return fail('Give the business a name.');
+    if(!l.id){
+      body.verify = !!form.querySelector('#ls-verify')?.checked;
+      if(body.verify) body.verificationNote = val('ls-note');
+      if(body.verify && body.verificationNote.length < 5) return fail('Say how Batoma checked it, or untick “Batoma has checked this business”.');
+    }
+    try{
+      const saved = await api(l.id ? `/businesses/admin/${l.id}` : '/businesses/admin', { method: l.id ? 'PATCH' : 'POST', body });
+      state.site.listing = null;
+      notify(l.id ? `${saved.name} saved.` : saved.verifiedAt ? `${saved.name} added: it is on the website now.` : `${saved.name} added; it waits for verification.`);
+      renderMain();
+    }catch(err){ fail(err.message); }
+  },
   siteSavePackage: async (form, e) => {
     e.preventDefault();
     const p = state.site.editing;

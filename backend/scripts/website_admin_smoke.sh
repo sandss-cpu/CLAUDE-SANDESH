@@ -3,10 +3,12 @@
 # taking a published article off the website and putting it back (the app keeps it), and
 # featuring it; the website's ads apart from the app's, and a website ad created, paused,
 # resumed and removed, each change reaching the website at once through the page purge.
+# Listings added and edited from the Listings tab: checked ones go on the website at once,
+# unchecked ones wait; an owner's account can be linked so they manage it in the partner area.
 # Staff only: an editor and a bus company owner are refused. Changes are audited.
 #
 # Needs the website running (SITE in backend/.env, default http://localhost:4000).
-# Everything it changes is put back, and the ad it creates is removed.
+# Everything it changes is put back, and the ad and listings it creates are removed.
 #
 #   bash scripts/website_admin_smoke.sh ../../Docs/Bato_Test_Accounts_Phase3.md
 DOC=${1:?"usage: website_admin_smoke.sh path/to/Bato_Test_Accounts.md"}
@@ -116,6 +118,87 @@ else
   settle; page / >/dev/null
   ok "and gone for good" 0 "$(has "$AD_TITLE")"
 fi
+echo "Listings"
+# Added by Batoma from the control panel: checked and verified at once, or left waiting.
+MOD=$(staff_login tester.moderator@bato.test)
+SEED_PW=$(grep -o "BatoDemo#[0-9]*" "$SMOKE_DIR/../prisma/seed.ts" | head -1)
+PARTNER_EMAIL=business-owner@demo.bato.travel
+call POST /auth/email/login "" "{\"email\":\"$PARTNER_EMAIL\",\"password\":\"$SEED_PW\"}" >/dev/null; PARTNER=$(get "data['accessToken']")
+DEST=$(sql "select id from destinations order by name limit 1")
+PHOTOS=$([ -n "$IMG" ] && [ "${IMG#<}" = "$IMG" ] && echo "[\"$IMG\"]" || echo "[]")
+LS_NAME="Smoke Homestay $STAMP"
+listing(){ # name verify owner-email [extra json fields] -> the form as the control panel sends it
+  echo "{\"name\":\"$1\",\"category\":\"HOMESTAY\",\"description\":\"A smoke-test homestay above the bazaar.\",\"destinationId\":\"$DEST\",\"district\":\"Tanahun\",\"address\":\"Bazaar street\",\"latitude\":\"27.9431\",\"longitude\":\"84.4164\",\"phone\":\"9841234567\",\"whatsapp\":\"\",\"viber\":\"\",\"website\":\"\",\"priceRange\":\"NPR 1,500–4,000\",\"amenities\":[\"Wi-Fi\",\" hot water \"],\"photoUrls\":$PHOTOS,\"ownerEmail\":\"$3\",\"verify\":$2,\"verificationNote\":\"Visited by the smoke test\"$4}"
+}
+B=$(listing "$LS_NAME" true "")
+ok "an editor cannot add one" 403 "$(call POST /businesses/admin "$EDITOR" "$B")"
+ok "a moderator cannot" 403 "$(call POST /businesses/admin "$MOD" "$B")"
+ok "a bus company owner cannot" 403 "$(call POST /businesses/admin "$OWNER" "$B")"
+ok "signed out cannot" 401 "$(call POST /businesses/admin "" "$B")"
+[ -n "$PARTNER" ] && ok "a partner cannot" 403 "$(call POST /businesses/admin "$PARTNER" "$B")"
+ok "a photo from elsewhere is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/\"photoUrls\":$PHOTOS/\"photoUrls\":[\"https://example.com/x.jpg\"]}")"
+ok "an owner email with no account is refused" 400 "$(call POST /businesses/admin "$ADMIN" "$(listing "$LS_NAME" true "nobody.$STAMP@example.com")")"
+ok "a staff account as owner is refused" 400 "$(call POST /businesses/admin "$ADMIN" "$(listing "$LS_NAME" true tester.editor@bato.test)")"
+ok "a latitude without a longitude is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/\"longitude\":\"84.4164\"/\"longitude\":\"\"}")"
+ok "verified without saying how is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/Visited by the smoke test/}")"
+ok "an unknown kind is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/HOMESTAY/CASINO}")"
+ok "nothing was added by the refusals" 0 "$(sql "select count(*) from businesses where name='$LS_NAME'")"
+
+ok "an admin adds a checked listing" 201 "$(call POST /businesses/admin "$ADMIN" "$B")"
+LS=$(get "data['id']"); LS_SLUG=$(get "data['slug']")
+ok "it is verified" VERIFIED "$(get "data['tier']")"
+ok "with the date it was checked" true "$(get "bool(data['verifiedAt'])")"
+ok "the map pin is kept" 84.4164 "$(get "data['longitude']")"
+ok "amenities are tidied" "Wi-Fi|hot water" "$(get "'|'.join(data['amenities'])")"
+ok "managed by Batoma (no owner)" None "$(get "data['ownerId']")"
+ok "the control panel reads it back" 200 "$(call GET "/businesses/admin/$LS" "$ADMIN")"
+ok "with its photos" "$([ "$PHOTOS" = "[]" ] && echo 0 || echo 1)" "$(get "len(data['photos'])")"
+ok "an editor cannot read it there" 403 "$(call GET "/businesses/admin/$LS" "$EDITOR")"
+ok "the addition is audited" 1 "$(sql "select count(*) from audit_events where action='business.create' and \"entityId\"='$LS' and summary like '%verified, managed by Batoma' and \"createdAt\" >= '$START'")"
+settle
+ok "its page is on the website" 200 "$(page "/partners/$LS_SLUG")"
+ok "with its name" 1 "$(has "<title>$LS_NAME · Batoma</title>")"
+page /partners >/dev/null
+ok "and in the partners list" 1 "$(has "/partners/$LS_SLUG\"")"
+
+B=$(listing "$LS_NAME (edited)" true "" ",\"priceRange\":\"NPR 2,000\"")
+ok "an editor cannot change it" 403 "$(call PATCH "/businesses/admin/$LS" "$EDITOR" "$B")"
+ok "an admin edits it" 200 "$(call PATCH "/businesses/admin/$LS" "$ADMIN" "$B")"
+ok "the slug stays, so links keep working" "$LS_SLUG" "$(get "data['slug']")"
+settle; page "/partners/$LS_SLUG" >/dev/null
+ok "the website shows the change" 1 "$(has "<title>$LS_NAME (edited) · Batoma</title>")"
+B=$(listing "$LS_NAME" true "" ",\"latitude\":\"\",\"longitude\":\"\",\"phone\":\"\"")
+ok "emptied fields are cleared" 200 "$(call PATCH "/businesses/admin/$LS" "$ADMIN" "$B")"
+ok "the map pin is gone" "None None None" "$(get "f\"{data['latitude']} {data['longitude']} {data['phone']}\"")"
+ok "an unknown listing is a 404" 404 "$(call PATCH "/businesses/admin/00000000-0000-4000-8000-000000000000" "$ADMIN" "$B")"
+
+if [ -n "$PARTNER" ]; then
+  B=$(listing "$LS_NAME" true "$PARTNER_EMAIL")
+  ok "linked to its owner's account" 200 "$(call PATCH "/businesses/admin/$LS" "$ADMIN" "$B")"
+  call GET /businesses/mine "$PARTNER" >/dev/null
+  ok "the owner manages it in the partner area" true "$(get "any(b['id'] == '$LS' for b in data)")"
+  ok "the owner change is audited" 1 "$(sql "select count(*) from audit_events where action='business.update' and \"entityId\"='$LS' and summary like '%owner now $PARTNER_EMAIL' and \"createdAt\" >= '$START'")"
+  B=$(listing "$LS_NAME" true "")
+  ok "unlinked again" 200 "$(call PATCH "/businesses/admin/$LS" "$ADMIN" "$B")"
+  call GET /businesses/mine "$PARTNER" >/dev/null
+  ok "and gone from the partner area" false "$(get "any(b['id'] == '$LS' for b in data)")"
+else
+  echo "  skip  the demo partner could not sign in: owner linking not checked"
+fi
+
+B=$(listing "$LS_NAME waiting" false "")
+ok "a listing can be added unchecked" 201 "$(call POST /businesses/admin "$ADMIN" "$B")"
+LS2=$(get "data['id']"); LS2_SLUG=$(get "data['slug']")
+ok "it is not verified" "FREE None" "$(get "f\"{data['tier']} {data['verifiedAt']}\"")"
+call GET '/businesses/admin/pending-verification?limit=50' "$ADMIN" >/dev/null
+ok "it waits for verification" true "$(get "any(b['id'] == '$LS2' for b in data['items'])")"
+settle
+ok "and is not on the website" 404 "$(page "/partners/$LS2_SLUG")"
+ok "the website's role cannot read it" 0 "$(sql "set role batoma_site; select count(*) from businesses where id='$LS2'" | tail -1)"
+
+# Remove both smoke listings.
+sql "delete from business_photos where \"businessId\" in ('$LS','$LS2'); delete from businesses where id in ('$LS','$LS2')" >/dev/null
+ok "the smoke listings are removed" 0 "$(sql "select count(*) from businesses where name like 'Smoke Homestay $STAMP%'")"
 # The picture this run uploaded, in every size, if the API keeps pictures on this disk.
 if [ -n "$UPLOADED" ]; then NAME=${UPLOADED##*/}; rm -f "$SMOKE_DIR/../uploads/${NAME:0:36}"-*.webp; fi
 

@@ -45,7 +45,7 @@ agencies, and a public website that markets the magazine and its partners.
   slots, counted partner links, double opt-in newsletter, monthly partner reports; Lighthouse
   99/100/100/100 on phones.
 - **Partner area** for listed businesses, and partner packages, an enquiry inbox and
-  listing verification in the control panel.
+  adding, editing and verifying listings in the control panel.
 - **Security to OWASP ASVS Level 2**: see [SECURITY.md](SECURITY.md).
 
 ### For travellers
@@ -273,6 +273,7 @@ Every successful response is wrapped as `{ "success": true, "data": ... }`.
 | `/fleet/companies/:cid/income…`, `/fleet/buses/:id/income/:date` | Income records, imports, reports |
 | `/fleet/companies/:id/documents`, `/businesses/:id/documents`, `/admin/verification-documents` | Verification documents (private) |
 | `/businesses/:id/leads`, `…/report(.csv|.pdf)`, `…/coupons`, `coupons/:id/end` | Partner area |
+| `/businesses/admin`, `/businesses/admin/:id` | Listings added, read back and edited in the control panel (admins); verified at once or left waiting, with an optional owner account |
 | `/site/*` | The website's forms, with its key only: enquiries, leads, newsletter, `stories` and `stories/confirm` |
 | `/events` | Events for the website (editors): `admin`, `admin/:id`, create, edit, delete |
 | `/stories/admin` | Stories sent from the website (editors): list, read, `:id/feature`, `:id/decline` |

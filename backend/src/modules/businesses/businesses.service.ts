@@ -1,8 +1,12 @@
 import {
   BadRequestException, ForbiddenException, Injectable, NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { BusinessTier, ModerationStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { isOwnMediaUrl } from '../../common/utils/media.util';
+import { normaliseEmail } from '../auth/dto/auth.dto';
+import { AdminListingDto, CreateAdminListingDto } from './dto/admin-listing.dto';
 import { AuditService } from '../../common/audit/audit.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { couponCode, uniqueSlug } from '../../common/utils/slug.util';
@@ -18,7 +22,13 @@ const TIER_RANK: Record<BusinessTier, number> = {
 
 @Injectable()
 export class BusinessesService {
-  constructor(private prisma: PrismaService, private audit: AuditService) {}
+  constructor(private prisma: PrismaService, private audit: AuditService, private config: ConfigService) {}
+
+  /** Listing photos are uploads made through Batoma, never pictures from elsewhere on the web. */
+  private assertMedia(urls: string[] | null | undefined) {
+    const base = this.config.get<string>('MEDIA_BASE_URL') ?? '';
+    if ((urls ?? []).some((u) => !isOwnMediaUrl(u, base))) throw new BadRequestException('Upload the photos through Batoma.');
+  }
 
   // ---------- discovery ----------
 
@@ -164,7 +174,111 @@ export class BusinessesService {
 
   // ---------- listing management ----------
 
+  // Batoma's admins add and edit listings in the control panel (Website → Listings). The
+  // partner area finds a listing by its owner account, so linking the owner by email is
+  // what lets the business manage it themselves; with no owner, Batoma manages it.
+
+  async adminGet(id: string) {
+    const b = await this.prisma.business.findUnique({
+      where: { id },
+      include: {
+        photos: { orderBy: { sortOrder: 'asc' }, select: { url: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        destination: { select: { id: true, name: true } },
+      },
+    });
+    if (!b) throw new NotFoundException('Listing not found');
+    return b;
+  }
+
+  async adminCreate(dto: CreateAdminListingDto, actorId: string, ip?: string) {
+    const { photos, owner, ...data } = await this.adminData(dto);
+    const slug = await uniqueSlug(dto.name, async (s) => !!(await this.prisma.business.findUnique({ where: { slug: s }, select: { id: true } })));
+    const verified = dto.verify;
+    return this.prisma.$transaction(async (tx) => {
+      const b = await tx.business.create({
+        data: {
+          ...data, slug, ownerId: owner?.id ?? null,
+          tier: verified ? BusinessTier.VERIFIED : BusinessTier.FREE,
+          verifiedAt: verified ? new Date() : null, verifiedBy: verified ? actorId : null,
+          verificationNote: verified ? dto.verificationNote ?? null : null,
+          photos: photos.length ? { create: photos.map((url, i) => ({ url, sortOrder: i })) } : undefined,
+        },
+        include: { photos: true },
+      });
+      await this.audit.record({
+        actorId, ip, action: 'business.create', entityType: 'Business', entityId: b.id,
+        summary: `Added the listing ${b.name}${verified ? ', verified' : ', waiting for verification'}${owner ? `, owned by ${owner.email}` : ', managed by Batoma'}`,
+        after: { ...b, photos: photos.length },
+      }, tx);
+      return b;
+    });
+  }
+
+  async adminUpdate(id: string, dto: AdminListingDto, actorId: string, ip?: string) {
+    const before = await this.prisma.business.findUnique({
+      where: { id }, include: { owner: { select: { email: true } }, photos: { select: { url: true } } },
+    });
+    if (!before) throw new NotFoundException('Listing not found');
+    // Photos it already has may stay, wherever they came from; new ones must be Batoma uploads.
+    const { photos, owner, ...data } = await this.adminData(dto, before.photos.map((p) => p.url));
+    return this.prisma.$transaction(async (tx) => {
+      await tx.businessPhoto.deleteMany({ where: { businessId: id } });
+      const b = await tx.business.update({
+        where: { id },
+        data: {
+          ...data, ownerId: owner?.id ?? null,
+          photos: photos.length ? { create: photos.map((url, i) => ({ url, sortOrder: i })) } : undefined,
+        },
+        include: { photos: true },
+      });
+      const ownerChange = (before.owner?.email ?? null) !== (owner?.email ?? null)
+        ? `; owner ${owner ? `now ${owner.email}` : 'removed: Batoma manages it'}` : '';
+      const { owner: _o, photos: beforePhotos, ...beforeRow } = before;
+      await this.audit.record({
+        actorId, ip, action: 'business.update', entityType: 'Business', entityId: id,
+        summary: `Edited the listing ${b.name}${ownerChange}`, before: { ...beforeRow, photos: beforePhotos.length }, after: { ...b, photos: photos.length },
+      }, tx);
+      return b;
+    });
+  }
+
+  /** Checks a listing form: photos uploaded through Batoma, a real place, both map numbers or neither, a real owner. */
+  private async adminData(dto: AdminListingDto, kept: string[] = []) {
+    const photos = dto.photoUrls ?? [];
+    this.assertMedia(photos.filter((u) => !kept.includes(u)));
+    if ((dto.latitude == null) !== (dto.longitude == null)) {
+      throw new BadRequestException('Give both the latitude and the longitude for the map pin, or neither.');
+    }
+    if (dto.destinationId && !(await this.prisma.destination.findUnique({ where: { id: dto.destinationId }, select: { id: true } }))) {
+      throw new BadRequestException('That place no longer exists. Choose another.');
+    }
+    let owner: { id: string; email: string } | null = null;
+    if (dto.ownerEmail) {
+      const user = await this.prisma.user.findUnique({
+        where: { email: normaliseEmail(dto.ownerEmail) }, select: { id: true, email: true, role: true, isSuspended: true },
+      });
+      if (!user) throw new BadRequestException('No Batoma account uses that email. Ask the owner to create one (it is free), then link it here.');
+      if (user.isSuspended) throw new BadRequestException('That account is suspended, so it cannot manage a listing.');
+      if (user.role === Role.ADMIN || user.role === Role.EDITOR || user.role === Role.MODERATOR) {
+        throw new BadRequestException("That is a Batoma staff account. Link the business's own account, or leave the owner empty.");
+      }
+      owner = { id: user.id, email: user.email! };
+    }
+    return {
+      photos, owner,
+      name: dto.name, category: dto.category, description: dto.description ?? null,
+      destinationId: dto.destinationId ?? null, district: dto.district ?? null, address: dto.address ?? null,
+      latitude: dto.latitude ?? null, longitude: dto.longitude ?? null,
+      phone: dto.phone ?? null, whatsapp: dto.whatsapp ?? null, viber: dto.viber ?? null, website: dto.website ?? null,
+      priceRange: dto.priceRange ?? null,
+      amenities: (dto.amenities ?? []).map((a) => a.trim()).filter(Boolean),
+      ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+    };
+  }
+
   async create(dto: CreateBusinessDto, ownerId: string) {
+    this.assertMedia(dto.photoUrls);
     const slug = await uniqueSlug(dto.name, async (s) =>
       !!(await this.prisma.business.findUnique({ where: { slug: s }, select: { id: true } })),
     );
@@ -197,6 +311,7 @@ export class BusinessesService {
 
   async update(id: string, dto: UpdateBusinessDto, userId: string, role: Role) {
     await this.assertOwner(id, userId, role);
+    this.assertMedia(dto.photoUrls);
 
     if (dto.photoUrls) {
       await this.prisma.businessPhoto.deleteMany({ where: { businessId: id } });
