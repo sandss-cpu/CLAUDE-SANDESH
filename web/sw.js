@@ -5,7 +5,7 @@
  * shell and the route content pack are cached at the bus park while a
  * connection still exists. Nothing here should ever require the network.
  */
-const SHELL_CACHE = 'bato-shell-v22';
+const SHELL_CACHE = 'bato-shell-v23';
 const CONTENT_CACHE = 'bato-content-v1';
 const IMAGE_CACHE = 'bato-images-v1';
 

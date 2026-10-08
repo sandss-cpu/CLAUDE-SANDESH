@@ -1,9 +1,10 @@
 import { Transform } from 'class-transformer';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsEnum, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, IsUUID,
+  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, IsUUID,
   Length, Matches, MaxLength, ValidateIf,
 } from 'class-validator';
 import { BusinessCategory } from '@prisma/client';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 /** The whole form is sent on every save, so an empty optional field clears it. */
@@ -67,9 +68,6 @@ export class AdminListingDto {
   /** The business owner's Batoma account, so they can manage the listing in the partner area. Empty: Batoma manages it. */
   @blankToNull() @trim() @IsOptional() @IsEmail({}, { message: "Give the owner's account email, or leave it empty" })
   ownerEmail?: string | null;
-
-  @IsOptional() @IsBoolean()
-  isActive?: boolean;
 }
 
 /** Adding one: Batoma usually checked the business already, so it can be verified at once. */
@@ -80,4 +78,20 @@ export class CreateAdminListingDto extends AdminListingDto {
   @ValidateIf((o) => o.verify === true)
   @trim() @IsString() @Length(5, 500, { message: 'Say how Batoma checked it (5–500 characters)' })
   verificationNote?: string;
+}
+
+/** Every listing, shown or hidden, for the Listings tab. */
+export class AdminListingQueryDto extends PaginationDto {
+  @IsOptional() @IsIn(['on', 'off'])
+  show?: 'on' | 'off';
+}
+
+/** Hiding needs a reason (it goes in the audit log); showing it again does not. */
+export class ListingVisibilityDto {
+  @IsBoolean()
+  shown: boolean;
+
+  @ValidateIf((o) => o.shown === false)
+  @trim() @IsString() @Length(5, 300, { message: 'Say why it is hidden (5–300 characters)' })
+  reason?: string;
 }

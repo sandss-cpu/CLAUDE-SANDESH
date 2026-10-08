@@ -18,7 +18,7 @@ repository root. When a decision here seems arbitrary, the spec usually explains
 | `backend/` | NestJS 11 (Express 5) + Prisma 5 + PostgreSQL |
 | `web/index.html` + `web/js/reader.js` | Installable reader PWA, opened at `/b/<code>` from a bus sticker. Offline-first. Markup handlers go through `web/js/actions.js` |
 | `web/login.html` | Email / phone sign-in, sign-up, password reset, email-link landing |
-| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (overview, which articles the website carries, website ads, listings (add, edit, verify, tier), partner packages, enquiries, newsletter) is `web/js/admin-site.js`; Events is `web/js/admin-events.js`; Story submissions is `web/js/admin-stories.js`. Each later file adds its own menu entry; `admin.js` boots on DOMContentLoaded so they are all in the first menu |
+| `web/admin.html` | Control panel: articles, issues, ads, bus companies, moderation, users, overview. Route programming is `web/js/admin-programming.js`; the Website screen (overview, which articles the website carries, website ads, listings (add, edit, verify, tier, hide, remove), partner packages, enquiries, newsletter) is `web/js/admin-site.js`; Events is `web/js/admin-events.js`; Story submissions is `web/js/admin-stories.js`. Each later file adds its own menu entry; `admin.js` boots on DOMContentLoaded so they are all in the first menu |
 | `web/bus.html` | Public bus page: search, bus QR landing, rating, reviews, review form |
 | `web/creator.html` | Creator directory, public profiles, journeys, and the creator's own panel |
 | `web/business.html` + `web/js/business.js` | Partner area for business owners: enquiries, deals, reviews, monthly report, listing. Signs in through `login.html` and shares the reader's `bato.auth` session |
@@ -68,7 +68,7 @@ bash scripts/qr_smoke.sh ../Bato_Test_Accounts.md            # one QR per bus, s
 bash scripts/appraisal_smoke.sh ../Bato_Test_Accounts.md     # scorecards, appraisals, crew disputes, cross-company 404s
 bash scripts/income_smoke.sh ../Bato_Test_Accounts.md        # income records; puts the owner and company back as they were
 bash scripts/site_smoke.sh ../Bato_Test_Accounts.md          # website forms, newsletter, partner area and report, packages, verification
-bash scripts/website_admin_smoke.sh ../Bato_Test_Accounts.md # Website screen: articles on/off the website, website ads, listings added and edited, each reaching the site (API and site running)
+bash scripts/website_admin_smoke.sh ../Bato_Test_Accounts.md # Website screen: articles on/off the website, website ads, listings added, edited, hidden and removed, each reaching the site (API and site running)
 bash scripts/website_content_smoke.sh ../Bato_Test_Accounts.md # events (drafts hidden, cancelled marked, calendar files) and stories from Write a trip (API and site running)
 npm run db:site-role           # after every migration: the website's read-only role, grants and row-level security
 npm run fields:encrypt         # after the step 10 migration, after seeding, and after adding a key: encrypts personal fields
@@ -359,6 +359,14 @@ by killing whatever `lsof -ti :3000` returns.
   it in the partner area, which finds listings by `ownerId` alone; empty means Batoma manages
   it. The form sends every field on each save, so an empty field clears it, and the photos
   are replaced as a set. The slug never changes on an edit, so links keep working
+- **Hidden is `isActive = false`, the same switch moderation uses after an upheld report.**
+  A hidden listing is off the website (row-level security), the app's list and detail, the
+  QR corridor, deals (claims refused) and road-guide and itinerary stops (`withShownBusiness`
+  drops the link, the stop stays). Its owner and admins still read it through
+  `GET /businesses/:slug` (optional auth), so the partner area keeps working. **Remove for
+  good** (`DELETE /businesses/admin/:id`) is refused with 409 unless the listing has no
+  enquiries, reviews, deals, packages, payments, documents or paid routes and nothing links to
+  it (ads, sponsored stories, guide or itinerary stops): deleting would cascade or orphan them
 - **Route targeting is paid-only** and is deleted on downgrade
 - **Solo-traveller privacy**: `hideExactLocation` fuzzes published coordinates to
   ~1.1 km for everyone but the author; `publishDelayHours` can hold a geotagged post

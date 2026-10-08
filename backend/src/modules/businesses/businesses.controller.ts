@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, DefaultValuePipe, Get, Ip, Param, ParseEnumPipe, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
+  BadRequestException, Body, Controller, DefaultValuePipe, Delete, Get, Ip, Param, ParseEnumPipe, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { BusinessTier, Role } from '@prisma/client';
@@ -12,7 +12,7 @@ import { OptionalAuth, Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PurgeSite } from '../../common/site-purge/site-purge.service';
-import { AdminListingDto, CreateAdminListingDto } from './dto/admin-listing.dto';
+import { AdminListingDto, AdminListingQueryDto, CreateAdminListingDto, ListingVisibilityDto } from './dto/admin-listing.dto';
 
 @Controller('businesses')
 export class BusinessesController {
@@ -28,7 +28,10 @@ export class BusinessesController {
   @Roles(Role.ADMIN, Role.MODERATOR) @Get('admin/pending-verification')
   pending(@Query() q: BusinessQueryDto) { return this.businesses.verificationQueue(q); }
 
-  // ---- Batoma's admins add and edit listings (control panel: Website → Listings) ----
+  // ---- Batoma's admins add, edit, hide and remove listings (control panel: Website → Listings) ----
+
+  @Roles(Role.ADMIN) @Get('admin')
+  adminList(@Query() q: AdminListingQueryDto) { return this.businesses.adminList(q); }
 
   @Roles(Role.ADMIN) @Get('admin/:id')
   adminGet(@Param('id', ParseUUIDPipe) id: string) { return this.businesses.adminGet(id); }
@@ -45,8 +48,21 @@ export class BusinessesController {
     return this.businesses.adminUpdate(id, dto, actorId, ip);
   }
 
-  @Public() @Get(':slug')
-  findOne(@Param('slug') slug: string) { return this.businesses.findOne(slug); }
+  @PurgeSite() @Roles(Role.ADMIN) @Patch('admin/:id/visibility')
+  adminVisibility(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ListingVisibilityDto, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.businesses.adminSetVisibility(id, dto, actorId, ip);
+  }
+
+  @PurgeSite() @Roles(Role.ADMIN) @Delete('admin/:id')
+  adminRemove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string, @Ip() ip: string) {
+    return this.businesses.adminRemove(id, actorId, ip);
+  }
+
+  /** Public; signed in, the owner and admins also see it while it is hidden (the partner area). */
+  @OptionalAuth() @Get(':slug')
+  findOne(@Param('slug') slug: string, @CurrentUser() u?: AuthUser) {
+    return this.businesses.findOne(slug, u ? { id: u.id, role: u.role as Role } : undefined);
+  }
 
   @Roles(Role.BUSINESS_OWNER, Role.ADMIN) @Post()
   create(@Body() dto: CreateBusinessDto, @CurrentUser('id') userId: string) {

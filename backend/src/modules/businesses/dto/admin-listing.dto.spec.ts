@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { AdminListingDto, CreateAdminListingDto } from './admin-listing.dto';
+import { AdminListingDto, AdminListingQueryDto, CreateAdminListingDto, ListingVisibilityDto } from './admin-listing.dto';
 
 const check = <T extends object>(cls: new () => T, plain: Record<string, unknown>) => {
   // The same conversion the API's ValidationPipe uses (app.setup.ts).
@@ -59,5 +59,23 @@ describe('CreateAdminListingDto', () => {
     expect(check(CreateAdminListingDto, { ...base, verify: true }).errors).toContain('verificationNote');
     expect(check(CreateAdminListingDto, { ...base, verify: true, verificationNote: ' ok ' }).errors).toContain('verificationNote');
     expect(check(CreateAdminListingDto, { ...base, verify: true, verificationNote: 'Visited; saw the PAN certificate' }).errors).toEqual([]);
+  });
+});
+
+describe('ListingVisibilityDto', () => {
+  it('hiding needs a reason; showing again does not', () => {
+    expect(check(ListingVisibilityDto, { shown: false }).errors).toContain('reason');
+    expect(check(ListingVisibilityDto, { shown: false, reason: ' no ' }).errors).toContain('reason');
+    expect(check(ListingVisibilityDto, { shown: false, reason: 'Closed for the monsoon' }).errors).toEqual([]);
+    expect(check(ListingVisibilityDto, { shown: true }).errors).toEqual([]);
+    expect(check(ListingVisibilityDto, {}).errors).toContain('shown');
+  });
+});
+
+describe('AdminListingQueryDto', () => {
+  it('shows all, shown or hidden listings, and nothing else', () => {
+    expect(check(AdminListingQueryDto, { show: 'off', page: '2' }).dto).toMatchObject({ show: 'off', page: 2 });
+    expect(check(AdminListingQueryDto, {}).errors).toEqual([]);
+    expect(check(AdminListingQueryDto, { show: 'deleted' }).errors).toContain('show');
   });
 });

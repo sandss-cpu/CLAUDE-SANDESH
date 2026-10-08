@@ -1,12 +1,12 @@
 import {
-  BadRequestException, ForbiddenException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BusinessTier, ModerationStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isOwnMediaUrl } from '../../common/utils/media.util';
 import { normaliseEmail } from '../auth/dto/auth.dto';
-import { AdminListingDto, CreateAdminListingDto } from './dto/admin-listing.dto';
+import { AdminListingDto, AdminListingQueryDto, CreateAdminListingDto, ListingVisibilityDto } from './dto/admin-listing.dto';
 import { AuditService } from '../../common/audit/audit.service';
 import { paged } from '../../common/dto/pagination.dto';
 import { couponCode, uniqueSlug } from '../../common/utils/slug.util';
@@ -19,6 +19,32 @@ import {
 const TIER_RANK: Record<BusinessTier, number> = {
   PREMIUM: 4, FEATURED: 3, VERIFIED: 2, FREE: 1,
 };
+
+/** What a listing builds up, and what links to it: a listing with any of these is hidden, never removed. */
+const LISTING_HISTORY = {
+  leads: true, reviews: true, coupons: true, packages: true, subscriptionEvents: true, documents: true,
+  routeTargets: true, advertisements: true, sponsoredArticles: true, guideStops: true, itineraryStops: true,
+} satisfies Prisma.BusinessCountOutputTypeSelect;
+
+const HISTORY_WORDS: Array<[keyof typeof LISTING_HISTORY, string, string]> = [
+  ['leads', 'enquiry or call', 'enquiries and calls'], ['reviews', 'review', 'reviews'], ['coupons', 'deal', 'deals'],
+  ['packages', 'partner package', 'partner packages'], ['subscriptionEvents', 'payment record', 'payment records'],
+  ['documents', 'verification document', 'verification documents'], ['routeTargets', 'paid route', 'paid routes'],
+];
+const LINK_WORDS: Array<[keyof typeof LISTING_HISTORY, string, string]> = [
+  ['advertisements', 'ad', 'ads'], ['sponsoredArticles', 'sponsored story', 'sponsored stories'],
+  ['guideStops', 'road-guide stop', 'road-guide stops'], ['itineraryStops', 'trip-plan stop', 'trip-plan stops'],
+];
+const andList = (parts: string[]) => (parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`);
+const counted = (n: Record<string, number>, words: typeof HISTORY_WORDS) =>
+  words.filter(([k]) => n[k] > 0).map(([k, one, many]) => `${n[k]} ${n[k] === 1 ? one : many}`);
+
+/** "has 3 enquiries and calls and 1 review, and is linked from 1 ad", or '' when there is nothing. */
+export function historyText(n: Record<string, number>) {
+  const has = counted(n, HISTORY_WORDS);
+  const linked = counted(n, LINK_WORDS);
+  return [has.length ? `has ${andList(has)}` : '', linked.length ? `is linked from ${andList(linked)}` : ''].filter(Boolean).join(', and ');
+}
 
 @Injectable()
 export class BusinessesService {
@@ -123,12 +149,13 @@ export class BusinessesService {
   /**
    * A public listing. Fields are listed rather than spread from the row, because the
    * row also holds the owner's account id and the admin's private verification note;
-   * a switched-off listing is not public at all.
+   * a hidden listing is not public at all: only its owner (partner area) and admins see it.
    */
-  async findOne(slug: string) {
-    const b = await this.prisma.business.findFirst({
-      where: { slug, isActive: true },
+  async findOne(slug: string, viewer?: { id: string; role: Role }) {
+    const found = await this.prisma.business.findFirst({
+      where: { slug, ...(viewer ? {} : { isActive: true }) },
       select: {
+        ownerId: true, isActive: true,
         id: true, slug: true, name: true, category: true, description: true,
         district: true, address: true, latitude: true, longitude: true,
         phone: true, whatsapp: true, viber: true, website: true, priceRange: true,
@@ -154,7 +181,10 @@ export class BusinessesService {
         },
       },
     });
-    if (!b) throw new NotFoundException('Business not found');
+    if (!found || (!found.isActive && found.ownerId !== viewer?.id && viewer?.role !== Role.ADMIN)) {
+      throw new NotFoundException('Business not found');
+    }
+    const { ownerId: _owner, ...b } = found;
 
     const agg = await this.prisma.review.aggregate({
       where: { businessId: b.id, moderation: ModerationStatus.APPROVED },
@@ -243,6 +273,73 @@ export class BusinessesService {
     });
   }
 
+  /** Every listing, shown or hidden, with what it has built up (so the panel knows which can be removed for good). */
+  async adminList(q: AdminListingQueryDto) {
+    const where: Prisma.BusinessWhereInput = {
+      ...(q.show === 'on' ? { isActive: true } : q.show === 'off' ? { isActive: false } : {}),
+      ...(q.q?.trim() ? { OR: [
+        { name: { contains: q.q.trim(), mode: 'insensitive' } },
+        { district: { contains: q.q.trim(), mode: 'insensitive' } },
+      ] } : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.business.findMany({
+        where, orderBy: [{ name: 'asc' }], skip: q.skip, take: q.take,
+        select: {
+          id: true, slug: true, name: true, category: true, district: true, tier: true,
+          verifiedAt: true, isActive: true, updatedAt: true,
+          owner: { select: { email: true } },
+          _count: { select: LISTING_HISTORY },
+        },
+      }),
+      this.prisma.business.count({ where }),
+    ]);
+    return paged(rows.map(({ _count, ...b }) => ({ ...b, history: historyText(_count), removable: !historyText(_count) })), total, q);
+  }
+
+  /** Hide a listing everywhere (website, app, road guides, itineraries), or show it again. Its records stay. */
+  async adminSetVisibility(id: string, dto: ListingVisibilityDto, actorId: string, ip?: string) {
+    const b = await this.prisma.business.findUnique({ where: { id }, select: { id: true, name: true, isActive: true } });
+    if (!b) throw new NotFoundException('Listing not found');
+    if (b.isActive === dto.shown) return b;
+    return this.prisma.$transaction(async (tx) => {
+      const after = await tx.business.update({ where: { id }, data: { isActive: dto.shown }, select: { id: true, name: true, isActive: true } });
+      await this.audit.record({
+        actorId, ip, action: dto.shown ? 'business.show' : 'business.hide', entityType: 'Business', entityId: id,
+        summary: dto.shown ? `Showed the listing ${b.name} again` : `Hid the listing ${b.name}: ${dto.reason}`,
+        before: { isActive: b.isActive }, after: { isActive: dto.shown },
+      }, tx);
+      return after;
+    });
+  }
+
+  /**
+   * Remove a listing for good: only one that has built up nothing (added by mistake, a duplicate).
+   * Anything with enquiries, reviews, deals, packages, payments or documents, or linked from an
+   * ad, a story or a guide, is hidden instead, so none of that is lost with it.
+   */
+  async adminRemove(id: string, actorId: string, ip?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const b = await tx.business.findUnique({
+        where: { id },
+        include: { photos: { select: { url: true } }, owner: { select: { email: true } }, _count: { select: LISTING_HISTORY } },
+      });
+      if (!b) throw new NotFoundException('Listing not found');
+      const history = historyText(b._count);
+      if (history) {
+        throw new ConflictException(`${b.name} ${history}. Removing it for good would lose that, so hide it instead.`);
+      }
+      await tx.business.delete({ where: { id } });
+      const { _count, owner, photos, ...row } = b;
+      await this.audit.record({
+        actorId, ip, action: 'business.delete', entityType: 'Business', entityId: id,
+        summary: `Removed the listing ${b.name} for good${owner?.email ? ` (it was owned by ${owner.email})` : ''}`,
+        before: { ...row, photos: photos.map((p) => p.url) },
+      }, tx);
+      return { removed: true, name: b.name };
+    });
+  }
+
   /** Checks a listing form: photos uploaded through Batoma, a real place, both map numbers or neither, a real owner. */
   private async adminData(dto: AdminListingDto, kept: string[] = []) {
     const photos = dto.photoUrls ?? [];
@@ -273,7 +370,6 @@ export class BusinessesService {
       phone: dto.phone ?? null, whatsapp: dto.whatsapp ?? null, viber: dto.viber ?? null, website: dto.website ?? null,
       priceRange: dto.priceRange ?? null,
       amenities: (dto.amenities ?? []).map((a) => a.trim()).filter(Boolean),
-      ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
     };
   }
 
@@ -533,11 +629,12 @@ export class BusinessesService {
 
       const coupon = await tx.coupon.findUnique({
         where: { id: couponId },
-        include: { _count: { select: { redemptions: true } } },
+        include: { _count: { select: { redemptions: true } }, business: { select: { isActive: true } } },
       });
 
       const now = new Date();
-      if (!coupon.isActive) throw new NotFoundException('Offer not available');
+      // A hidden listing's deals go with it, even from a screen the app saved earlier.
+      if (!coupon.isActive || !coupon.business.isActive) throw new NotFoundException('Offer not available');
       // validFrom existed on the model but was never enforced, so an offer
       // scheduled for next season was claimable today.
       if (coupon.validFrom > now) {

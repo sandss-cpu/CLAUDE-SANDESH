@@ -146,8 +146,8 @@ than a week.
 | Events are on the website only, not in the bus reader app | — | M |
 | Creators edit only in the app; the website shows their pages but has no sign-in of its own (by design: no script or cookies) | — | — |
 | Routes cannot be deleted from the control panel (on purpose: buses, trips and stickers point at them); a wrong one is corrected or renamed | — | S |
-| A listing cannot be taken down or deleted from the control panel; it can be edited and its owner unlinked (enquiries, reviews and deals point at it) | — | S |
 | A business cannot add its own listing; Batoma adds it and links the owner's account | — | M |
+| A hidden listing's reason is only in the audit log; its owner sees that it is hidden, not why | — | S |
 
 ### Not in the Phase 3 brief (owner's call)
 

@@ -608,3 +608,10 @@ owner can decide (domains, legal wording, prices) are not here; they are asked.
   created on anyone's behalf (they sign up themselves, for free). Empty means Batoma manages it.
 - **Photos are Batoma uploads only**, up to twelve, the first being the cover. The partner
   area's own listing form now checks this too; before, it accepted any address.
+- **Hide, or remove for good (added the same day).** Hiding switches the listing off
+  everywhere a traveller could meet it, with a reason in the audit log, and can be undone; its
+  owner still sees it in the partner area, with a banner saying so. Removing deletes it and is
+  offered only for a listing that has built up nothing and that nothing links to, because
+  deleting would also delete its enquiries, reviews, deals, packages and payment records (or
+  leave ads and guides pointing nowhere). For anything else, the answer says what it has and
+  to hide it instead. Removal keeps a copy of the row in the audit log.

@@ -167,6 +167,11 @@
   }
 
   /* ---------- screens ---------- */
+  /** Batoma (or moderation, after a report) has taken the listing down; its records stay. */
+  const hiddenBanner = (b) => (b?.isActive === false
+    ? '<div class="banner warn" role="status"><b>Hidden by Batoma.</b> This listing is not on the website or in the app, and its deals cannot be claimed. Your enquiries, reviews and reports are kept. Contact Batoma to have it shown again.</div>'
+    : '');
+
   const VIEWS = {
     async overview() {
       const b = state.biz;
@@ -174,8 +179,9 @@
       const contacts = d.leadsByType.filter((l) => l.type !== 'PROFILE_VIEW').reduce((s, l) => s + l.count, 0);
       const views = d.leadsByType.find((l) => l.type === 'PROFILE_VIEW')?.count ?? 0;
       return `
-        ${head(b.name, `${esc(TIER[b.tier] || b.tier)} · last 30 days`, SITE && b.verifiedAt ? `<a class="btn btn-ghost" href="${esc(SITE)}/partners/${esc(b.slug)}" rel="noopener" target="_blank">See it on the website</a>` : '')}
-        ${!b.verifiedAt ? '<div class="banner warn" role="status"><b>Waiting for verification.</b> Batoma checks every listing before it is shown on the website and in the app.</div>' : ''}
+        ${head(b.name, `${esc(TIER[b.tier] || b.tier)} · last 30 days`, SITE && b.verifiedAt && b.isActive !== false ? `<a class="btn btn-ghost" href="${esc(SITE)}/partners/${esc(b.slug)}" rel="noopener" target="_blank">See it on the website</a>` : '')}
+        ${hiddenBanner(b)}
+        ${!b.verifiedAt && b.isActive !== false ? '<div class="banner warn" role="status"><b>Waiting for verification.</b> Batoma checks every listing before it is shown on the website and in the app.</div>' : ''}
         <div class="kpis">
           <div class="kpi"><b>${num(views)}</b><span>Profile views in the app</span></div>
           <div class="kpi"><b>${num(contacts)}</b><span>Calls, messages and enquiries</span></div>
@@ -302,6 +308,7 @@
       const f = (name, label, value, type = 'text', hint = '') => `<div><label for="l-${name}">${esc(label)}</label><input id="l-${name}" name="${name}" type="${type}" value="${esc(value ?? '')}" maxlength="200">${hint ? `<p class="hint">${esc(hint)}</p>` : ''}</div>`;
       return `
         ${head('Your listing', 'What travellers see on the website and in the app. Changes show within a few minutes.')}
+        ${hiddenBanner(state.biz)}
         <form class="card stack" data-submit="saveListing">
           <div><label for="l-description">About you</label><textarea id="l-description" name="description" maxlength="2000">${esc(b.description || '')}</textarea></div>
           <div class="grid2">

@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { BudgetStyle } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { withShownBusiness } from '../businesses/shown-business';
 import { shareToken } from '../../common/utils/slug.util';
 import {
   CreateItineraryDto, FromArticleDto, SuggestItineraryDto, UpdateItineraryDto,
@@ -21,12 +22,17 @@ const FULL_INCLUDE = {
         orderBy: { sortOrder: 'asc' as const },
         include: {
           place: { select: { id: true, name: true, type: true, latitude: true, longitude: true } },
-          business: { select: { id: true, slug: true, name: true, category: true, phone: true } },
+          business: { select: { id: true, slug: true, name: true, category: true, phone: true, isActive: true } },
         },
       },
     },
   },
 };
+
+/** A stop linked to a listing Batoma has since hidden keeps its place, not the link. */
+function shownStops<T extends { days: Array<{ stops: Array<{ businessId: string | null; business: { isActive: boolean } | null }> }> }>(it: T) {
+  return { ...it, days: it.days.map((d) => ({ ...d, stops: d.stops.map(withShownBusiness) })) };
+}
 
 @Injectable()
 export class ItinerariesService {
@@ -50,7 +56,7 @@ export class ItinerariesService {
     if (!it.isPublic && !it.isTemplate && it.userId !== viewerId) {
       throw new ForbiddenException('This trip is private');
     }
-    return it;
+    return shownStops(it);
   }
 
   /** Read-only access by share link, no account required. */
@@ -60,7 +66,7 @@ export class ItinerariesService {
       include: FULL_INCLUDE,
     });
     if (!it) throw new NotFoundException('Trip link not found');
-    return it;
+    return shownStops(it);
   }
 
   mine(userId: string) {
@@ -76,7 +82,7 @@ export class ItinerariesService {
 
   async create(dto: CreateItineraryDto, userId: string) {
     const dayCount = dto.days?.length ?? 1;
-    return this.prisma.itinerary.create({
+    const it = await this.prisma.itinerary.create({
       data: {
         userId,
         title: dto.title,
@@ -107,6 +113,7 @@ export class ItinerariesService {
       },
       include: FULL_INCLUDE,
     });
+    return shownStops(it);
   }
 
   /** Full replace of the day plan — simplest correct semantics for drag-and-drop. */
@@ -141,7 +148,7 @@ export class ItinerariesService {
       const dayCount = dto.days?.length ?? existing.dayCount;
       const style = dto.budgetStyle ?? existing.budgetStyle;
 
-      return tx.itinerary.update({
+      return shownStops(await tx.itinerary.update({
         where: { id },
         data: {
           title: dto.title ?? undefined,
@@ -152,7 +159,7 @@ export class ItinerariesService {
           estimatedCostNpr: this.estimateCost(dayCount, style),
         },
         include: FULL_INCLUDE,
-      });
+      }));
     });
   }
 

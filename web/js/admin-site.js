@@ -13,6 +13,7 @@
 
 state.site = {
   tab: 'overview', packages: [], pkgStatus: '', businesses: [], editing: null, pending: null, listing: null,
+  lsList: null, lsQ: '', lsShow: '', lsPage: 1,
   enquiries: null, enqStatus: 'NEW', enqPage: 1, newsletter: null,
   overview: null, articles: null, artQ: '', artShow: '', artPage: 1, adStatus: '',
 };
@@ -194,10 +195,10 @@ async function siteAds(){
 /** Verification is manual: nothing unverified reaches the website. Then the tier a partner pays for. */
 async function siteListings(){
   const s = state.site;
-  const [pending, list] = await Promise.all([api('/businesses/admin/pending-verification?limit=50'), api('/businesses?limit=100'), loadReferenceData()]);
+  const q = new URLSearchParams({ page: String(s.lsPage), limit: '50', ...(s.lsQ ? { q: s.lsQ } : {}), ...(s.lsShow ? { show: s.lsShow } : {}) });
+  const [pending, list] = await Promise.all([api('/businesses/admin/pending-verification?limit=50'), api(`/businesses/admin?${q}`), loadReferenceData()]);
   s.pending = pending.items || [];
-  s.businesses = list.items || [];
-  const waiting = new Set(s.pending.map((b) => b.id));
+  const r = s.lsList = list;
   return `
     <div class="row-actions" style="justify-content:space-between;align-items:center;margin-bottom:8px">
       <p class="hint" style="margin:0;flex:1 1 320px">Add a hotel, homestay, restaurant, agency or any business on the road. Verified listings appear on the website and in the app at once.</p>
@@ -219,17 +220,38 @@ async function siteListings(){
             <button class="btn btn-sm btn-primary" data-action="siteVerify" data-id="${b.id}" data-name="${esc(b.name)}">Verify…</button></td>
         </tr>`).join('')}</tbody>
       </table></div>`}
-    <h3 class="site-gap">Partners</h3>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Business</th><th>Tier</th><th></th></tr></thead>
-      <tbody>${s.businesses.map((b) => `<tr>
-        <td><strong>${esc(b.name)}</strong><br><small>${esc(BIZ_CATEGORY[b.category] || b.category)}${b.district ? ` · ${esc(b.district)}` : ''}</small></td>
-        <td>${waiting.has(b.id) ? '<span class="pill PENDING">Not verified</span>' : `<span class="pill ${b.tier === 'FREE' ? '' : 'ACTIVE'}">${TIER_LABEL[b.tier] || b.tier}</span>`}</td>
-        <td class="row-actions"><button class="btn btn-sm" data-action="siteEditListing" data-id="${b.id}">Edit</button>
-          ${waiting.has(b.id) ? '' : `<button class="btn btn-sm" data-action="siteTier" data-id="${b.id}" data-name="${esc(b.name)}" data-tier="${b.tier}">Change tier…</button>
-          ${newTab(`${SITE_BASE}/partners/${encodeURIComponent(b.slug)}`, 'View')}`}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>
+    <h3 class="site-gap">All listings</h3>
+    <p class="hint">Hide a listing to take it off the website, the app and the road guides; its enquiries, reviews, deals and payments are kept, and you can show it again. Remove for good is only for a listing that has none of those, such as one added by mistake.</p>
+    <div class="filters">
+      <input type="search" aria-label="Search listings" placeholder="Search name or district…" value="${esc(s.lsQ)}" data-change="siteLsSearch">
+      <select aria-label="Show listings" data-change="siteLsShow">
+        <option value="" ${!s.lsShow ? 'selected' : ''}>All listings</option>
+        <option value="on" ${s.lsShow === 'on' ? 'selected' : ''}>Shown</option>
+        <option value="off" ${s.lsShow === 'off' ? 'selected' : ''}>Hidden</option>
+      </select>
+    </div>
+    ${!r.items.length ? `<div class="empty">${s.lsQ || s.lsShow ? 'No listings match.' : 'No listings yet. Add the first with “+ Add listing”.'}</div>` : `
+      <div class="table-wrap"><table class="ls-table">
+        <thead><tr><th>Business</th><th>Status</th><th></th></tr></thead>
+        <tbody>${r.items.map((b) => `<tr${b.isActive ? '' : ' class="ls-hidden"'}>
+          <td><strong>${esc(b.name)}</strong><br><small>${esc(BIZ_CATEGORY[b.category] || b.category)}${b.district ? ` · ${esc(b.district)}` : ''}${b.owner?.email ? ` · owner ${esc(b.owner.email)}` : ''}</small>
+            ${b.history ? `<div class="hint">It ${esc(b.history)}.</div>` : ''}</td>
+          <td>${!b.isActive ? '<span class="pill REJECTED">Hidden</span>'
+            : !b.verifiedAt ? '<span class="pill PENDING">Not verified</span>'
+            : `<span class="pill ${b.tier === 'FREE' ? '' : 'ACTIVE'}">${TIER_LABEL[b.tier] || b.tier}</span>`}</td>
+          <td class="ls-actions"><div class="row-actions"><button class="btn btn-sm" data-action="siteEditListing" data-id="${b.id}">Edit</button>
+            ${b.isActive && b.verifiedAt ? `<button class="btn btn-sm" data-action="siteTier" data-id="${b.id}" data-name="${esc(b.name)}" data-tier="${b.tier}">Change tier…</button>
+              ${newTab(`${SITE_BASE}/partners/${encodeURIComponent(b.slug)}`, 'View')}` : ''}
+            ${b.isActive
+              ? `<button class="btn btn-sm" data-action="siteHideListing" data-id="${b.id}" data-name="${esc(b.name)}">Hide…</button>`
+              : `<button class="btn btn-sm btn-primary" data-action="siteShowListing" data-id="${b.id}" data-name="${esc(b.name)}">Show again</button>`}
+            ${b.removable ? `<button class="btn btn-sm btn-danger" data-action="siteRemoveListing" data-id="${b.id}" data-name="${esc(b.name)}">Remove…</button>` : ''}</div></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      ${r.meta.pages > 1 ? `<div class="row-actions site-gap">
+        ${s.lsPage > 1 ? '<button class="btn btn-sm" data-action="siteLsPage" data-by="-1">← Previous</button>' : ''}
+        <span class="hint">Page ${r.meta.page} of ${r.meta.pages} · ${r.meta.total} listings</span>
+        ${s.lsPage < r.meta.pages ? '<button class="btn btn-sm" data-action="siteLsPage" data-by="1">Next →</button>' : ''}</div>` : ''}`}
     ${s.listing ? listingForm(s.listing) : ''}`;
 }
 
@@ -461,6 +483,34 @@ Actions.on({
     }catch(err){ notify(err.message, 'error'); }
   },
   siteCloseListing: () => siteCloseListing(),
+  siteLsPage: (el) => { state.site.lsPage = Math.max(1, state.site.lsPage + Number(el.dataset.by)); renderMain(); },
+  siteHideListing: async (el) => {
+    const reason = await askDialog({
+      title: `Hide ${el.dataset.name}`, confirmLabel: 'Hide it', danger: true,
+      message: 'It goes off the website, the app and the road guides at once, and its deals can no longer be claimed. Enquiries, reviews, deals and payments are kept, and its owner still sees it in the partner area. You can show it again at any time.',
+      field: { label: 'Why it is hidden (kept in the audit log)', type: 'textarea', placeholder: 'Closed for the monsoon; complaints about overcharging; the owner asked',
+        validate: (v) => (v.length < 5 ? 'Write at least a few words.' : '') },
+    });
+    if(!reason) return;
+    try{ await api(`/businesses/admin/${el.dataset.id}/visibility`, { method: 'PATCH', body: { shown: false, reason } }); notify(`${el.dataset.name} is hidden`); }
+    catch(err){ notify(err.message, 'error'); }
+    renderMain();
+  },
+  siteShowListing: async (el) => {
+    try{ await api(`/businesses/admin/${el.dataset.id}/visibility`, { method: 'PATCH', body: { shown: true } }); notify(`${el.dataset.name} is shown again`); }
+    catch(err){ notify(err.message, 'error'); }
+    renderMain();
+  },
+  siteRemoveListing: async (el) => {
+    const ok = await askDialog({
+      title: `Remove ${el.dataset.name} for good?`, confirmLabel: 'Remove for good', danger: true,
+      message: 'The listing and its photos are deleted and cannot be brought back. It has no enquiries, reviews, deals or payments. To take it down for now, hide it instead.',
+    });
+    if(!ok) return;
+    try{ await api(`/businesses/admin/${el.dataset.id}`, { method: 'DELETE' }); notify(`${el.dataset.name} is removed`); }
+    catch(err){ notify(err.message, 'error'); }
+    renderMain();
+  },
   siteListingPhotoRemove: (el) => {
     const l = state.site.listing;
     l.photoUrls.splice(Number(el.dataset.index), 1);
@@ -536,6 +586,8 @@ Actions.onChange({
   siteAdStatus: (el) => { state.site.adStatus = el.value; renderMain(); },
   sitePkgStatus: (el) => { state.site.pkgStatus = el.value; renderMain(); },
   siteEnqStatus: (el) => { state.site.enqStatus = el.value; state.site.enqPage = 1; renderMain(); },
+  siteLsSearch: (el) => { state.site.lsQ = el.value.trim(); state.site.lsPage = 1; renderMain(); },
+  siteLsShow: (el) => { state.site.lsShow = el.value; state.site.lsPage = 1; renderMain(); },
 });
 
 Actions.onChange({

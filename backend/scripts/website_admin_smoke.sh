@@ -4,7 +4,8 @@
 # featuring it; the website's ads apart from the app's, and a website ad created, paused,
 # resumed and removed, each change reaching the website at once through the page purge.
 # Listings added and edited from the Listings tab: checked ones go on the website at once,
-# unchecked ones wait; an owner's account can be linked so they manage it in the partner area.
+# unchecked ones wait; an owner's account can be linked so they manage it in the partner area;
+# hidden ones leave the website and the app but stay for their owner; only fresh ones can be removed.
 # Staff only: an editor and a bus company owner are refused. Changes are audited.
 #
 # Needs the website running (SITE in backend/.env, default http://localhost:4000).
@@ -136,7 +137,7 @@ ok "a moderator cannot" 403 "$(call POST /businesses/admin "$MOD" "$B")"
 ok "a bus company owner cannot" 403 "$(call POST /businesses/admin "$OWNER" "$B")"
 ok "signed out cannot" 401 "$(call POST /businesses/admin "" "$B")"
 [ -n "$PARTNER" ] && ok "a partner cannot" 403 "$(call POST /businesses/admin "$PARTNER" "$B")"
-ok "a photo from elsewhere is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/\"photoUrls\":$PHOTOS/\"photoUrls\":[\"https://example.com/x.jpg\"]}")"
+ok "a photo from elsewhere is refused" 400 "$(call POST /businesses/admin "$ADMIN" "$(PHOTOS='["https://example.com/x.jpg"]' listing "$LS_NAME" true "")")"
 ok "an owner email with no account is refused" 400 "$(call POST /businesses/admin "$ADMIN" "$(listing "$LS_NAME" true "nobody.$STAMP@example.com")")"
 ok "a staff account as owner is refused" 400 "$(call POST /businesses/admin "$ADMIN" "$(listing "$LS_NAME" true tester.editor@bato.test)")"
 ok "a latitude without a longitude is refused" 400 "$(call POST /businesses/admin "$ADMIN" "${B/\"longitude\":\"84.4164\"/\"longitude\":\"\"}")"
@@ -195,6 +196,75 @@ ok "it waits for verification" true "$(get "any(b['id'] == '$LS2' for b in data[
 settle
 ok "and is not on the website" 404 "$(page "/partners/$LS2_SLUG")"
 ok "the website's role cannot read it" 0 "$(sql "set role batoma_site; select count(*) from businesses where id='$LS2'" | tail -1)"
+
+echo "Hiding, showing again and removing listings"
+TRAVELLER=$(login traveller@bato.test)
+ok "the control panel lists every listing" 200 "$(call GET "/businesses/admin?q=$STAMP&limit=50" "$ADMIN")"
+ok "both smoke listings are there, shown" "shown shown" "$(get "' '.join('shown' if b['isActive'] else 'hidden' for b in data['items'])")"
+ok "a fresh listing can be removed for good" true "$(get "next(b['removable'] for b in data['items'] if b['id'] == '$LS')")"
+ok "an editor cannot list them" 403 "$(call GET /businesses/admin "$EDITOR")"
+
+B='{"shown":false,"reason":"Smoke test: closed for the monsoon"}'
+ok "an editor cannot hide one" 403 "$(call PATCH "/businesses/admin/$LS/visibility" "$EDITOR" "$B")"
+ok "a moderator cannot" 403 "$(call PATCH "/businesses/admin/$LS/visibility" "$MOD" "$B")"
+ok "hiding without a reason is refused" 400 "$(call PATCH "/businesses/admin/$LS/visibility" "$ADMIN" '{"shown":false}')"
+ok "an admin hides it" 200 "$(call PATCH "/businesses/admin/$LS/visibility" "$ADMIN" "$B")"
+ok "it is hidden" false "$(get "data['isActive']")"
+ok "with the reason in the audit" 1 "$(sql "select count(*) from audit_events where action='business.hide' and \"entityId\"='$LS' and summary like '%: Smoke test: closed for the monsoon' and \"createdAt\" >= '$START'")"
+settle
+ok "its page is gone from the website" 404 "$(page "/partners/$LS_SLUG")"
+page /partners >/dev/null
+ok "and from the partners list" 0 "$(has "/partners/$LS_SLUG\"")"
+page /sitemap.xml >/dev/null
+ok "and from the sitemap" 0 "$(has "/partners/$LS_SLUG<")"
+ok "the website's role cannot read it" 0 "$(sql "set role batoma_site; select count(*) from businesses where id='$LS'" | tail -1)"
+ok "the app cannot open it" 404 "$(call GET "/businesses/$LS_SLUG" "")"
+ok "nor can a signed-in traveller" 404 "$(call GET "/businesses/$LS_SLUG" "$TRAVELLER")"
+call GET "/businesses?q=$STAMP" "" >/dev/null
+ok "the app's list leaves it out" false "$(get "any(b['id'] == '$LS' for b in data['items'])")"
+ok "an admin still opens it" 200 "$(call GET "/businesses/$LS_SLUG" "$ADMIN")"
+ok "marked hidden, and never with the owner's account id" "False False" "$(get "f\"{data['isActive']} {'ownerId' in data}\"")"
+call GET "/businesses/admin?show=off&q=$STAMP" "$ADMIN" >/dev/null
+ok "listed under Hidden" true "$(get "any(b['id'] == '$LS' for b in data['items'])")"
+call GET "/businesses/admin?show=on&q=$STAMP" "$ADMIN" >/dev/null
+ok "and not under Shown" false "$(get "any(b['id'] == '$LS' for b in data['items'])")"
+
+if [ -n "$PARTNER" ]; then
+  B=$(listing "$LS_NAME" true "$PARTNER_EMAIL")
+  ok "a hidden listing can still be edited (linked to its owner)" 200 "$(call PATCH "/businesses/admin/$LS" "$ADMIN" "$B")"
+  ok "and the edit leaves it hidden" false "$(get "data['isActive']")"
+  ok "its owner still opens it in the partner area" 200 "$(call GET "/businesses/$LS_SLUG" "$PARTNER")"
+  call GET /businesses/mine "$PARTNER" >/dev/null
+  ok "marked hidden there" false "$(get "next(b['isActive'] for b in data if b['id'] == '$LS')")"
+  B="{\"title\":\"Smoke tea $STAMP\",\"discountLabel\":\"Free tea\",\"validTo\":\"$(iso 86400)\"}"
+  ok "the owner adds a deal" 201 "$(call POST "/businesses/$LS/coupons" "$PARTNER" "$B")"
+  CP=$(get "data['id']")
+  ok "a hidden listing's deal cannot be claimed" 404 "$(call POST "/businesses/coupons/$CP/claim" "$TRAVELLER" '{}')"
+else
+  echo "  skip  the demo partner could not sign in: the owner's view of a hidden listing not checked"
+fi
+
+ok "an editor cannot show it again" 403 "$(call PATCH "/businesses/admin/$LS/visibility" "$EDITOR" '{"shown":true}')"
+ok "an admin shows it again" 200 "$(call PATCH "/businesses/admin/$LS/visibility" "$ADMIN" '{"shown":true}')"
+ok "it is shown" true "$(get "data['isActive']")"
+ok "that is audited too" 1 "$(sql "select count(*) from audit_events where action='business.show' and \"entityId\"='$LS' and \"createdAt\" >= '$START'")"
+settle
+ok "its page is back on the website" 200 "$(page "/partners/$LS_SLUG")"
+ok "and in the app" 200 "$(call GET "/businesses/$LS_SLUG" "")"
+
+B='{"type":"CALL"}'
+ok "a traveller calls it from the app" 201 "$(call POST "/businesses/$LS/lead" "" "$B")"
+ok "an editor cannot remove one" 403 "$(call DELETE "/businesses/admin/$LS2" "$EDITOR")"
+ok "a moderator cannot" 403 "$(call DELETE "/businesses/admin/$LS2" "$MOD")"
+ok "a listing with history cannot be removed" 409 "$(call DELETE "/businesses/admin/$LS" "$ADMIN")"
+ok "the answer says why, and to hide it instead" true "$(get "'1 enquiry or call' in d['message'] and 'hide it instead' in d['message']")"
+ok "and it is still there" 1 "$(sql "select count(*) from businesses where id='$LS'")"
+call GET "/businesses/admin?q=$STAMP" "$ADMIN" >/dev/null
+ok "the list no longer offers to remove it" false "$(get "next(b['removable'] for b in data['items'] if b['id'] == '$LS')")"
+ok "a fresh one is removed for good" 200 "$(call DELETE "/businesses/admin/$LS2" "$ADMIN")"
+ok "it is gone" 0 "$(sql "select count(*) from businesses where id='$LS2'")"
+ok "with a copy in the audit" 1 "$(sql "select count(*) from audit_events where action='business.delete' and \"entityId\"='$LS2' and before->>'slug'='$LS2_SLUG' and \"createdAt\" >= '$START'")"
+ok "removing it again is a 404" 404 "$(call DELETE "/businesses/admin/$LS2" "$ADMIN")"
 
 # Remove both smoke listings.
 sql "delete from business_photos where \"businessId\" in ('$LS','$LS2'); delete from businesses where id in ('$LS','$LS2')" >/dev/null

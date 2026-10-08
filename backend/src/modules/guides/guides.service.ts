@@ -9,12 +9,13 @@ import { uniqueSlug } from '../../common/utils/slug.util';
 import {
   AdminGuideQueryDto, JourneyQueryDto, ReorderStopsDto, SaveGuideDto, SaveGuideStopDto,
 } from './dto/guide.dto';
+import { withShownBusiness } from '../businesses/shown-business';
 
 const STOP_SELECT = {
   id: true, kind: true, name: true, description: true, imageUrl: true, latitude: true, longitude: true,
   dayNumber: true, distanceFromStartKm: true, minutesFromStart: true, priceFromNpr: true, openingHours: true,
   contactPhone: true, tip: true, isHighlight: true, sortOrder: true, placeId: true, businessId: true,
-  business: { select: { id: true, slug: true, name: true, category: true, phone: true, priceRange: true } },
+  business: { select: { id: true, slug: true, name: true, category: true, phone: true, priceRange: true, isActive: true } },
   place: { select: { id: true, name: true, type: true, latitude: true, longitude: true } },
 } satisfies Prisma.RouteGuideStopSelect;
 
@@ -159,7 +160,8 @@ export class GuidesService {
     const allowed = this.directionsOf(guide);
     const chosen = direction && allowed.includes(direction) ? direction : allowed[0];
     const isPlace = guide.kind === GuideKind.DESTINATION;
-    const stops = !isPlace && chosen === GuideDirection.REVERSE ? this.reversed(guide.stops, guide.route) : guide.stops;
+    const shown = guide.stops.map(withShownBusiness);
+    const stops = !isPlace && chosen === GuideDirection.REVERSE ? this.reversed(shown, guide.route) : shown;
 
     const articles = await this.prisma.article.findMany({
       where: {
