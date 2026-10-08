@@ -388,50 +388,80 @@ describe('write a trip, and advertise', () => {
 });
 
 describe('creators', () => {
-  test('only creators an editor put on the website appear; their work shows; nothing private does', async () => {
-    const c = await owner.creatorProfile.findFirstOrThrow({ where: { status: 'APPROVED' }, select: { id: true, handle: true, userId: true, showOnWebsite: true } });
-    const journey = await owner.creatorJourney.findFirst({ where: { creatorId: c.id, status: 'PUBLISHED' }, select: { id: true, slug: true } });
-    const delayed = await owner.post.create({ data: {
-      authorId: c.userId, title: `Test delayed post ${Date.now()}`, body: 'Shows tomorrow.', status: 'PUBLISHED', moderation: 'APPROVED',
-      publishedAt: new Date(), visibleFrom: new Date(Date.now() + 86_400_000), latitude: 27.7172, longitude: 85.324, locationName: 'Thamel',
-    } });
-    try {
-      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: false } });
-      purge();
-      assert.equal((await get(`/creators/${c.handle}`)).status, 404);
-      assert.ok(!(await text('/creators')).body.includes(`/creators/${c.handle}"`));
-      // Row-level security, not only the query: the role cannot see a creator who is not on the website.
-      assert.equal(await db.creatorProfile.findFirst({ where: { id: c.id }, select: { id: true } }), null);
+  // Its own creator, journey, posts and story, so the tests do not depend on demo data
+  // (CI's database has none): made here, removed after.
+  const stamp = String(Date.now()).slice(-8);
+  const fx = { userId: '', creatorId: '', handle: `sitetest_${stamp}`, journeySlug: `test-journey-${stamp}`, journeyId: '', articleSlug: `test-byline-${stamp}`, delayedTitle: `Test delayed post ${stamp}` };
 
-      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: true } });
-      purge();
-      const { status, body } = await text(`/creators/${c.handle}`);
-      assert.equal(status, 200);
-      assert.ok((await text('/creators')).body.includes(`/creators/${c.handle}"`));
-      const ld = JSON.parse(body.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)![1]);
-      assert.equal(ld['@type'], 'ProfilePage');
-      assert.equal(ld.mainEntity['@type'], 'Person');
-      assert.ok(!body.includes(delayed.title), 'a post inside its safety delay is not shown');
-      assert.doesNotMatch(body, /27\.7172|85\.324|latitude|longitude/, 'no coordinates anywhere');
-      // The role is not even allowed to read them.
-      await assert.rejects(db.$queryRaw`SELECT latitude FROM posts LIMIT 1`);
-      await assert.rejects(db.$queryRaw`SELECT "followerId" FROM follows LIMIT 1`);
-      if (journey) {
-        assert.ok(body.includes(`/creators/${c.handle}/${journey.slug}`));
-        await owner.creatorJourney.update({ where: { id: journey.id }, data: { onWebsite: false } });
-        purge();
-        assert.equal((await get(`/creators/${c.handle}/${journey.slug}`)).status, 404, 'a journey hidden by an editor');
-        await owner.creatorJourney.update({ where: { id: journey.id }, data: { onWebsite: true } });
-        purge();
-        const page = await text(`/creators/${c.handle}/${journey.slug}`);
-        assert.equal(page.status, 200);
-        assert.match(page.body, /"@type":"Article"/);
-      }
-    } finally {
-      await owner.post.delete({ where: { id: delayed.id } });
-      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: c.showOnWebsite } });
-      purge();
-    }
+  before(async () => {
+    const user = await owner.user.create({ data: { email: `site-test-creator-${stamp}@example.com`, name: 'Test Creator', language: 'EN' } });
+    fx.userId = user.id;
+    const c = await owner.creatorProfile.create({ data: {
+      userId: user.id, handle: fx.handle, displayName: 'Test Creator', headline: 'Slow roads, real costs',
+      status: 'APPROVED', approvedAt: new Date(), showOnWebsite: true, specialities: ['bus travel'],
+    } });
+    fx.creatorId = c.id;
+    const live = await owner.post.create({ data: {
+      authorId: user.id, title: `Test live post ${stamp}`, body: 'A tea stop above the river.', status: 'PUBLISHED', moderation: 'APPROVED',
+      publishedAt: new Date(), latitude: 27.7172, longitude: 85.324, locationName: 'Mugling',
+    } });
+    await owner.post.create({ data: {
+      authorId: user.id, title: fx.delayedTitle, body: 'Shows tomorrow.', status: 'PUBLISHED', moderation: 'APPROVED',
+      publishedAt: new Date(), visibleFrom: new Date(Date.now() + 86_400_000), latitude: 27.71, longitude: 85.32, locationName: 'Thamel',
+    } });
+    const j = await owner.creatorJourney.create({ data: {
+      creatorId: c.id, slug: fx.journeySlug, title: 'Test journey', status: 'PUBLISHED', publishedAt: new Date(),
+      dayCount: 2, transportNpr: 1200, stayNpr: 3000, entries: { create: [{ postId: live.id, dayNumber: 1 }] },
+    } });
+    fx.journeyId = j.id;
+    await owner.article.create({ data: {
+      slug: fx.articleSlug, title: 'Test byline story', summary: 'A test story by a creator.', body: 'A test story by a creator.',
+      status: 'PUBLISHED', publishedAt: new Date(), onWebsite: true, authorId: user.id,
+    } });
+    purge();
+  });
+
+  after(async () => {
+    await owner.article.deleteMany({ where: { slug: fx.articleSlug } });
+    await owner.post.deleteMany({ where: { authorId: fx.userId } });
+    await owner.user.deleteMany({ where: { id: fx.userId } });
+    purge();
+  });
+
+  test('only creators an editor put on the website appear; their work shows; nothing private does', async () => {
+    await owner.creatorProfile.update({ where: { id: fx.creatorId }, data: { showOnWebsite: false } });
+    purge();
+    assert.equal((await get(`/creators/${fx.handle}`)).status, 404);
+    assert.ok(!(await text('/creators')).body.includes(`/creators/${fx.handle}"`));
+    // Row-level security, not only the query: the role cannot see a creator who is not on the website.
+    assert.equal(await db.creatorProfile.findFirst({ where: { id: fx.creatorId }, select: { id: true } }), null);
+
+    await owner.creatorProfile.update({ where: { id: fx.creatorId }, data: { showOnWebsite: true } });
+    purge();
+    const { status, body } = await text(`/creators/${fx.handle}`);
+    assert.equal(status, 200);
+    assert.ok((await text('/creators')).body.includes(`/creators/${fx.handle}"`));
+    const ld = JSON.parse(body.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)![1]);
+    assert.equal(ld['@type'], 'ProfilePage');
+    assert.equal(ld.mainEntity['@type'], 'Person');
+    assert.ok(body.includes(`Test live post ${stamp}`), 'a live post is shown');
+    assert.ok(body.includes('Test byline story'), 'their Batoma story is shown');
+    assert.ok(!body.includes(fx.delayedTitle), 'a post inside its safety delay is not shown');
+    assert.doesNotMatch(body, /27\.71|85\.32|latitude|longitude/, 'no coordinates anywhere');
+    // The role is not even allowed to read them.
+    await assert.rejects(db.$queryRaw`SELECT latitude FROM posts LIMIT 1`);
+    await assert.rejects(db.$queryRaw`SELECT "followerId" FROM follows LIMIT 1`);
+
+    assert.ok(body.includes(`/creators/${fx.handle}/${fx.journeySlug}`));
+    const page = await text(`/creators/${fx.handle}/${fx.journeySlug}`);
+    assert.equal(page.status, 200);
+    assert.match(page.body, /"@type":"Article"/);
+    assert.match(page.body, /NPR 4,200/, 'the total cost');
+    await owner.creatorJourney.update({ where: { id: fx.journeyId }, data: { onWebsite: false } });
+    purge();
+    assert.equal((await get(`/creators/${fx.handle}/${fx.journeySlug}`)).status, 404, 'a journey hidden by an editor');
+    await owner.creatorJourney.update({ where: { id: fx.journeyId }, data: { onWebsite: true } });
+    purge();
   });
 
   test('Sign in goes to the app, landing creators on their panel; Become a creator opens on Create an account', async () => {
@@ -444,19 +474,15 @@ describe('creators', () => {
     assert.match(join.body, /Read on the road you wrote about/);
   });
 
-  test('a story by a creator on the website links its byline to their page', async () => {
-    const c = await owner.creatorProfile.findFirstOrThrow({ where: { status: 'APPROVED' }, select: { id: true, handle: true, userId: true, showOnWebsite: true } });
-    const art = await owner.article.findFirst({ where: { authorId: c.userId, status: 'PUBLISHED', onWebsite: true }, select: { slug: true } });
-    if (!art) return;
-    await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: true } });
+  test('a story by a creator on the website links its byline to their page, and not once they are off it', async () => {
+    purge();
+    assert.match((await text(`/stories/${fx.articleSlug}`)).body, new RegExp(`By <a href="/creators/${fx.handle}">`));
+    await owner.creatorProfile.update({ where: { id: fx.creatorId }, data: { showOnWebsite: false } });
     try {
       purge();
-      assert.match((await text(`/stories/${art.slug}`)).body, new RegExp(`By <a href="/creators/${c.handle}">`));
-      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: false } });
-      purge();
-      assert.doesNotMatch((await text(`/stories/${art.slug}`)).body, /href="\/creators\//, 'no link to a page that is not there');
+      assert.doesNotMatch((await text(`/stories/${fx.articleSlug}`)).body, /href="\/creators\/sitetest_/, 'no link to a page that is not there');
     } finally {
-      await owner.creatorProfile.update({ where: { id: c.id }, data: { showOnWebsite: c.showOnWebsite } });
+      await owner.creatorProfile.update({ where: { id: fx.creatorId }, data: { showOnWebsite: true } });
       purge();
     }
   });
